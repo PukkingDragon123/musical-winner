@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bug Busker Orchestra</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0a14; height: 100%; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: monospace; color: #ddd; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; background: #000; }
+  #hint { position: fixed; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6a6580; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="270"></canvas>
+<div id="hint">Click the game to give it keyboard focus. Arrow keys / Enter / Esc navigate. Sound needs one click first.</div>
+<script src="js/util.js"></script>
+<script src="js/font.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/data.js"></script>
+<script src="js/music.js"></script>
+<script src="js/rhythm.js"></script>
+<script src="js/crowd.js"></script>
+<script src="js/mapgen.js"></script>
+<script src="js/scenes.js"></script>
+<script src="js/perform.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
