@@ -90,7 +90,14 @@ class Menu {
     return false;
   }
   select() { const it = this.items[this.idx]; if (!it || it.disabled) { Audio.ui('error'); return; } Audio.ui('select'); it.onSelect && it.onSelect(it); }
-  click(x, y) { for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { this.idx = i; this.select(); return true; } } return false; }
+  click(x, y) {
+    const pad = Game.touch ? 2 : 0;
+    for (let i = 0; i < this.rects.length; i++) {
+      const r = this.rects[i];
+      if (r && x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad) { this.idx = i; this.select(); return true; }
+    }
+    return false;
+  }
   hover(x, y) { for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && !this.items[i].disabled) { if (this.idx !== i) { this.idx = i; } return; } } }
   draw(ctx, x, y, w, lineH = 12) {
     this.rects = [];
@@ -112,7 +119,12 @@ const Game = {
   init() {
     this.canvas = document.getElementById('game'); this.ctx = this.canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = false;
-    window.addEventListener('resize', () => this.resize()); this.resize();
+    this.pointers = new Map();
+    this.touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    this.rotated = false;
+    window.addEventListener('resize', () => this.resize());
+    if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => setTimeout(() => this.resize(), 120));
+    this.resize();
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
@@ -122,17 +134,74 @@ const Game = {
       if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
-    const pos = (e) => { const r = this.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
-    this.canvas.addEventListener('mousemove', (e) => { this.mouse = pos(e); if (this.scene && this.scene.hover) this.scene.hover(this.mouse.x, this.mouse.y); });
-    this.canvas.addEventListener('mousedown', (e) => { Audio.init(); const p = pos(e); if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
-    window.addEventListener('blur', () => { this.keys.clear(); });
+    const c = this.canvas;
+    c.style.touchAction = 'none';
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true;
+      Audio.init();
+      try { c.setPointerCapture(e.pointerId); } catch (err) { }
+      const p = this.toCanvas(e);
+      this.pointers.set(e.pointerId, p);
+      if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId);
+      else if (this.scene && this.scene.click) this.scene.click(p.x, p.y);
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = this.toCanvas(e);
+      this.mouse = p;
+      if (this.pointers.has(e.pointerId)) {
+        this.pointers.set(e.pointerId, p);
+        if (this.scene && this.scene.pointerMove) this.scene.pointerMove(p.x, p.y, e.pointerId);
+      } else if (e.pointerType === 'mouse' && this.scene && this.scene.hover) this.scene.hover(p.x, p.y);
+    });
+    const release = (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      const p = this.toCanvas(e);
+      this.pointers.delete(e.pointerId);
+      if (this.scene && this.scene.pointerUp) this.scene.pointerUp(p.x, p.y, e.pointerId);
+    };
+    c.addEventListener('pointerup', release);
+    c.addEventListener('pointercancel', release);
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      for (const id of Array.from(this.pointers.keys())) { if (this.scene && this.scene.pointerUp) this.scene.pointerUp(-1, -1, id); }
+      this.pointers.clear();
+    });
     this.setScene(new TitleScene());
     requestAnimationFrame((t) => this.frame(t));
   },
+  // Map a pointer event to canvas pixels, accounting for the portrait rotation.
+  toCanvas(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const dx = e.clientX - cx, dy = e.clientY - cy;
+    const s = this.scale || 1;
+    if (this.rotated) return { x: W / 2 + dy / s, y: H / 2 - dx / s };
+    return { x: W / 2 + dx / s, y: H / 2 + dy / s };
+  },
+  toggleFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
+    else if (el.requestFullscreen) el.requestFullscreen().catch(() => { });
+  },
   resize() {
-    const raw = Math.min(window.innerWidth / W, (window.innerHeight - 24) / H);
-    const s = raw >= 2 ? Math.floor(raw) : Math.max(0.5, Math.floor(raw * 4) / 4);
-    this.scale = s; this.canvas.style.width = (W * s) + 'px'; this.canvas.style.height = (H * s) + 'px';
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // A portrait viewport plays rotated so the game always fills the long edge.
+    const rotate = this.rotateOverride != null ? this.rotateOverride : (vh > vw * 1.05 && vw < 700);
+    this.rotated = rotate;
+    const availW = rotate ? vh : vw, availH = rotate ? vw : vh - (this.touch ? 0 : 24);
+    const raw = Math.min(availW / W, availH / H);
+    const s = raw >= 2 ? Math.floor(raw) : Math.max(0.25, Math.floor(raw * 8) / 8);
+    this.scale = s;
+    const st = this.canvas.style;
+    st.width = (W * s) + 'px'; st.height = (H * s) + 'px';
+    st.position = 'fixed';
+    st.left = Math.round((vw - W * s) / 2) + 'px';
+    st.top = Math.round((vh - H * s) / 2) + 'px';
+    st.transform = rotate ? 'rotate(90deg)' : 'none';
+    const hint = document.getElementById('hint');
+    if (hint) hint.style.display = (rotate || this.touch || vh - H * s < 30) ? 'none' : 'block';
   },
   setScene(s) { this.scene = s; if (s.enter) s.enter(); },
   frame(t) {
@@ -142,7 +211,7 @@ const Game = {
       catch (e) { console.error(e); this.lastError = String(e && e.message || e); }
     }
     if (this.lastError) drawText(this.ctx, 'ERR: ' + this.lastError.slice(0, 100), 2, H - 7, '#ff5a5a');
-    if (this.muted) drawText(this.ctx, 'MUTED (M)', W - 4, 2, '#888', { align: 'right' });
+    if (this.muted) drawText(this.ctx, this.touch ? 'MUTED' : 'MUTED (M)', W - 4, 2, '#888', { align: 'right' });
     requestAnimationFrame((tt) => this.frame(tt));
   },
   // common HUD for run screens

@@ -104,6 +104,17 @@ class PerformScene {
     this.useCoffee = false; this.useFlyer = false;
     this.buildPrepMenu();
     this.train = { x: -600, t: r.rng.range(3, 8) };
+    this.layout();
+    this.pads = []; this.padPointers = new Map(); this.buttons = [];
+  }
+  // Touch play squeezes the street scene and hands the bottom strip to the pads.
+  layout() {
+    const touch = Game.touch;
+    // On touch the street scene moves to a strip up top so the pads can sit
+    // directly under the note receptor, where your thumbs already are.
+    this.L = touch
+      ? { top: true, stageY: 0, groundY: 56, stageBottom: 62, rhythmY: 64, rhythmH: 148, padY: 214, padH: 54 }
+      : { top: false, stageY: STAGE_Y, groundY: GROUND_Y, stageBottom: H, rhythmY: 0, rhythmH: STAGE_Y, padY: 0, padH: 0 };
   }
   buildPrepMenu() {
     const r = Game.run; const items = [];
@@ -131,11 +142,18 @@ class PerformScene {
     this.mods.tips *= 1 + others.reduce((a, m) => a + m.skill, 0) * 0.03 + this.performers.reduce((a, m) => a + m.skill, 0) * 0.015;
     this.rhythm = new RhythmGame(this.song, sections, notes, this.mods);
     this.crowd = new Crowd(this.venue, this.mods, r.rng);
-    this.crowd.stageX = 70 + this.performers.length * 13; this.crowd.hatX = 58 + this.performers.length * 26; this.crowd.hatY = GROUND_Y - 4; this.crowd.groundY = GROUND_Y;
+    this.crowd.stageX = 70 + this.performers.length * 13; this.crowd.hatX = 58 + this.performers.length * 26; this.crowd.hatY = this.L.groundY - 4; this.crowd.groundY = this.L.groundY;
     const start = Audio.now() + 0.6 + this.song.leadIn;
     this.rhythm.begin(start);
     this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); return sec ? { drums: sec.instrument === 'drums', bass: sec.instrument === 'bass' } : {}; });
     this.phase = 'play'; this.playT = 0;
+    this.padInstr = sections[0].instrument;
+    this.pads = buildPads(INSTRUMENTS[this.padInstr], { x: 2, y: this.L.padY, w: W - 4, h: this.L.padH });
+    this.pauseBtn = new Btn(2, 2, 22, 14, 'II', () => this.togglePause(), { bg: '#1a1728' });
+    this.buttons = [
+      new Btn(W / 2 - 92, 88, 84, 26, 'RESUME', () => this.togglePause(), { scale: 2, activeBg: '#6be585' }),
+      new Btn(W / 2 + 8, 88, 84, 26, 'BAIL OUT', () => this.quit(), { scale: 1, bg: '#3a1a24', border: '#ff5a5a', sub: 'HALF THE TIPS' }),
+    ];
   }
   update(dt) {
     this.t += dt;
@@ -143,6 +161,10 @@ class PerformScene {
       if (this.paused) return;
       this.backing.update();
       this.rhythm.update(dt);
+      if (Game.touch && this.padInstr !== this.rhythm.section.instrument) {
+        this.padInstr = this.rhythm.section.instrument;
+        this.pads = buildPads(this.rhythm.instrument, { x: 2, y: this.L.padY, w: W - 4, h: this.L.padH });
+      }
       this.crowd.update(dt, this.rhythm.hype, this.rhythm.events);
       this.train.t -= dt; if (this.train.t < 0 && this.venue.bg === 'subway') { this.train.x += dt * 260; if (this.train.x > W + 300) { this.train.x = -600; this.train.t = 6 + Math.random() * 8; } }
       if (this.rhythm.finished) this.finish();
@@ -194,46 +216,72 @@ class PerformScene {
   quit() { if (Audio.ctx) Audio.ctx.resume(); this.backing.stop(); this.rhythm.finished = true; this.paused = false; this.crowd.earned *= 0.5; this.finish(); this.bonusLines.push('You bailed on the set. Half the tips walked off.'); }
   click(x, y) { if (this.phase !== 'play') this.menu.click(x, y); }
   hover(x, y) { if (this.phase !== 'play') this.menu.hover(x, y); }
+  padAt(x, y) { return this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h); }
+  pointerDown(x, y, id) {
+    if (this.phase !== 'play') { this.menu.click(x, y); return; }
+    if (this.paused) { for (const b of this.buttons) if (b.hit(x, y)) { b.flash = 0.5; b.onTap(); return; } return; }
+    if (this.pauseBtn && this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
+    const pad = this.padAt(x, y);
+    if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); }
+  }
+  pointerMove(x, y, id) {
+    if (this.phase !== 'play' || this.paused) return;
+    const prev = this.padPointers.get(id);
+    if (prev === undefined) return;
+    const pad = this.padAt(x, y);
+    const next = pad ? pad.code : null;
+    if (next === prev) return;
+    this.rhythm.keyUp(prev);
+    if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); }
+    else this.padPointers.delete(id);
+  }
+  pointerUp(x, y, id) {
+    const code = this.padPointers.get(id);
+    if (code !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(code); }
+  }
 
   drawStage(ctx) {
-    ctx.drawImage(this.bg, 0, STAGE_Y);
+    const L = this.L, GY = L.groundY;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, L.stageY, W, L.stageBottom - L.stageY); ctx.clip();
+    ctx.drawImage(this.bg, 0, GY - (GROUND_Y - STAGE_Y));
     if (this.venue.bg === 'subway' && this.train.t < 0) {
-      const tx = this.train.x, ty = STAGE_Y + GROUND_Y - STAGE_Y - 62;
+      const tx = this.train.x, ty = GY - 62;
       rect(ctx, tx, ty, 600, 40, '#c8c8d0'); rect(ctx, tx, ty + 30, 600, 6, '#2a4a9a');
       for (let x = tx + 10; x < tx + 600; x += 30) rect(ctx, x, ty + 8, 18, 14, '#ffe8a0');
     }
-    // band
     const perf = this.performers || Game.run.members;
     const cur = this.rhythm ? this.rhythm.section.member : null;
-    this.crowd && this.crowd.drawPeds(ctx, GROUND_Y - 2, 0);
+    this.crowd && this.crowd.drawPeds(ctx, GY - 2, 0);
     perf.forEach((m, i) => {
       const x = 58 + i * 26, isCur = m === cur;
       const bob = isCur && this.rhythm ? Math.round(this.rhythm.beatPulse > 0.7 ? -1 : 0) : 0;
-      drawBug(ctx, m.species, x, GROUND_Y - 24 + bob, { pose: isCur ? 'play' : 'stand', instrument: m.instrument });
-      if (isCur) { drawText(ctx, '↓', x + 6, GROUND_Y - 34 + Math.round(Math.sin(this.t * 8)), '#ffe14d', { align: 'center', shadow: '#000' }); }
-      if (!isCur && this.rhythm && Math.floor(this.t * 2 + i) % 3 === 0) ctx.drawImage(propSprite('note'), x + 14, GROUND_Y - 30);
+      drawBug(ctx, m.species, x, GY - 24 + bob, { pose: isCur ? 'play' : 'stand', instrument: m.instrument });
+      if (isCur) drawText(ctx, '↓', x + 6, GY - 34 + Math.round(Math.sin(this.t * 8)), '#ffe14d', { align: 'center', shadow: '#000' });
+      if (!isCur && this.rhythm && Math.floor(this.t * 2 + i) % 3 === 0) ctx.drawImage(propSprite('note'), x + 14, GY - 30);
     });
-    // hat
-    if (this.crowd) { ctx.drawImage(propSprite('hat'), this.crowd.hatX - 2, this.crowd.hatY - 2); }
-    this.crowd && this.crowd.drawPeds(ctx, GROUND_Y + 6, 1);
+    if (this.crowd) ctx.drawImage(propSprite('hat'), this.crowd.hatX - 2, this.crowd.hatY - 2);
+    this.crowd && this.crowd.drawPeds(ctx, GY + 6, 1);
     this.crowd && this.crowd.drawCoins(ctx);
-    // hype meter & tips
+    ctx.restore();
     if (this.rhythm) {
-      const hx = W - 14, hy = STAGE_Y + 8, hh = 70;
+      const hx = W - 14, hy = L.stageY + 6, hh = Math.min(70, L.stageBottom - L.stageY - (L.top ? 8 : 18));
       rect(ctx, hx, hy, 8, hh, '#111'); const fill = hh * this.rhythm.hype / 100;
       rect(ctx, hx, hy + hh - fill, 8, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx, hy, 8, hh, '#888');
-      drawText(ctx, 'HYPE', hx + 4, hy + hh + 3, '#fff', { align: 'center', shadow: '#000' });
-      rect(ctx, W - 100, STAGE_Y + 4, 78, 26, 'rgba(0,0,0,0.65)');
-      drawText(ctx, 'TIPS', W - 96, STAGE_Y + 7, '#cfc9e6');
-      drawText(ctx, fmtMoney(this.crowd.earned), W - 26, STAGE_Y + 6, '#ffe680', { align: 'right', scale: 2, shadow: '#000' });
-      drawText(ctx, this.crowd.watchers.length + ' WATCHING', W - 96, STAGE_Y + 20, '#cfc9e6');
+      if (!L.top) drawText(ctx, 'HYPE', hx + 4, hy + hh + 3, '#fff', { align: 'center', shadow: '#000' });
+      rect(ctx, W - 100, L.stageY + 4, 78, 26, 'rgba(0,0,0,0.65)');
+      drawText(ctx, 'TIPS', W - 96, L.stageY + 7, '#cfc9e6');
+      drawText(ctx, fmtMoney(this.crowd.earned), W - 26, L.stageY + 6, '#ffe680', { align: 'right', scale: 2, shadow: '#000' });
+      drawText(ctx, this.crowd.watchers.length + ' WATCHING', W - 96, L.stageY + 20, '#cfc9e6');
     }
   }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0d0b18');
+    const PY0 = this.L.top ? 66 : 14, PH = this.L.top ? H - 70 : this.L.stageY - 20;
     if (this.phase === 'prep') {
       this.drawStage(ctx);
-      panel(ctx, 20, 14, W - 40, STAGE_Y - 20);
+      panel(ctx, 20, PY0, W - 40, PH);
+      ctx.save(); ctx.translate(0, PY0 - 14);
       const title = { gig: 'GIG', elite: 'BIG GIG', boss: 'THE FINALE', openmic: 'OPEN MIC' }[this.mode];
       drawText(ctx, title + ': ' + this.venue.name.toUpperCase(), 28, 20, '#ffe14d', { scale: 2 });
       drawText(ctx, '"' + this.song.name + '"  ' + this.bpm + ' BPM  ' + this.bars + ' BARS   DIFFICULTY ' + '★'.repeat(this.difficulty) + '☆'.repeat(6 - this.difficulty).replace(/☆/g, '.'), 28, 36, '#cfc9e6');
@@ -241,32 +289,42 @@ class PerformScene {
       if (this.mode === 'openmic') drawText(ctx, 'Score 60%+ accuracy and a new musician may ask to join.', 28, 52, '#c58bff');
       if (Game.run.pendingGig && Game.run.pendingGig.note) drawText(ctx, Game.run.pendingGig.note, 28, 52, '#ff9f68');
       drawText(ctx, 'LINEUP (toggle who plays; the song rotates instruments every 4 bars):', 28, 62, '#e0dcf0');
-      this.menu.draw(ctx, 28, 72, W - 56, 10);
+      this.menu.draw(ctx, 28, 72, W - 56, Game.touch ? 13 : 10);
       const it = this.menu.items[this.menu.idx];
-      if (it && it.label.includes(' - ')) { const m = Game.run.members[this.menu.idx]; if (m) drawWrapped(ctx, INSTRUMENTS[m.instrument].desc, 28, STAGE_Y - 22, 110, '#ffe680'); }
+      if (it && it.label.includes(' - ')) { const m = Game.run.members[this.menu.idx]; if (m) drawWrapped(ctx, INSTRUMENTS[m.instrument].desc, 28, PH - 8, 110, '#ffe680'); }
+      ctx.restore();
+      this.menu.rects.forEach(r => { if (r) r.y += PY0 - 14; });
       Game.drawRunHud(ctx);
       return;
     }
     if (this.phase === 'play') {
-      this.rhythm.draw(ctx, { x: 0, y: 0, w: W, h: STAGE_Y });
-      rect(ctx, 0, STAGE_Y - 1, W, 1, '#3a3560');
+      const L = this.L;
+      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads });
       this.drawStage(ctx);
-      // progress bar
       const p = clamp(this.rhythm.now / this.song.length, 0, 1);
-      rect(ctx, 0, STAGE_Y - 3, W, 2, '#222'); rect(ctx, 0, STAGE_Y - 3, W * p, 2, '#ffe14d');
+      const barY = L.top ? L.stageBottom : L.stageY - 3;
+      rect(ctx, 0, barY, W, 2, '#222'); rect(ctx, 0, barY, W * p, 2, '#ffe14d');
       const lbl = this.rhythm.section.member.name.toUpperCase() + ' ON ' + this.rhythm.instrument.name.toUpperCase();
-      rect(ctx, 2, STAGE_Y + 3, textWidth(lbl) + 6, 9, 'rgba(0,0,0,0.65)');
-      drawText(ctx, lbl, 5, STAGE_Y + 5, '#fff');
+      const lblY = L.top ? L.stageBottom - 10 : L.stageY + 5;
+      rect(ctx, 2, lblY - 2, textWidth(lbl) + 6, 9, 'rgba(0,0,0,0.65)');
+      drawText(ctx, lbl, 5, lblY, '#fff');
+      if (Game.touch) {
+        rect(ctx, 0, L.padY - 2, W, H - L.padY + 2, '#0a0814');
+        drawPads(ctx, this.pads, this.rhythm.keysDown, this.t);
+        this.pauseBtn.draw(ctx);
+      }
       if (this.paused) {
-        rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.7)');
-        drawText(ctx, 'PAUSED', W / 2, 100, '#fff', { align: 'center', scale: 3 });
-        drawText(ctx, 'ESC: RESUME    Q: BAIL ON THE SET (HALF TIPS)', W / 2, 130, '#cfc9e6', { align: 'center' });
+        rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.75)');
+        drawText(ctx, 'PAUSED', W / 2, 60, '#fff', { align: 'center', scale: 3 });
+        if (Game.touch) this.buttons.forEach(b => b.draw(ctx));
+        else drawText(ctx, 'ESC: RESUME    Q: BAIL ON THE SET (HALF TIPS)', W / 2, 100, '#cfc9e6', { align: 'center' });
       }
       return;
     }
     // results
     this.drawStage(ctx);
-    panel(ctx, 20, 10, W - 40, STAGE_Y - 14);
+    panel(ctx, 20, PY0, W - 40, PH);
+    ctx.save(); ctx.translate(0, PY0 - 10);
     const res = this.res;
     drawText(ctx, 'SET COMPLETE', 28, 16, '#ffe14d', { scale: 2 });
     drawText(ctx, this.grade, W - 50, 14, { S: '#ffe14d', A: '#6be585', B: '#6fb8ff', C: '#ffd166', D: '#ff5a5a' }[this.grade], { scale: 4, shadow: '#000' });
@@ -278,7 +336,9 @@ class PerformScene {
     drawText(ctx, 'EARNED ' + fmtMoney(this.earned) + '  ->  WALLET ' + fmtMoney(Game.run.money), 28, y, '#6be585'); y += 9;
     for (const l of this.xpLines) { drawText(ctx, l, 28, y, '#9a8fd0'); y += 7; }
     if (this.recruit) { y += 2; drawText(ctx, 'Someone from the crowd wants to join!', 28, y, '#c58bff'); drawBug(ctx, this.recruit.species, W - 60, y - 6, { pose: 'play', instrument: this.recruit.instrument }); y += 8; }
-    this.menu.draw(ctx, 28, Math.max(y + 2, STAGE_Y - 34), W - 56, 10);
+    this.menu.draw(ctx, 28, Math.max(y + 2, PH - 30), W - 56, Game.touch ? 13 : 10);
+    ctx.restore();
+    this.menu.rects.forEach(r => { if (r) r.y += PY0 - 10; });
     Game.drawRunHud(ctx);
   }
 }

@@ -1,0 +1,3045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bug Busker Orchestra</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0a14; height: 100%; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: monospace; color: #ddd; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; background: #000; }
+  #hint { position: fixed; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6a6580; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="270"></canvas>
+<div id="hint">Click once for sound. Arrows + Enter, or mouse. On a phone: tap and use the pads.</div>
+<script>
+// ===== js/util.js =====
+// ---------- Utilities: RNG, math, colors ----------
+'use strict';
+const W = 480, H = 270;
+
+// Mulberry32 seeded RNG
+function makeRng(seed) {
+  let s = seed >>> 0;
+  const r = function () {
+    s |= 0; s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  r.int = (a, b) => a + Math.floor(r() * (b - a + 1));
+  r.pick = (arr) => arr[Math.floor(r() * arr.length)];
+  r.chance = (p) => r() < p;
+  r.shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  r.range = (a, b) => a + r() * (b - a);
+  return r;
+}
+const RNG = makeRng((Date.now() ^ 0x9E3779B9) >>> 0);
+
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = (t) => 1 - (1 - t) * (1 - t);
+const easeIn = (t) => t * t;
+const fmtMoney = (n) => '
+</html>
+ + (Math.round(n * 100) / 100).toFixed(n % 1 ? 2 : 0);
+const pad2 = (n) => (n < 10 ? '0' : '') + n;
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function rgbToHex(r, g, b) {
+  const c = (v) => ('0' + clamp(Math.round(v), 0, 255).toString(16)).slice(-2);
+  return '#' + c(r) + c(g) + c(b);
+}
+function shade(hex, amt) {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHex(r + amt, g + amt, b + amt);
+}
+function mixColor(a, b, t) {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  return rgbToHex(lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t));
+}
+
+// Draw helpers
+function rect(ctx, x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+function frame(ctx, x, y, w, h, color) {
+  rect(ctx, x, y, w, 1, color); rect(ctx, x, y + h - 1, w, 1, color);
+  rect(ctx, x, y, 1, h, color); rect(ctx, x + w - 1, y, 1, h, color);
+}
+function panel(ctx, x, y, w, h, opts = {}) {
+  const bg = opts.bg || '#1a1728', border = opts.border || '#6b5f9a', inner = opts.inner || '#2a2540';
+  rect(ctx, x, y, w, h, border);
+  rect(ctx, x + 1, y + 1, w - 2, h - 2, bg);
+  frame(ctx, x + 2, y + 2, w - 4, h - 4, inner);
+}
+function dashedLine(ctx, x1, y1, x2, y2, color, dash = 3, gap = 3, offset = 0) {
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  if (len < 0.01) return;
+  const ux = dx / len, uy = dy / len;
+  ctx.fillStyle = color;
+  for (let d = offset % (dash + gap) - (dash + gap); d < len; d += dash + gap) {
+    for (let k = Math.max(0, d); k < Math.min(len, d + dash); k += 1) {
+      ctx.fillRect(Math.round(x1 + ux * k), Math.round(y1 + uy * k), 1, 1);
+    }
+  }
+}
+function circle(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color;
+  for (let y = -r; y <= r; y++) {
+    const w = Math.floor(Math.sqrt(r * r - y * y));
+    ctx.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1);
+  }
+}
+function ringPx(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color;
+  const steps = Math.max(12, Math.floor(r * 6));
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1);
+  }
+}
+
+// ===== js/touch.js =====
+// ---------- Touch controls: on-screen buttons and rhythm pads ----------
+'use strict';
+
+// A tappable on-screen button drawn on the canvas.
+class Btn {
+  constructor(x, y, w, h, label, onTap, opts = {}) {
+    Object.assign(this, { x, y, w, h, label, onTap, opts, held: false, flash: 0 });
+  }
+  hit(px, py) { return px >= this.x && px < this.x + this.w && py >= this.y && py < this.y + this.h; }
+  draw(ctx) {
+    const o = this.opts;
+    const bg = this.held ? (o.activeBg || '#5a54a0') : (o.bg || '#2a2540');
+    const border = o.border || '#8a80c0';
+    rect(ctx, this.x, this.y, this.w, this.h, bg);
+    frame(ctx, this.x, this.y, this.w, this.h, border);
+    if (this.flash > 0) { ctx.globalAlpha = this.flash * 2; rect(ctx, this.x + 1, this.y + 1, this.w - 2, this.h - 2, o.activeBg || '#fff'); ctx.globalAlpha = 1; }
+    const scale = o.scale || 1;
+    drawText(ctx, this.label, this.x + this.w / 2, this.y + Math.floor((this.h - 5 * scale) / 2), o.color || '#fff', { align: 'center', scale });
+    if (o.sub) drawText(ctx, o.sub, this.x + this.w / 2, this.y + this.h - 7, o.subColor || '#cfc9e6', { align: 'center' });
+  }
+  update(dt) { this.flash = Math.max(0, this.flash - dt * 4); }
+}
+
+// Builds the row of rhythm pads for the instrument currently being played.
+// Returns [{x, y, w, h, code, label, sub, color}]
+function buildPads(instr, area) {
+  const pads = [];
+  const { x, y, w, h } = area;
+  const add = (fx, fw, code, label, color, sub) => pads.push({ x: Math.round(x + w * fx), y, w: Math.round(w * fw) - 2, h, code, label, color, sub });
+  switch (instr.game) {
+    case 'lanes': {
+      const L = instr.lanes;
+      for (let i = 0; i < L; i++) add(i / L, 1 / L, instr.keys[i], instr.keyNames[i], LANE_COLORS[i]);
+      break;
+    }
+    case 'taiko':
+      add(0, 0.22, 'KeyD', 'KA', '#5bc0ff');
+      add(0.22, 0.28, 'KeyF', 'DON', '#ff6b6b');
+      add(0.50, 0.28, 'KeyJ', 'DON', '#ff6b6b');
+      add(0.78, 0.22, 'KeyK', 'KA', '#5bc0ff');
+      break;
+    case 'wind':
+      add(0.1, 0.8, 'Space', 'BLOW', '#e0b040', 'HOLD THE PAD');
+      break;
+    case 'valves':
+      add(0.14, 0.24, 'KeyJ', '1', '#f0c040');
+      add(0.38, 0.24, 'KeyK', '2', '#f0c040');
+      add(0.62, 0.24, 'KeyL', '3', '#f0c040');
+      break;
+    case 'bow':
+      add(0.04, 0.46, 'ArrowUp', '↑ UP BOW', '#c58bff');
+      add(0.50, 0.46, 'ArrowDown', '↓ DOWN BOW', '#6be585');
+      break;
+  }
+  return pads;
+}
+
+function drawPads(ctx, pads, downCodes, t) {
+  for (const p of pads) {
+    const on = downCodes.has(p.code);
+    rect(ctx, p.x, p.y, p.w, p.h, on ? p.color : '#181430');
+    frame(ctx, p.x, p.y, p.w, p.h, on ? '#fff' : shade(p.color, -40));
+    rect(ctx, p.x + 1, p.y + 1, p.w - 2, 1, on ? '#fff' : shade(p.color, -70));
+    const col = on ? '#141026' : p.color;
+    const big = p.label.length <= 3;
+    drawText(ctx, p.label, p.x + p.w / 2, p.y + (p.sub ? 10 : Math.floor((p.h - (big ? 10 : 5)) / 2)), col, { align: 'center', scale: big ? 2 : 1 });
+    if (p.sub) drawText(ctx, p.sub, p.x + p.w / 2, p.y + p.h - 9, on ? '#141026' : '#8a80c0', { align: 'center' });
+  }
+}
+
+// ===== js/font.js =====
+// ---------- 3x5 pixel bitmap font ----------
+'use strict';
+const FONT = (() => {
+  const raw = {
+    'A': '010 101 111 101 101', 'B': '110 101 110 101 110', 'C': '011 100 100 100 011',
+    'D': '110 101 101 101 110', 'E': '111 100 110 100 111', 'F': '111 100 110 100 100',
+    'G': '011 100 101 101 011', 'H': '101 101 111 101 101', 'I': '111 010 010 010 111',
+    'J': '011 001 001 101 010', 'K': '101 101 110 101 101', 'L': '100 100 100 100 111',
+    'M': '101 111 111 101 101', 'N': '110 101 101 101 101', 'O': '010 101 101 101 010',
+    'P': '110 101 110 100 100', 'Q': '010 101 101 111 011', 'R': '110 101 110 101 101',
+    'S': '011 100 010 001 110', 'T': '111 010 010 010 010', 'U': '101 101 101 101 011',
+    'V': '101 101 101 101 010', 'W': '101 101 111 111 101', 'X': '101 101 010 101 101',
+    'Y': '101 101 010 010 010', 'Z': '111 001 010 100 111',
+    '0': '010 101 101 101 010', '1': '010 110 010 010 111', '2': '110 001 010 100 111',
+    '3': '110 001 010 001 110', '4': '101 101 111 001 001', '5': '111 100 110 001 110',
+    '6': '011 100 110 101 010', '7': '111 001 010 010 010', '8': '010 101 010 101 010',
+    '9': '010 101 011 001 110',
+    ' ': '000 000 000 000 000', '.': '000 000 000 000 010', ',': '000 000 000 010 100',
+    '!': '010 010 010 000 010', '?': '110 001 010 000 010', ':': '000 010 000 010 000',
+    ';': '000 010 000 010 100', '-': '000 000 111 000 000', '+': '000 010 111 010 000',
+    '
+</html>
+: '010 111 100 011 111', '%': '101 001 010 100 101', '/': '001 001 010 100 100',
+    '(': '010 100 100 100 010', ')': '010 001 001 001 010', "'": '010 010 000 000 000',
+    '"': '101 101 000 000 000', '#': '101 111 101 111 101', '*': '101 010 111 010 101',
+    '<': '001 010 100 010 001', '>': '100 010 001 010 100', '=': '000 111 000 111 000',
+    '_': '000 000 000 000 111', '&': '010 101 010 101 011', '[': '110 100 100 100 110',
+    ']': '011 001 001 001 011', '~': '000 001 111 100 000', '^': '010 101 000 000 000',
+    '@': '010 101 111 100 011', 'x': '000 101 010 101 000',
+    // music note ♪ and heart, star, arrows, coin mapped to special chars
+    '♪': '011 010 010 110 110', '♥': '101 111 111 010 000', '★': '010 111 111 010 101',
+    '↑': '010 111 010 010 010', '↓': '010 010 010 111 010', '←': '000 010 111 010 000',
+    '→': '000 010 111 010 000',
+    '●': '000 010 111 010 000', // bullet
+  };
+  const glyphs = {};
+  for (const k in raw) glyphs[k] = raw[k].split(' ').map(r => r.split('').map(c => c === '1'));
+  // proper arrows left/right need distinct shapes
+  glyphs['←'] = ['010', '100', '111', '100', '010'].map(r => r.split('').map(c => c === '1'));
+  glyphs['→'] = ['010', '001', '111', '001', '010'].map(r => r.split('').map(c => c === '1'));
+  return glyphs;
+})();
+
+const _fontCache = new Map();
+function _glyphCanvas(ch, color, scale) {
+  const key = ch + '|' + color + '|' + scale;
+  let c = _fontCache.get(key);
+  if (c) return c;
+  const g = FONT[ch] || FONT['?'];
+  c = document.createElement('canvas');
+  c.width = 3 * scale; c.height = 5 * scale;
+  const cx = c.getContext('2d');
+  cx.fillStyle = color;
+  for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (g[y][x]) cx.fillRect(x * scale, y * scale, scale, scale);
+  _fontCache.set(key, c);
+  return c;
+}
+function textWidth(str, scale = 1) {
+  return str.length * 4 * scale - scale;
+}
+// opts: {scale, align:'left'|'center'|'right', shadow, color}
+function drawText(ctx, str, x, y, color = '#ffffff', opts = {}) {
+  const scale = opts.scale || 1;
+  str = String(str);
+  let cx = Math.round(x);
+  const w = textWidth(str, scale);
+  if (opts.align === 'center') cx -= Math.floor(w / 2);
+  else if (opts.align === 'right') cx -= w;
+  const yy = Math.round(y);
+  if (opts.shadow) {
+    let sx = cx;
+    for (const raw of str) {
+      const ch = raw.length === 1 && raw >= 'a' && raw <= 'z' ? raw.toUpperCase() : raw;
+      if (ch !== ' ') ctx.drawImage(_glyphCanvas(ch, opts.shadow, scale), sx + scale, yy + scale);
+      sx += 4 * scale;
+    }
+  }
+  for (const raw of str) {
+    const ch = raw.length === 1 && raw >= 'a' && raw <= 'z' ? raw.toUpperCase() : raw;
+    if (ch !== ' ') ctx.drawImage(_glyphCanvas(ch, color, scale), cx, yy);
+    cx += 4 * scale;
+  }
+  return w;
+}
+// Word-wrap text into lines of at most maxChars
+function wrapText(str, maxChars) {
+  const words = String(str).split(' ');
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxChars && cur) { lines.push(cur); cur = w; }
+    else cur = (cur ? cur + ' ' : '') + w;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function drawWrapped(ctx, str, x, y, maxChars, color, lineH = 7, opts = {}) {
+  const lines = wrapText(str, maxChars);
+  lines.forEach((l, i) => drawText(ctx, l, x, y + i * lineH, color, opts));
+  return lines.length;
+}
+
+// ===== js/sprites.js =====
+// ---------- Pixel art sprites ----------
+'use strict';
+const _spriteCache = new Map();
+
+// rows: array of strings; palette: char -> color. '.' = transparent
+function makeSprite(rows, palette, key) {
+  if (key && _spriteCache.has(key)) return _spriteCache.get(key);
+  const h = rows.length, w = rows[0].length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || ch === ' ') continue;
+    const col = palette[ch];
+    if (!col) continue;
+    ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1);
+  }
+  if (key) _spriteCache.set(key, c);
+  return c;
+}
+function flipSprite(c, key) {
+  if (key && _spriteCache.has(key)) return _spriteCache.get(key);
+  const f = document.createElement('canvas');
+  f.width = c.width; f.height = c.height;
+  const ctx = f.getContext('2d');
+  ctx.translate(c.width, 0); ctx.scale(-1, 1); ctx.drawImage(c, 0, 0);
+  if (key) _spriteCache.set(key, f);
+  return f;
+}
+
+// ---- Bug body template (12x16). o outline, b body, s shell/shirt, e eye, h eye highlight, a antenna, m mouth
+const BUG_BASE = {
+  stand: [
+    '.a........a.',
+    '..a......a..',
+    '...oooooo...',
+    '..obbbbbbo..',
+    '..oehbbeho..',
+    '..obbbbbbo..',
+    '...oobmoo...',
+    '..oossssoo..',
+    '.obssssssbo.',
+    '.obssssssbo.',
+    '..ossssssso.',
+    '..oossssoo..',
+    '...o....o...',
+    '...o....o...',
+    '..oo....oo..',
+    '............',
+  ],
+  walk: [
+    '.a........a.',
+    '..a......a..',
+    '...oooooo...',
+    '..obbbbbbo..',
+    '..oehbbeho..',
+    '..obbbbbbo..',
+    '...oobmoo...',
+    '..oossssoo..',
+    '.obssssssbo.',
+    '.obssssssbo.',
+    '..ossssssso.',
+    '..oossssoo..',
+    '..o......o..',
+    '..o.....o...',
+    '.oo....oo...',
+    '............',
+  ],
+  // arms raised (performing / cheering)
+  play: [
+    '.a........a.',
+    '..a......a..',
+    '...oooooo...',
+    '..obbbbbbo..',
+    '..oehbbeho..',
+    '..obbbbbbo..',
+    '...oobmoo...',
+    '.b.ossssso.b',
+    '.obssssssbo.',
+    '..ossssssso.',
+    '..ossssssso.',
+    '..oossssoo..',
+    '...o....o...',
+    '...o....o...',
+    '..oo....oo..',
+    '............',
+  ],
+};
+const WINGS = {
+  bee: ['..ww....ww..', '.wwww..wwww.', '.wwww..wwww.', '..ww....ww..'],
+  moth: ['.wwww..wwww.', 'wwwwwwwwwwww', 'wwwwwwwwwwww', '.wwww..wwww.', '..ww....ww..'],
+  butterfly: ['.wwww..wwww.', 'wwvwwwwwwvww', 'wwwwvwwvwwww', '.wwwwwwwwww.', '..wvw..wvw..', '...ww..ww...'],
+};
+const SPECIES = {
+  beetle:      { name: 'Beetle',      b: '#4f8a46', s: '#2f4f9a', a: '#c9d3ff', decor: 'horn' },
+  ant:         { name: 'Ant',         b: '#c2502f', s: '#8a2f1f', a: '#ffb08a' },
+  ladybug:     { name: 'Ladybug',     b: '#2b2b2b', s: '#dc3c2f', a: '#555', decor: 'spots' },
+  grasshopper: { name: 'Grasshopper', b: '#86c84f', s: '#4e8f2d', a: '#d6f0a0' },
+  bee:         { name: 'Bee',         b: '#f2c53d', s: '#f2c53d', a: '#333', decor: 'stripes', wings: 'bee' },
+  moth:        { name: 'Moth',        b: '#b3a28a', s: '#7d6b57', a: '#e6dccc', wings: 'moth' },
+  mantis:      { name: 'Mantis',      b: '#7ad275', s: '#3f9a48', a: '#cbf5c0' },
+  cricket:     { name: 'Cricket',     b: '#9a7443', s: '#5c4426', a: '#e0c090' },
+  firefly:     { name: 'Firefly',     b: '#4a4a6a', s: '#2c2c44', a: '#ffe66d', decor: 'glow' },
+  butterfly:   { name: 'Butterfly',   b: '#5d4b8f', s: '#7f5fbf', a: '#e0d0ff', wings: 'butterfly' },
+  snail:       { name: 'Snail',       b: '#d1ab80', s: '#8d5c38', a: '#f5e2c8', decor: 'shell' },
+  spider:      { name: 'Spider',      b: '#4a3350', s: '#2c1e33', a: '#c090d0', decor: 'legs' },
+  roach:       { name: 'Roach',       b: '#7a4a2a', s: '#4a2a12', a: '#c08a60' },
+  weevil:      { name: 'Weevil',      b: '#5a6a7a', s: '#34404c', a: '#a0b0c0' },
+};
+const SPECIES_KEYS = Object.keys(SPECIES);
+
+function bugPalette(sp, override = {}) {
+  const b = override.b || sp.b, s = override.s || sp.s;
+  return {
+    o: override.o || '#14101c', b, s, e: '#14101c', h: '#ffffff', a: override.a || sp.a, m: shade(b, -40),
+    w: override.w || '#dfe9ff', v: override.v || '#ff7fbf',
+  };
+}
+function bugSprite(speciesKey, pose = 'stand', override = {}) {
+  const key = 'bug|' + speciesKey + '|' + pose + '|' + JSON.stringify(override);
+  if (_spriteCache.has(key)) return _spriteCache.get(key);
+  const sp = SPECIES[speciesKey] || SPECIES.beetle;
+  const pal = bugPalette(sp, override);
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 18;
+  const ctx = c.getContext('2d');
+  // wings behind
+  if (sp.wings) {
+    const wpal = { w: pal.w, v: pal.v };
+    const ws = makeSprite(WINGS[sp.wings], wpal);
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(ws, 2, 8);
+    ctx.globalAlpha = 1;
+  }
+  const body = makeSprite(BUG_BASE[pose] || BUG_BASE.stand, pal);
+  ctx.drawImage(body, 2, 2);
+  // decor
+  ctx.fillStyle = '#14101c';
+  if (sp.decor === 'spots') {
+    [[6, 10], [9, 10], [7, 12], [10, 12], [5, 12]].forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+  } else if (sp.decor === 'stripes') {
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(5, 10, 6, 1); ctx.fillRect(5, 12, 6, 1);
+  } else if (sp.decor === 'horn') {
+    ctx.fillStyle = pal.o; ctx.fillRect(7, 2, 2, 2); ctx.fillStyle = shade(pal.b, 30); ctx.fillRect(7, 3, 2, 1);
+  } else if (sp.decor === 'glow') {
+    ctx.fillStyle = '#ffe66d'; ctx.fillRect(6, 12, 4, 1); ctx.fillStyle = '#fff6b0'; ctx.fillRect(7, 12, 2, 1);
+  } else if (sp.decor === 'shell') {
+    ctx.fillStyle = pal.o; ctx.fillRect(10, 8, 5, 5);
+    ctx.fillStyle = '#b06a3a'; ctx.fillRect(11, 9, 3, 3);
+    ctx.fillStyle = '#e0a070'; ctx.fillRect(12, 10, 1, 1); ctx.fillRect(11, 9, 1, 1);
+  } else if (sp.decor === 'legs') {
+    ctx.fillStyle = pal.o;
+    ctx.fillRect(1, 11, 2, 1); ctx.fillRect(0, 12, 1, 2); ctx.fillRect(13, 11, 2, 1); ctx.fillRect(15, 12, 1, 2);
+    ctx.fillRect(1, 9, 1, 1); ctx.fillRect(14, 9, 1, 1);
+  }
+  _spriteCache.set(key, c);
+  return c;
+}
+
+// ---- Hats for pedestrians (drawn at head top)
+const HATS = {
+  cap: { rows: ['.rrrrrr.', 'rrrrrrrrr'], pal: { r: '#c04040' } },
+  top: { rows: ['..kkkk..', '..kkkk..', 'kkkkkkkk'], pal: { k: '#202028' } },
+  beanie: { rows: ['..gg....', '.gggggg.', 'gggggggg'], pal: { g: '#3a7ac0' } },
+  flower: { rows: ['..pp....', '.pypp...', '..pp....'], pal: { p: '#ff70b0', y: '#ffe060' } },
+};
+
+// ---- Instruments (held). Anchor at bug's hands (~x+3,y+9)
+const INSTR_SPRITES = {
+  guitar: { rows: [
+    '..........nn',
+    '.........nn.',
+    '........nn..',
+    '.......nn...',
+    '..wwww.n....',
+    '.wwwwwwn....',
+    'wwwhwwww....',
+    '.wwwwww.....',
+    '..wwww......',
+  ], pal: { n: '#5a3a1e', w: '#d98c3a', h: '#2a1a0a' } },
+  bass: { rows: [
+    '...........nn',
+    '..........nn.',
+    '.........nn..',
+    '........nn...',
+    '.......nn....',
+    '..wwww.n.....',
+    '.wwwwwwn.....',
+    'wwwhwwww.....',
+    '.wwwwww......',
+    '..wwww.......',
+  ], pal: { n: '#3a2a3a', w: '#8a3a5a', h: '#2a1a0a' } },
+  drums: { rows: [
+    '.ccc......ccc..',
+    '.ddd......ddd..',
+    '..d........d...',
+    '....rrrrrrr....',
+    '...rwwwwwwwr...',
+    '...rrrrrrrrr...',
+    '...rrrrrrrrr...',
+    '...rrrrrrrrr...',
+    '....rrrrrrr....',
+    '..d.........d..',
+    '.d...........d.',
+  ], pal: { c: '#e0c060', d: '#888', r: '#c03a3a', w: '#f0e8d8' } },
+  sax: { rows: [
+    '..gg.',
+    '...g.',
+    '...g.',
+    '...g.',
+    '...gg',
+    '...gg',
+    '.gggg',
+    'ggggg',
+    'gggg.',
+  ], pal: { g: '#e0b040' } },
+  trumpet: { rows: [
+    '.........gg',
+    'gggggggggg.',
+    '..gg.gg..g.',
+    '.........gg',
+    '........ggg',
+  ], pal: { g: '#f0c040' } },
+  violin: { rows: [
+    '.........n',
+    '........n.',
+    '.......n..',
+    '..vv..n...',
+    '.vvvvvn...',
+    '.vvvvvv...',
+    '..vvvv....',
+    '.vvvvvv...',
+    '..vvvv....',
+  ], pal: { n: '#4a2a10', v: '#b05a2a' } },
+  piano: { rows: [
+    'kkkkkkkkkkkkkkkkkk',
+    'kwwkwwwkwwkwwwkwwk',
+    'kwbkwbwkwbkwbwkwbk',
+    'kwwkwwwkwwkwwwkwwk',
+    'kkkkkkkkkkkkkkkkkk',
+    '.g..............g.',
+    '.g..............g.',
+  ], pal: { k: '#2a2a3a', w: '#f4f0e8', b: '#101018', g: '#777' } },
+  tambourine: { rows: [
+    '.tttt.',
+    'tjjjjt',
+    'tjjjjt',
+    'tjjjjt',
+    '.tttt.',
+  ], pal: { t: '#c08a3a', j: '#e8d8b0' } },
+};
+function instrumentSprite(kind) {
+  const d = INSTR_SPRITES[kind] || INSTR_SPRITES.tambourine;
+  return makeSprite(d.rows, d.pal, 'instr|' + kind);
+}
+
+// ---- Props
+const PROPS = {
+  hat: { rows: [
+    '..hhhhhh..',
+    '.hhhhhhhh.',
+    '.hhhhhhhh.',
+    'hhhhhhhhhh',
+    '.hhhhhhhh.',
+  ], pal: { h: '#3a2a4a' } },
+  coin: { rows: ['.gg.', 'gygg', 'ggyg', '.gg.'], pal: { g: '#f0c040', y: '#fff0a0' } },
+  bill: { rows: ['ggggg', 'gwgwg', 'ggggg'], pal: { g: '#5ab060', w: '#c8f0c0' } },
+  heart: { rows: ['.p.p.', 'ppppp', 'ppppp', '.ppp.', '..p..'], pal: { p: '#ff5a7a' } },
+  note: { rows: ['..nn', '..n.', '..n.', 'nnn.', 'nnn.'], pal: { n: '#ffffff' } },
+  lamp: { rows: ['.yyy.', 'yyyyy', '.ppp.', '..p..', '..p..', '..p..', '..p..', '..p..', '..p..', '..p..', '..p..', '.ppp.'], pal: { y: '#ffe680', p: '#3a3a4a' } },
+  trash: { rows: ['tttttt', '.gggg.', '.gggg.', '.gggg.', '.gggg.', '.gggg.'], pal: { t: '#666', g: '#3a6a3a' } },
+  bench: { rows: ['wwwwwwwwwwwwwwww', 'wwwwwwwwwwwwwwww', '.m............m.', 'wwwwwwwwwwwwwwww', '.m............m.', '.m............m.'], pal: { w: '#8a5a3a', m: '#333' } },
+  tree: { rows: [
+    '....gggg....', '..gggggggg..', '.gggghggggg.', 'gggggggggggg', 'ggghgggggggg', '.gggggggggg.', '..gggggggg..', '....tttt....', '....tttt....', '....tttt....',
+  ], pal: { g: '#3f8a3f', h: '#6ab04a', t: '#6a4a2a' } },
+  hydrant: { rows: ['.rr.', 'rrrr', '.rr.', 'rrrr', '.rr.', '.rr.'], pal: { r: '#c83a3a' } },
+  sign: { rows: ['bbbbbbbb', 'bwwwwwwb', 'bwbwwbwb', 'bwwwwwwb', 'bbbbbbbb', '...pp...', '...pp...', '...pp...'], pal: { b: '#2a5ab0', w: '#e8f0ff', p: '#555' } },
+  lantern: { rows: ['..y..', '.rrr.', 'rrrrr', 'rrrrr', '.rrr.', '..y..'], pal: { r: '#d83030', y: '#f0c040' } },
+  seal: { rows: ['..sss.....', '.sssssss..', 'sssssssss.', 'sssssssss.', '.sss..sss.'], pal: { s: '#6a6a7a' } },
+  pigeon: { rows: ['.gg.', 'gggg', '.gg.', '.oo.'], pal: { g: '#8a8a9a', o: '#e0a040' } },
+  mic: { rows: ['.mmm.', 'mmmmm', '.mmm.', '..s..', '..s..', '..s..', '.sss.'], pal: { m: '#777', s: '#333' } },
+};
+function propSprite(kind) {
+  const d = PROPS[kind];
+  return makeSprite(d.rows, d.pal, 'prop|' + kind);
+}
+
+// ---- Icons (8x8) for map nodes & items
+const ICONS = {
+  gig:      { rows: ['...nn...', '...n.n..', '...n....', '...n....', '.nnn....', 'nnnn....', 'nnnn....', '.nn.....'], pal: { n: '#ffffff' } },
+  elite:    { rows: ['...y....', '..yyy...', 'yyyyyyy.', '.yyyyy..', '..yyy...', '.yy.yy..', 'yy...yy.', '........'], pal: { y: '#ffd040' } },
+  boss:     { rows: ['y..y..y.', 'yy.y.yy.', 'yyyyyyy.', 'yyyyyyy.', 'yyyyyyy.', '.yyyyy..', '.rrrrr..', '........'], pal: { y: '#ffd040', r: '#d04040' } },
+  shop:     { rows: ['..gggg..', '.g....g.', 'bbbbbbbb', 'byyyyyyb', 'byyyyyyb', 'byyyyyyb', 'bbbbbbbb', '........'], pal: { g: '#ccc', b: '#c07030', y: '#f0d090' } },
+  event:    { rows: ['..wwww..', '.ww..ww.', '.....ww.', '....ww..', '...ww...', '...ww...', '........', '...ww...'], pal: { w: '#80d0ff' } },
+  rest:     { rows: ['........', '..bbbb..', '.bbbbbb.', 'wwwwwwww', 'wwwwwwww', 'p......p', 'p......p', '........'], pal: { b: '#d05070', w: '#e8e8f0', p: '#a08060' } },
+  treasure: { rows: ['.bbbbbb.', 'bbbbbbbb', 'bbbyybbb', 'yyyyyyyy', 'bbbyybbb', 'bbbbbbbb', '.bbbbbb.', '........'], pal: { b: '#b07030', y: '#ffd040' } },
+  openmic:  { rows: ['..mmm...', '.mmmmm..', '.mmmmm..', '..mmm...', '...s....', '...s....', '..sss...', '........'], pal: { m: '#ccc', s: '#666' } },
+  // items
+  coffee:   { rows: ['.s.s....', 's.s.....', 'wwwwww..', 'wbbbbwww', 'wbbbbw.w', 'wbbbbwww', '.wwww...', '........'], pal: { s: '#ccc', w: '#eee', b: '#6a3a1a' } },
+  bar:      { rows: ['........', '.rrrrrr.', 'rbbbbbbr', 'rbybbybr', 'rbbbbbbr', '.rrrrrr.', '........', '........'], pal: { r: '#d04040', b: '#a0703a', y: '#ffd040' } },
+  bread:    { rows: ['........', '..bbbb..', '.bbbbbb.', 'bbbyybbb', 'bbbbbbbb', '.bbbbbb.', '........', '........'], pal: { b: '#d8a050', y: '#f0d090' } },
+  jar:      { rows: ['.gggggg.', '..wwww..', '.wwwwww.', '.wyyyyw.', '.wyyyyw.', '.wyyyyw.', '.wwwwww.', '........'], pal: { g: '#888', w: '#c0e0f0', y: '#f0c040' } },
+  amp:      { rows: ['kkkkkkkk', 'kggggggk', 'kkkkkkkk', 'kbbbbbbk', 'kbkkkkbk', 'kbbbbbbk', 'kkkkkkkk', '........'], pal: { k: '#222', g: '#888', b: '#444' } },
+  pick:     { rows: ['........', '.pppppp.', 'pppppppp', 'pppppppp', '.pppppp.', '..pppp..', '...pp...', '........'], pal: { p: '#f050a0' } },
+  metronome:{ rows: ['...bb...', '..bbbb..', '..bwwb..', '.bbwbbb.', '.bwbbbb.', 'bbbbbbbb', 'bbbbbbbb', '........'], pal: { b: '#a06030', w: '#eee' } },
+  permit:   { rows: ['wwwwwww.', 'wbbbbbw.', 'wwwwwww.', 'wbbbwbw.', 'wwwwwww.', 'wbbbbbw.', 'wwwwwww.', '........'], pal: { w: '#eee', b: '#4060c0' } },
+  jacket:   { rows: ['.y....y.', 'yyyyyyyy', 'yyyyyyyy', 'yy.yy.yy', '.yyyyyy.', '.yyyyyy.', '.yyyyyy.', '........'], pal: { y: '#e0c020' } },
+  kazoo:    { rows: ['........', '........', 'gggggggg', 'gyyyyyyg', 'gggggggg', '...gg...', '........', '........'], pal: { g: '#e0b030', y: '#fff0a0' } },
+  pass:     { rows: ['........', 'rrrrrrrr', 'rwwwwwwr', 'rwrrwwwr', 'rwwwwwwr', 'rrrrrrrr', '........', '........'], pal: { r: '#d03030', w: '#fff' } },
+  cred:     { rows: ['...y....', '..yyy...', '.yyyyy..', 'yyyyyyy.', '.yyyyy..', '.yy.yy..', 'y.....y.', '........'], pal: { y: '#ff80c0' } },
+  case:     { rows: ['..kkkk..', '.k....k.', 'kkkkkkkk', 'kkkkkkkk', 'kkkkkkkk', 'kkkkkkkk', 'kkkkkkkk', '........'], pal: { k: '#5a3a2a' } },
+  shades:   { rows: ['........', 'kkkkkkkk', 'kkk..kkk', 'kkk..kkk', '.kk..kk.', '........', '........', '........'], pal: { k: '#222' } },
+  earplugs: { rows: ['........', '.oo..oo.', 'oooooooo', 'oooooooo', '.oo..oo.', '........', '........', '........'], pal: { o: '#f0a040' } },
+  strings:  { rows: ['s.s.s.s.', 's.s.s.s.', 's.s.s.s.', 's.s.s.s.', 's.s.s.s.', 's.s.s.s.', 's.s.s.s.', '........'], pal: { s: '#ccc' } },
+  flyer:    { rows: ['wwwwwww.', 'wbbbbbw.', 'wwwwwww.', 'wbbbbbw.', 'wwwwwww.', 'wbbbbbw.', 'wwwwwww.', '........'], pal: { w: '#ffe0a0', b: '#c04040' } },
+  medal:    { rows: ['..rr..r.', '..rr.r..', '..rrr...', '..yyy...', '.yyyyy..', '.yyyyy..', '..yyy...', '........'], pal: { r: '#d03030', y: '#ffd040' } },
+  money:    { rows: ['........', 'gggggggg', 'gwgwwgwg', 'gwgwwgwg', 'gwgwwgwg', 'gggggggg', '........', '........'], pal: { g: '#5ab060', w: '#c8f0c0' } },
+  food:     { rows: ['..ww....', '.wwww...', 'wwwwww..', 'bbbbbb..', '.bbbb...', '..bb....', '........', '........'], pal: { w: '#f0f0e0', b: '#c08040' } },
+  cop:      { rows: ['..bbbb..', '.bbbbbb.', 'bbbbbbbb', '..yyyy..', '.yeyyey.', '.yyyyyy.', '..bbbb..', '........'], pal: { b: '#2a3a8a', y: '#e0c090', e: '#000' } },
+  rain:     { rows: ['..cccc..', '.cccccc.', 'cccccccc', '........', '.b..b..b', 'b..b..b.', '.b..b..b', '........'], pal: { c: '#aaa', b: '#60a0ff' } },
+};
+function iconSprite(kind) {
+  const d = ICONS[kind] || ICONS.event;
+  return makeSprite(d.rows, d.pal, 'icon|' + kind);
+}
+
+// Draw a bug character with optional instrument
+// opts: {pose, override, flip, hat, instrument, scale}
+function drawBug(ctx, speciesKey, x, y, opts = {}) {
+  const pose = opts.pose || 'stand';
+  let spr = bugSprite(speciesKey, pose, opts.override || {});
+  if (opts.flip) spr = flipSprite(spr, 'bugflip|' + speciesKey + '|' + pose + '|' + JSON.stringify(opts.override || {}));
+  const sc = opts.scale || 1;
+  ctx.drawImage(spr, Math.round(x), Math.round(y), 16 * sc, 18 * sc);
+  if (opts.hat && HATS[opts.hat]) {
+    const h = HATS[opts.hat];
+    const hs = makeSprite(h.rows, h.pal, 'hat|' + opts.hat);
+    ctx.drawImage(hs, Math.round(x + 4 * sc), Math.round(y + (4 - h.rows.length) * sc), hs.width * sc, hs.height * sc);
+  }
+  if (opts.instrument) {
+    const is = instrumentSprite(opts.instrument);
+    let ox = 2, oy = 9;
+    if (opts.instrument === 'drums') { ox = 0; oy = 8; }
+    if (opts.instrument === 'piano') { ox = -1; oy = 10; }
+    if (opts.instrument === 'sax') { ox = 8; oy = 6; }
+    if (opts.instrument === 'trumpet') { ox = 6; oy = 6; }
+    if (opts.instrument === 'violin') { ox = 4; oy = 4; }
+    if (opts.instrument === 'tambourine') { ox = 10; oy = 8; }
+    ctx.drawImage(is, Math.round(x + ox * sc), Math.round(y + oy * sc), is.width * sc, is.height * sc);
+  }
+}
+
+// ===== js/audio.js =====
+// ---------- Procedural WebAudio synth ----------
+'use strict';
+const Audio = {
+  ctx: null, master: null, noiseBuf: null, muted: false, volume: 0.6,
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.volume;
+    const comp = this.ctx.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.ratio.value = 4;
+    this.master.connect(comp); comp.connect(this.ctx.destination);
+    const len = this.ctx.sampleRate * 1;
+    this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = this.noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  },
+  now() { return this.ctx ? this.ctx.currentTime : performance.now() / 1000; },
+  setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : this.volume; },
+  freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); },
+  _env(g, t, a, peak, d, sus, holdTo, r) {
+    // ADSR on gain node g (holdTo = absolute time note releases)
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * sus), t + a + d);
+    if (holdTo != null) {
+      g.gain.setValueAtTime(Math.max(0.0001, peak * sus), Math.max(holdTo, t + a + d));
+      g.gain.exponentialRampToValueAtTime(0.0001, Math.max(holdTo, t + a + d) + r);
+    }
+  },
+  _noise(t, dur, filterType, freq, q, vel) {
+    const c = this.ctx;
+    const src = c.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+    const f = c.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = q || 1;
+    const g = c.createGain();
+    g.gain.setValueAtTime(vel, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t); src.stop(t + dur + 0.05);
+  },
+  // Play a pitched instrument note. dur in seconds (sustain length). Returns handle {off(when)}
+  note(instr, midi, when, dur = 0.4, vel = 0.5) {
+    if (!this.ctx || this.muted) return { off() {} };
+    const c = this.ctx, t = Math.max(when || c.currentTime, c.currentTime);
+    const f0 = this.freq(midi);
+    const out = c.createGain(); out.connect(this.master);
+    const oscs = [];
+    let filt = c.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 4000; filt.connect(out);
+    const mk = (type, f, det = 0, g = 1) => {
+      const o = c.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det;
+      const og = c.createGain(); og.gain.value = g; o.connect(og); og.connect(filt); oscs.push(o); return o;
+    };
+    let endAt = t + dur + 0.3, release = 0.1;
+    const vib = (o, rate, depth) => {
+      const l = c.createOscillator(); l.frequency.value = rate; const lg = c.createGain(); lg.gain.value = depth;
+      l.connect(lg); lg.connect(o.detune); oscs.push(l);
+    };
+    switch (instr) {
+      case 'guitar':
+        mk('triangle', f0, 0, 0.6); mk('sawtooth', f0, 6, 0.35); mk('sine', f0 * 2, 0, 0.15);
+        filt.frequency.setValueAtTime(3500, t); filt.frequency.exponentialRampToValueAtTime(700, t + 0.5);
+        this._env(out, t, 0.004, vel, 0.5, 0.15, t + Math.min(dur, 1.2), 0.15); endAt = t + Math.min(dur, 1.2) + 0.3; break;
+      case 'bass':
+        mk('sine', f0, 0, 0.8); mk('square', f0, 0, 0.25); mk('sawtooth', f0 * 2, 0, 0.08);
+        filt.frequency.setValueAtTime(900, t); filt.frequency.exponentialRampToValueAtTime(250, t + 0.3);
+        this._env(out, t, 0.006, vel * 1.1, 0.25, 0.4, t + dur, 0.12); endAt = t + dur + 0.3; break;
+      case 'piano':
+        mk('sine', f0, 0, 0.7); mk('triangle', f0 * 2, 0, 0.25); mk('sine', f0 * 3, 0, 0.08); mk('sine', f0 * 4.01, 0, 0.04);
+        filt.frequency.setValueAtTime(5000, t); filt.frequency.exponentialRampToValueAtTime(1200, t + 0.8);
+        this._env(out, t, 0.003, vel, 0.6, 0.12, t + Math.min(dur, 1.5), 0.2); endAt = t + Math.min(dur, 1.5) + 0.4; break;
+      case 'sax': {
+        const o = mk('sawtooth', f0, 0, 0.5); mk('square', f0, -5, 0.2); mk('sine', f0 * 2, 0, 0.1);
+        vib(o, 5.5, 10);
+        filt.frequency.setValueAtTime(600, t); filt.frequency.linearRampToValueAtTime(2200, t + 0.08); filt.Q.value = 3;
+        this._env(out, t, 0.05, vel * 0.8, 0.1, 0.8, t + dur, 0.12); release = 0.12; endAt = t + dur + 0.3; break; }
+      case 'trumpet': {
+        const o = mk('square', f0, 0, 0.35); mk('sawtooth', f0, 4, 0.4); mk('sine', f0 * 3, 0, 0.05);
+        vib(o, 6, 6);
+        filt.frequency.setValueAtTime(1200, t); filt.frequency.linearRampToValueAtTime(3800, t + 0.05); filt.Q.value = 2;
+        this._env(out, t, 0.03, vel * 0.75, 0.08, 0.85, t + dur, 0.08); release = 0.08; endAt = t + dur + 0.3; break; }
+      case 'violin': {
+        const o = mk('sawtooth', f0, 0, 0.5); mk('sawtooth', f0, 8, 0.3); mk('triangle', f0 * 2, 0, 0.12);
+        vib(o, 5.2, 14);
+        filt.frequency.value = 3200; filt.Q.value = 1.5;
+        this._env(out, t, 0.09, vel * 0.7, 0.1, 0.9, t + dur, 0.15); release = 0.15; endAt = t + dur + 0.4; break; }
+      case 'tambourine':
+        this._noise(t, 0.15, 'highpass', 5000, 1, vel * 0.7);
+        mk('sine', 3200, 0, 0.15); mk('sine', 4700, 0, 0.1);
+        this._env(out, t, 0.002, vel * 0.5, 0.12, 0.01, t + 0.1, 0.05); endAt = t + 0.3; break;
+      case 'pad':
+        mk('triangle', f0, 0, 0.5); mk('triangle', f0, 7, 0.4); mk('sine', f0 / 2, 0, 0.2);
+        filt.frequency.value = 1400;
+        this._env(out, t, 0.15, vel * 0.5, 0.2, 0.8, t + dur, 0.3); endAt = t + dur + 0.6; break;
+      default:
+        mk('triangle', f0, 0, 0.7); this._env(out, t, 0.01, vel, 0.3, 0.3, t + dur, 0.1); endAt = t + dur + 0.3;
+    }
+    oscs.forEach(o => { o.start(t); o.stop(endAt + 0.1); });
+    return {
+      off: (when) => {
+        const tt = Math.max(when || c.currentTime, c.currentTime);
+        out.gain.cancelScheduledValues(tt);
+        out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), tt);
+        out.gain.exponentialRampToValueAtTime(0.0001, tt + release);
+        oscs.forEach(o => { try { o.stop(tt + release + 0.05); } catch (e) { } });
+      }
+    };
+  },
+  drum(kind, when, vel = 0.6) {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t = Math.max(when || c.currentTime, c.currentTime);
+    const tone = (f1, f2, dur, type, v) => {
+      const o = c.createOscillator(); o.type = type || 'sine';
+      o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      const g = c.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+    };
+    switch (kind) {
+      case 'kick': tone(150, 45, 0.18, 'sine', vel); break;
+      case 'snare': tone(220, 120, 0.12, 'triangle', vel * 0.5); this._noise(t, 0.16, 'highpass', 1500, 1, vel * 0.6); break;
+      case 'hat': this._noise(t, 0.05, 'highpass', 8000, 1, vel * 0.35); break;
+      case 'ohat': this._noise(t, 0.18, 'highpass', 7000, 1, vel * 0.3); break;
+      case 'don': tone(190, 70, 0.22, 'sine', vel * 1.1); this._noise(t, 0.08, 'lowpass', 500, 1, vel * 0.4); break;
+      case 'ka': tone(900, 500, 0.06, 'square', vel * 0.25); this._noise(t, 0.09, 'highpass', 3000, 2, vel * 0.7); break;
+      case 'crash': this._noise(t, 0.9, 'highpass', 4000, 0.5, vel * 0.5); break;
+      case 'tom': tone(260, 120, 0.2, 'sine', vel * 0.8); break;
+      case 'clunk': tone(120, 60, 0.1, 'sawtooth', vel * 0.3); this._noise(t, 0.06, 'lowpass', 700, 1, vel * 0.4); break;
+    }
+  },
+  ui(kind) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const beep = (f1, f2, dur, type, v, dt = 0) => {
+      const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t + dt);
+      o.frequency.exponentialRampToValueAtTime(f2, t + dt + dur);
+      const g = this.ctx.createGain(); g.gain.setValueAtTime(v, t + dt); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + dur);
+      o.connect(g); g.connect(this.master); o.start(t + dt); o.stop(t + dt + dur + 0.02);
+    };
+    switch (kind) {
+      case 'move': beep(700, 900, 0.05, 'square', 0.12); break;
+      case 'select': beep(600, 1200, 0.08, 'square', 0.15); beep(900, 1600, 0.1, 'square', 0.12, 0.06); break;
+      case 'back': beep(500, 300, 0.1, 'square', 0.12); break;
+      case 'coin': beep(1400, 2100, 0.07, 'sine', 0.2); beep(2100, 2600, 0.12, 'sine', 0.15, 0.06); break;
+      case 'bill': beep(900, 1800, 0.1, 'triangle', 0.2); beep(1800, 2400, 0.15, 'triangle', 0.15, 0.08); break;
+      case 'cash': beep(1200, 1600, 0.08, 'sine', 0.2); beep(1600, 2400, 0.15, 'sine', 0.2, 0.08); beep(2400, 3000, 0.2, 'sine', 0.15, 0.16); break;
+      case 'error': beep(200, 120, 0.2, 'sawtooth', 0.15); break;
+      case 'eat': beep(300, 500, 0.08, 'triangle', 0.15); beep(350, 550, 0.08, 'triangle', 0.15, 0.12); beep(400, 700, 0.12, 'triangle', 0.15, 0.24); break;
+      case 'levelup': [0, 4, 7, 12].forEach((n, i) => beep(this.freq(72 + n), this.freq(72 + n), 0.15, 'square', 0.12, i * 0.08)); break;
+      case 'fanfare': [0, 4, 7, 12, 7, 12].forEach((n, i) => beep(this.freq(67 + n), this.freq(67 + n), 0.2, 'square', 0.12, i * 0.1)); break;
+      case 'sad': [7, 5, 3, 0].forEach((n, i) => beep(this.freq(60 + n), this.freq(60 + n) * 0.98, 0.3, 'triangle', 0.15, i * 0.25)); break;
+      case 'hurt': beep(400, 100, 0.25, 'sawtooth', 0.2); break;
+    }
+  },
+  applause(intensity = 0.5, dur = 1.2) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const n = Math.floor(6 + intensity * 14);
+    for (let i = 0; i < n; i++) {
+      const dt = Math.random() * dur;
+      this._noise(t + dt, 0.04 + Math.random() * 0.03, 'bandpass', 1200 + Math.random() * 1500, 2, 0.08 + intensity * 0.12);
+    }
+  },
+};
+
+// ===== js/data.js =====
+// ---------- Game data: instruments, items, venues, events ----------
+'use strict';
+
+// Each instrument = a distinct rhythm minigame. keys are KeyboardEvent.code
+const INSTRUMENTS = {
+  guitar: { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+    desc: 'Guitar Hero style: 4 lanes of falling notes, hold the long ones.', price: 40, color: '#d98c3a', base: 60, tipMult: 1.0 },
+  bass: { name: 'Bass', game: 'lanes', lanes: 2, keys: ['KeyF', 'KeyJ'], keyNames: ['F', 'J'],
+    desc: 'Two fat strings. Groove notes and long slides. Steady hands.', price: 35, color: '#8a3a5a', base: 40, tipMult: 0.9 },
+  drums: { name: 'Taiko Drums', game: 'taiko', keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+    desc: 'Beat game: red DON = F/J, blue KA = D/K. Big notes need both hands.', price: 60, color: '#c03a3a', base: 0, tipMult: 1.1 },
+  sax: { name: 'Saxophone', game: 'wind', keys: ['Space'], keyNames: ['SPACE'],
+    desc: 'Hold SPACE to blow through each phrase. Release on time. Watch your breath.', price: 55, color: '#e0b040', base: 58, tipMult: 1.15 },
+  trumpet: { name: 'Trumpet', game: 'valves', keys: ['KeyJ', 'KeyK', 'KeyL'], keyNames: ['J', 'K', 'L'],
+    desc: 'Valve combos: press the shown 1-3 valves together in time.', price: 50, color: '#f0c040', base: 62, tipMult: 1.1 },
+  violin: { name: 'Violin', game: 'bow', keys: ['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS'], keyNames: ['UP', 'DOWN'],
+    desc: 'Bow direction: UP or DOWN arrows on the beat. Hold the long bows.', price: 65, color: '#b05a2a', base: 67, tipMult: 1.2 },
+  piano: { name: 'Keyboard', game: 'lanes', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'],
+    desc: 'Six lanes, sometimes chords. For virtuosos.', price: 80, color: '#f4f0e8', base: 60, tipMult: 1.3 },
+  tambourine: { name: 'Tambourine', game: 'lanes', lanes: 1, keys: ['Space'], keyNames: ['SPACE'],
+    desc: 'One lane. Hit the beat, shake the hold notes. Humble but honest.', price: 12, color: '#c08a3a', base: 0, tipMult: 0.7 },
+};
+const INSTRUMENT_KEYS = Object.keys(INSTRUMENTS);
+
+const FIRST_NAMES = ['Benny', 'Rosa', 'Ziggy', 'Mabel', 'Otis', 'Pip', 'Dolores', 'Gus', 'Nina', 'Ferdie', 'Coco', 'Hank', 'Lulu', 'Miles', 'Etta', 'Django', 'Bix', 'Juno', 'Sal', 'Wren', 'Tito', 'Marge', 'Boris', 'Fay', 'Louie', 'Pearl', 'Chester', 'Ivy', 'Rufus', 'Dot'];
+
+// Items: kind 'relic' (passive), 'use' (consumable, used before/at a gig or in camp)
+const ITEMS = {
+  coffee:    { name: 'Espresso', kind: 'use', icon: 'coffee', price: 8, desc: 'Next gig: timing windows +30%. Jittery but precise.' },
+  bar:       { name: 'Energy Bar', kind: 'use', icon: 'bar', price: 6, desc: 'Restore 40 stamina to the most tired member.' },
+  bread:     { name: 'Bread Crumbs', kind: 'use', icon: 'bread', price: 5, desc: 'A snack. Removes 1 hunger from one member.' },
+  flyer:     { name: 'Gig Flyers', kind: 'use', icon: 'flyer', price: 10, desc: 'Next gig: twice as many passers-by show up.' },
+  jar:       { name: 'Shiny Tip Jar', kind: 'relic', icon: 'jar', price: 30, desc: 'Tips +20%. It catches the light just right.' },
+  amp:       { name: 'Portable Amp', kind: 'relic', icon: 'amp', price: 45, desc: 'Passers-by notice you from further away. Crowd +35%.' },
+  pick:      { name: 'Lucky Pick', kind: 'relic', icon: 'pick', price: 25, desc: 'PERFECT window +25% on string instruments.' },
+  metronome: { name: 'Brass Metronome', kind: 'relic', icon: 'metronome', price: 20, desc: 'Shows a beat pulse during gigs. Combo breaks cost half hype.' },
+  permit:    { name: 'Busker Permit', kind: 'relic', icon: 'permit', price: 35, desc: 'Police never shut you down. Official!' },
+  jacket:    { name: 'Fog Jacket', kind: 'relic', icon: 'jacket', price: 25, desc: 'Weather never drains your stamina.' },
+  kazoo:     { name: 'Golden Kazoo', kind: 'relic', icon: 'kazoo', price: 50, desc: 'Combo milestone cheers pay double.' },
+  cred:      { name: 'Street Cred', kind: 'relic', icon: 'cred', price: 40, desc: 'Watchers stay 50% longer once hooked.' },
+  case:      { name: 'Sturdy Case', kind: 'relic', icon: 'case', price: 30, desc: 'Every instrument counts as +1 quality star.' },
+  shades:    { name: 'Cool Shades', kind: 'relic', icon: 'shades', price: 28, desc: 'Misses drain 40% less hype. Stay cool.' },
+  earplugs:  { name: 'Earplugs', kind: 'relic', icon: 'earplugs', price: 22, desc: 'Great counts as Perfect for hype purposes.' },
+  strings:   { name: 'Spare Strings', kind: 'relic', icon: 'strings', price: 18, desc: 'Gigs cost 30% less stamina.' },
+  pass:      { name: 'Muni Pass', kind: 'relic', icon: 'pass', price: 26, desc: 'Meals cost $2 less per member. Save on transit, spend on food.' },
+  medal:     { name: 'Talent Show Medal', kind: 'relic', icon: 'medal', price: 60, desc: 'Band members gain skill twice as fast.' },
+};
+const ITEM_KEYS = Object.keys(ITEMS);
+const RELIC_KEYS = ITEM_KEYS.filter(k => ITEMS[k].kind === 'relic');
+const USE_KEYS = ITEM_KEYS.filter(k => ITEMS[k].kind === 'use');
+
+// Venues (backgrounds + crowd behavior). wealth = tip size, traffic = passers-by per minute
+const VENUES = {
+  corner:   { name: 'Street Corner', bg: 'street', wealth: 1.0, traffic: 1.0, bpm: [92, 108] },
+  subway:   { name: 'BART Station', bg: 'subway', wealth: 0.85, traffic: 1.6, bpm: [100, 120] },
+  park:     { name: 'Dolores Park', bg: 'park', wealth: 1.0, traffic: 0.9, bpm: [84, 100] },
+  cablecar: { name: 'Cable Car Stop', bg: 'street', wealth: 1.3, traffic: 1.1, bpm: [96, 116], hills: true },
+  chinatown:{ name: 'Chinatown Alley', bg: 'chinatown', wealth: 1.1, traffic: 1.3, bpm: [104, 124] },
+  pier:     { name: 'Pier 39', bg: 'pier', wealth: 1.5, traffic: 1.2, bpm: [100, 120] },
+  ferry:    { name: 'Ferry Building', bg: 'pier', wealth: 1.6, traffic: 1.0, bpm: [96, 118] },
+  fidi:     { name: 'Financial District', bg: 'street', wealth: 1.9, traffic: 0.8, bpm: [110, 130], tall: true },
+  haight:   { name: 'Haight Street', bg: 'street', wealth: 0.9, traffic: 1.3, bpm: [88, 108], colorful: true },
+  ggpark:   { name: 'Golden Gate Park', bg: 'park', wealth: 1.3, traffic: 1.0, bpm: [92, 112] },
+  bridge:   { name: 'Golden Gate Bridge', bg: 'bridge', wealth: 2.2, traffic: 1.0, bpm: [112, 132] },
+};
+// Which venues appear on which day (bottom of map = day 1)
+const DAY_VENUES = [
+  ['corner', 'park', 'subway'],
+  ['subway', 'corner', 'haight', 'cablecar'],
+  ['chinatown', 'cablecar', 'fidi', 'subway'],
+  ['pier', 'ferry', 'fidi', 'chinatown'],
+  ['ggpark', 'pier', 'ferry', 'cablecar'],
+];
+const DAY_NAMES = ['The Mission', 'Downtown', 'Chinatown & Nob Hill', 'The Waterfront', 'Golden Gate'];
+
+// Random text events ('?' nodes). Each choice: {label, req(state)?, apply(state, log)}
+const EVENTS = [
+  {
+    id: 'cop', title: 'Officer Buzzkill', icon: 'cop',
+    text: 'A beetle in a blue uniform taps a clipboard. "Permit for this racket?" Your band goes quiet.',
+    choices: [
+      { label: 'Show your Busker Permit', req: s => s.hasRelic('permit'), apply: (s, log) => { log('He squints, then nods. "Carry on, maestro."'); s.money += 6; log('An onlooker tips $6 for the drama.'); } },
+      { label: 'Pay the $12 "fine"', req: s => s.money >= 12, apply: (s, log) => { s.money -= 12; log('The beetle pockets the cash and wanders off.'); } },
+      { label: 'Run for it (all members -20 stamina)', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 20)); log('You scatter into an alley, cases clattering.'); } },
+    ],
+  },
+  {
+    id: 'stray', title: 'A Stray Musician', icon: 'openmic',
+    text: 'A scruffy bug sits on a crate strumming a busted instrument. "Room for one more? I work for food."',
+    choices: [
+      { label: 'Recruit them (share a $8 meal)', req: s => s.money >= 8 && s.members.length < 6, apply: (s, log) => { s.money -= 8; const m = s.recruitRandom(['tambourine', 'bass', 'guitar', 'trumpet']); log(m.name + ' the ' + SPECIES[m.species].name + ' joins with a ' + INSTRUMENTS[m.instrument].name + '!'); } },
+      { label: 'Give them $3 and move on', req: s => s.money >= 3, apply: (s, log) => { s.money -= 3; log('They tip their hat. Karma noted.'); s.karma = (s.karma || 0) + 1; } },
+      { label: 'Walk past', apply: (s, log) => log('You keep walking. The strumming fades.') },
+    ],
+  },
+  {
+    id: 'tourist', title: 'Lost Tourists', icon: 'event',
+    text: 'A family of moths in matching windbreakers asks how to get to the crooked street. You know exactly where it is.',
+    choices: [
+      { label: 'Give directions', apply: (s, log) => { const t = 5 + Math.floor(Math.random() * 8); s.money += t; log('They press ' + fmtMoney(t) + ' into your hand. "For the trouble!"'); } },
+      { label: 'Serenade them first', apply: (s, log) => { s.pendingGig = { bonus: 1.3, note: 'The tourists follow you to your next gig.' }; log('They love it and promise to come to your next show.'); } },
+    ],
+  },
+  {
+    id: 'rain', title: 'Karl the Fog Rolls In', icon: 'rain',
+    text: 'The fog thickens into a cold drizzle. Everyone shivers. Instruments hate this.',
+    choices: [
+      { label: 'Wait it out under an awning', apply: (s, log) => { if (s.hasRelic('jacket')) log('Your Fog Jacket keeps everyone warm. No harm done.'); else { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 15)); log('Everyone loses 15 stamina to the chill.'); } } },
+      { label: 'Duck into a cafe ($4/member)', req: s => s.money >= 4 * s.members.length, apply: (s, log) => { s.money -= 4 * s.members.length; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 15)); log('Warm drinks all round. Stamina +15.'); } },
+    ],
+  },
+  {
+    id: 'yardsale', title: 'Stoop Sale', icon: 'shop',
+    text: 'A cricket is selling junk off her stoop. Among the lamps and books: a dusty instrument case.',
+    choices: [
+      { label: 'Buy the mystery case ($15)', req: s => s.money >= 15, apply: (s, log) => { s.money -= 15; const k = RNG.pick(INSTRUMENT_KEYS.filter(k => k !== 'piano' && k !== 'drums')); s.spareInstruments.push({ kind: k, quality: RNG.int(1, 3) }); log('Inside: a ' + INSTRUMENTS[k].name + '! Stored as a spare instrument.'); } },
+      { label: 'Haggle for a relic ($20)', req: s => s.money >= 20, apply: (s, log) => { s.money -= 20; const k = s.randomNewRelic(); if (k) { s.addRelic(k); log('You get a ' + ITEMS[k].name + '.'); } else { s.money += 20; log('Nothing you don\'t already own. She refunds you.'); } } },
+      { label: 'Browse and leave', apply: (s, log) => log('Nice lamps though.') },
+    ],
+  },
+  {
+    id: 'battle', title: 'Busker Battle', icon: 'elite',
+    text: 'A slick mantis with a saxophone claims this corner. "Best set wins the spot. And the pot: $30."',
+    choices: [
+      { label: 'Accept the challenge ($10 buy-in)', req: s => s.money >= 10, apply: (s, log) => { s.money -= 10; s.pendingGig = { battle: true, note: 'Beat 80% accuracy to win the $30 pot.' }; log('Game on. Your next gig is the battle.'); } },
+      { label: 'Decline politely', apply: (s, log) => log('The mantis smirks and starts to play. Not bad, honestly.') },
+    ],
+  },
+  {
+    id: 'foodtruck', title: 'Taco Truck', icon: 'food',
+    text: 'The smell of a taco truck stops the whole band mid-stride. Stomachs rumble in harmony.',
+    choices: [
+      { label: 'Tacos for everyone ($5/member)', req: s => s.money >= 5 * s.members.length, apply: (s, log) => { s.money -= 5 * s.members.length; s.members.forEach(m => { m.hunger = Math.max(0, m.hunger - 1); m.stamina = Math.min(100, m.stamina + 25); }); log('Delicious. Hunger -1, stamina +25 for all.'); } },
+      { label: 'Play for the truck owner', apply: (s, log) => { const m = RNG.pick(s.members); m.hunger = Math.max(0, m.hunger - 1); m.stamina = Math.min(100, m.stamina + 30); log('One free taco for ' + m.name + '. The owner hums along.'); } },
+      { label: 'Resist temptation', apply: (s, log) => log('You march on, hungrier and wiser.') },
+    ],
+  },
+  {
+    id: 'techie', title: 'Tech Bro Firefly', icon: 'money',
+    text: 'A firefly in a hoodie is filming everything. "Yo, can I put you on my stream? I\'ll tip in crypto... or cash."',
+    choices: [
+      { label: 'Take the cash ($15)', apply: (s, log) => { s.money += 15; log('Cash. Real, spendable cash.'); } },
+      { label: 'Take the "crypto" (gamble)', apply: (s, log) => { if (Math.random() < 0.4) { s.money += 45; log('It mooned! +$45!'); } else log('It went to zero by the time you reached the corner.'); } },
+    ],
+  },
+  {
+    id: 'oldtimer', title: 'The Old Timer', icon: 'metronome',
+    text: 'An ancient snail with a harmonica watches you tune up. "Kids these days have no sense of TIME. Lemme show you."',
+    choices: [
+      { label: 'Take the lesson (-15 stamina, +skill)', apply: (s, log) => { s.members.forEach(m => { m.stamina = Math.max(0, m.stamina - 15); m.skill = Math.min(10, m.skill + 1); }); log('Everyone gains +1 skill. Worth it.'); } },
+      { label: 'Ask for the harmonica', apply: (s, log) => { if (Math.random() < 0.5) { s.addRelic('metronome'); log('He gives you his Brass Metronome instead. "Keep time, kid."'); } else log('"Get your own." Fair.'); } },
+    ],
+  },
+  {
+    id: 'pigeons', title: 'Pigeon Trouble', icon: 'event',
+    text: 'A flock of pigeons descends on your open instrument case. They found your tip money.',
+    choices: [
+      { label: 'Shoo them (lose $5)', apply: (s, log) => { const l = Math.min(s.money, 5); s.money -= l; log('They fly off with ' + fmtMoney(l) + ' in change.'); } },
+      { label: 'Play them a lullaby', apply: (s, log) => { if (Math.random() < 0.6) { s.money += 4; log('They coo and leave behind a shiny... quarter. And a dollar. +$4.'); } else { const l = Math.min(s.money, 8); s.money -= l; log('They are unmoved. They take ' + fmtMoney(l) + '.'); } } },
+    ],
+  },
+];
+
+// ===== js/music.js =====
+// ---------- Procedural songs, charts, and backing band ----------
+'use strict';
+const PROGRESSIONS = [[0, 4, 5, 3], [0, 5, 3, 4], [5, 3, 0, 4], [0, 3, 4, 4], [0, 0, 3, 4], [2, 5, 0, 4], [0, 4, 3, 4], [3, 4, 0, 0]];
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const SONG_ADJ = ['Foggy', 'Midnight', 'Sourdough', 'Cable Car', 'Bay', 'Sunset', 'Twin Peaks', 'Steep Hill', 'Sea Lion', 'Karl\'s', 'Painted Lady', 'Hyde Street'];
+const SONG_NOUN = ['Shuffle', 'Blues', 'Stomp', 'Rag', 'Waltz', 'Bounce', 'Groove', 'Serenade', 'Rumble', 'Strut', 'Boogie', 'Lullaby'];
+
+function chordTones(root, degree) {
+  // triad on scale degree (major scale)
+  const d = (i) => MAJOR[(degree + i) % 7] + 12 * Math.floor((degree + i) / 7);
+  return [root + d(0), root + d(2), root + d(4)];
+}
+function scaleNote(root, idx) { return root + MAJOR[((idx % 7) + 7) % 7] + 12 * Math.floor(idx / 7); }
+
+function makeSong(rng, bpm, bars) {
+  const root = rng.int(55, 64);
+  const prog = rng.pick(PROGRESSIONS);
+  const chords = [];
+  for (let b = 0; b < bars; b++) chords.push(prog[b % prog.length]);
+  return {
+    name: rng.pick(SONG_ADJ) + ' ' + rng.pick(SONG_NOUN),
+    bpm, beat: 60 / bpm, bars, root, chords, prog,
+    leadIn: 4 * (60 / bpm), // one bar count-in
+    length: 4 * (60 / bpm) + bars * 4 * (60 / bpm) + 1.5,
+  };
+}
+
+// Generate a melody-ish midi for a beat position (subdivision grid), following chord tones
+function melodyPitch(song, bar, beatInBar, rng, prev) {
+  const root = song.root + 12;
+  const tones = chordTones(root, song.chords[bar]);
+  if (beatInBar % 1 === 0 || rng.chance(0.6)) {
+    let cand = tones.slice();
+    if (rng.chance(0.3)) cand = cand.map(n => n + 12);
+    if (prev != null) cand.sort((a, b) => Math.abs(a - prev) - Math.abs(b - prev));
+    return rng.chance(0.65) ? cand[0] : rng.pick(cand);
+  }
+  // passing tone near previous
+  const base = prev == null ? tones[0] : prev;
+  const idx = Math.round((base - root) / 12 * 7);
+  return scaleNote(root, idx + (rng.chance(0.5) ? 1 : -1));
+}
+
+// Chart generation. Returns notes: {t, lane, dur, type, midi, combo, dir}
+// difficulty 1..6, sections: array of {instrument, startBar, endBar}
+function generateChart(song, sections, difficulty, rng) {
+  const notes = [];
+  const beat = song.beat;
+  const dens = clamp(0.35 + difficulty * 0.09, 0.4, 0.95); // on-beat density
+  const offDens = clamp(-0.1 + difficulty * 0.14, 0, 0.75);
+  const sixteenth = difficulty >= 4 ? (difficulty - 3) * 0.12 : 0;
+  for (const sec of sections) {
+    const instr = INSTRUMENTS[sec.instrument];
+    let prev = null, lane = Math.floor((instr.lanes || 2) / 2), lastDir = 1;
+    for (let bar = sec.startBar; bar < sec.endBar; bar++) {
+      const barT = song.leadIn + bar * 4 * beat;
+      const grid = []; // eighth-note grid, 8 per bar
+      for (let e = 0; e < 8; e++) {
+        const onBeat = e % 2 === 0;
+        let p = onBeat ? dens : offDens;
+        if (e === 0) p = Math.max(p, 0.8);
+        grid.push(rng.chance(p));
+      }
+      // ensure at least 2 notes per bar
+      if (grid.filter(Boolean).length < 2) { grid[0] = true; grid[4] = true; }
+      const bi = bar - sec.startBar;
+      const isLastBar = bar === sec.endBar - 1;
+      for (let e = 0; e < 8; e++) {
+        if (!grid[e]) continue;
+        const t = barT + e * beat / 2;
+        const midi = melodyPitch(song, bar, e / 2, rng, prev); prev = midi;
+        let dur = 0;
+        const nextOn = grid.slice(e + 1).findIndex(Boolean);
+        const gapEighths = nextOn === -1 ? 8 - e : nextOn + 1;
+        switch (instr.game) {
+          case 'lanes': {
+            const L = instr.lanes;
+            if (L === 1) lane = 0;
+            else { lane = clamp(lane + rng.int(-1, 1) * (rng.chance(0.7) ? 1 : 2), 0, L - 1); }
+            if (gapEighths >= 3 && rng.chance(0.3 + difficulty * 0.05)) dur = (gapEighths - 1) * beat / 2;
+            notes.push({ t, lane, dur, type: dur ? 'hold' : 'tap', midi });
+            if (L >= 6 && difficulty >= 3 && !dur && rng.chance(0.18)) {
+              const l2 = lane + (lane < L - 2 ? 2 : -2);
+              notes.push({ t, lane: l2, dur: 0, type: 'tap', midi: midi + 4 });
+            }
+            break;
+          }
+          case 'taiko': {
+            const onBeat = e % 2 === 0;
+            let type = onBeat ? (rng.chance(0.75) ? 'don' : 'ka') : (rng.chance(0.6) ? 'ka' : 'don');
+            if (e === 0 && bi % 2 === 1 && rng.chance(0.35 + difficulty * 0.05)) type = 'big';
+            if (isLastBar && e === 4 && rng.chance(0.5)) { notes.push({ t, lane: 0, dur: beat * 1.5, type: 'roll', midi }); break; }
+            notes.push({ t, lane: 0, dur: 0, type, midi });
+            break;
+          }
+          case 'wind': {
+            // phrases: holds with breaths
+            if (gapEighths >= 2) dur = Math.max(beat * 0.5, (gapEighths - 0.5) * beat / 2);
+            else dur = beat * 0.4;
+            const pitch = clamp((midi - song.root - 12) / 19, 0, 1);
+            notes.push({ t, lane: 0, dur, type: 'hold', midi, pitch });
+            break;
+          }
+          case 'valves': {
+            const combo = 1 + ((midi - song.root) % 7 + 7) % 7; // 1..7 bitmask
+            notes.push({ t, lane: 0, dur: 0, type: 'tap', midi, combo });
+            break;
+          }
+          case 'bow': {
+            let dir = -lastDir; if (rng.chance(0.2)) dir = lastDir; lastDir = dir;
+            if (gapEighths >= 3 && rng.chance(0.45)) dur = (gapEighths - 1) * beat / 2;
+            const pitch = clamp((midi - song.root - 12) / 19, 0, 1);
+            notes.push({ t, lane: dir > 0 ? 1 : 0, dur, type: dur ? 'hold' : 'tap', midi, dir, pitch });
+            break;
+          }
+        }
+      }
+    }
+  }
+  notes.sort((a, b) => a.t - b.t);
+  notes.forEach((n, i) => { n.id = i; n.hit = false; n.judged = false; });
+  return notes;
+}
+
+// Backing band: schedules drums/bass/pads ahead of time
+class Backing {
+  constructor(song, startTime, mute) {
+    this.song = song; this.start = startTime; this.mute = mute || {};
+    this.nextStep = 0; // 16th-note steps since leadIn start
+    this.stepDur = song.beat / 4;
+    this.totalSteps = (song.bars + 4) * 16;
+    this.stopped = false;
+  }
+  update() {
+    if (this.stopped || !Audio.ctx) return;
+    const now = Audio.now();
+    const horizon = now + 0.3;
+    while (this.nextStep < this.totalSteps) {
+      const t = this.start + this.nextStep * this.stepDur;
+      if (t > horizon) break;
+      this.schedule(this.nextStep, t);
+      this.nextStep++;
+    }
+  }
+  schedule(step, t) {
+    const s = this.song;
+    const barIdx = Math.floor(step / 16); // bar 0 = count-in
+    const inBar = step % 16;
+    const beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
+    const countIn = barIdx === 0;
+    const outro = barIdx > s.bars;
+    const mute = typeof this.mute === 'function' ? (this.mute(t) || {}) : this.mute;
+    if (countIn) { if (sub === 0) Audio.drum('hat', t, 0.7); return; }
+    const chord = s.chords[Math.min(barIdx - 1, s.bars - 1)];
+    const rootMidi = s.root - 12;
+    if (!mute.drums && !outro) {
+      if (sub === 0 && (beatIdx === 0 || beatIdx === 2)) Audio.drum('kick', t, 0.6);
+      if (sub === 0 && (beatIdx === 1 || beatIdx === 3)) Audio.drum('snare', t, 0.45);
+      if (sub === 2) Audio.drum('hat', t, 0.35);
+      if (sub === 0) Audio.drum('hat', t, 0.2);
+    }
+    if (outro && step === (s.bars + 1) * 16) Audio.drum('crash', t, 0.5);
+    if (!mute.bass && !outro) {
+      const tones = chordTones(rootMidi, chord);
+      if (sub === 0 && beatIdx === 0) Audio.note('bass', tones[0], t, s.beat * 0.9, 0.35);
+      if (sub === 0 && beatIdx === 2) Audio.note('bass', tones[0], t, s.beat * 0.9, 0.3);
+      if (sub === 2 && beatIdx === 1) Audio.note('bass', tones[2] - 12 + 12, t, s.beat * 0.4, 0.22);
+      if (sub === 2 && beatIdx === 3) Audio.note('bass', tones[1], t, s.beat * 0.4, 0.22);
+    }
+    if (!mute.pad && !outro && inBar === 0) {
+      const tones = chordTones(s.root, chord);
+      tones.forEach(m => Audio.note('pad', m, t, s.beat * 3.8, 0.16));
+    }
+  }
+  stop() { this.stopped = true; }
+}
+
+// ===== js/rhythm.js =====
+// ---------- Rhythm engine + instrument minigames ----------
+'use strict';
+const JUDGE = { perfect: 0.045, great: 0.09, good: 0.14, window: 0.19 };
+const JUDGE_COLOR = { perfect: '#ffe14d', great: '#6ff08a', good: '#6fb8ff', miss: '#ff5a5a' };
+const HYPE_GAIN = { perfect: 2.4, great: 1.3, good: 0.4, miss: -7 };
+const COMBO_MILESTONES = [20, 40, 70, 100, 150, 200, 300];
+const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
+
+class RhythmGame {
+  // sections: [{instrument, startBar, endBar, member}]
+  constructor(song, sections, notes, mods) {
+    this.song = song; this.sections = sections; this.notes = notes; this.mods = mods;
+    this.startTime = null; this.now = -song.leadIn;
+    this.counts = { perfect: 0, great: 0, good: 0, miss: 0 };
+    this.combo = 0; this.maxCombo = 0; this.hype = 25; this.rollHits = 0;
+    this.events = { perfects: 0, misses: 0, cheer: 0 };
+    this.popups = []; this.flashes = {}; this.milestoneIdx = 0;
+    this.holds = {}; // lane -> note being held
+    this.keysDown = new Set();
+    this.breath = 1; this.breathNote = null;
+    this.valveMask = 0; this.valveEvalAt = null; this.valveGroupT = null;
+    this.lastDon = { t: -1, code: null };
+    this.secIdx = 0; this.finished = false; this.bannerT = 0;
+    this.difficulty = mods.difficulty || 1;
+    this.approach = clamp(1.75 - this.difficulty * 0.12, 0.95, 1.75);
+    this.notesTotal = notes.length + notes.filter(n => n.type === 'hold').length;
+    // hype gain scales with note density so sparse beginner charts can still build a crowd
+    this.hypeScale = clamp(230 / Math.max(1, this.notesTotal), 1, 2.8);
+    this.beatPulse = 0;
+    this.voices = {};
+    sections.forEach((s, i) => { s.start = song.leadIn + s.startBar * 4 * song.beat; s.end = song.leadIn + s.endBar * 4 * song.beat; s.idx = i; });
+    notes.forEach(n => { n.sec = sections.findIndex(s => n.t >= s.start - 0.001 && n.t < s.end + 0.001); if (n.sec < 0) n.sec = sections.length - 1; });
+  }
+  get section() { return this.sections[this.secIdx]; }
+  get instrument() { return INSTRUMENTS[this.section.instrument]; }
+  get nextSection() { return this.sections[this.secIdx + 1]; }
+  begin(audioTime) { this.startTime = audioTime; }
+  win(kind) {
+    let m = this.mods.windowMult || 1;
+    if (kind === 'perfect' && this.mods.luckyPick && ['guitar', 'bass', 'violin'].includes(this.section.instrument)) m *= 1.25;
+    return JUDGE[kind] * m;
+  }
+  judgeDt(dt) {
+    const a = Math.abs(dt);
+    if (a <= this.win('perfect')) return 'perfect';
+    if (a <= this.win('great')) return 'great';
+    if (a <= this.win('good')) return 'good';
+    return 'miss';
+  }
+  applyJudge(j, note, opts = {}) {
+    this.counts[j]++;
+    let gain = HYPE_GAIN[j];
+    if (j === 'great' && this.mods.earplugs) gain = HYPE_GAIN.perfect;
+    if (j !== 'miss') gain *= this.hypeScale;
+    if (j === 'miss') {
+      gain *= this.mods.missMult || 1;
+      if (this.combo >= 10 && this.mods.metronome) gain *= 0.5;
+      this.combo = 0; this.events.misses++;
+    } else {
+      this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
+      if (j === 'perfect') this.events.perfects++;
+      if (this.milestoneIdx < COMBO_MILESTONES.length && this.combo >= COMBO_MILESTONES[this.milestoneIdx]) {
+        this.milestoneIdx++; this.events.cheer += (this.mods.kazoo ? 2 : 1);
+        this.popups.push({ text: this.combo + ' COMBO!', color: '#ff9fef', t: 0, big: true });
+      }
+    }
+    this.hype = clamp(this.hype + gain, 0, 100);
+    this.popups.push({ text: j.toUpperCase() + (opts.suffix || ''), color: JUDGE_COLOR[j], t: 0, lane: note ? note.lane : 0 });
+  }
+  // find best unjudged note for lanes within window
+  findNote(pred) {
+    let best = null, bestD = Infinity;
+    const w = this.win('good') + 0.05;
+    for (const n of this.notes) {
+      if (n.judged || n.sec !== this.secIdx) continue;
+      if (n.t - this.now > w + 0.4) break;
+      if (!pred(n)) continue;
+      const d = Math.abs(n.t - this.now);
+      if (d <= w && d < bestD) { best = n; bestD = d; }
+    }
+    return best;
+  }
+  playHit(note, j, hold) {
+    const k = this.section.instrument;
+    if (k === 'drums') { Audio.drum(note.type === 'ka' ? 'ka' : 'don', 0, j === 'perfect' ? 0.9 : 0.7); return null; }
+    const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
+    const dur = hold ? Math.max(0.3, note.dur) + 0.3 : (k === 'tambourine' ? 0.1 : 0.35);
+    return Audio.note(k, note.midi, 0, dur, vel);
+  }
+  keyDown(code) {
+    if (this.finished || this.startTime == null || this.keysDown.has(code)) return;
+    this.keysDown.add(code);
+    const instr = this.instrument; const g = instr.game;
+    if (g === 'lanes' || g === 'bow') {
+      let lane = instr.keys.indexOf(code);
+      if (g === 'bow') { lane = (code === 'ArrowUp' || code === 'KeyW') ? 1 : (code === 'ArrowDown' || code === 'KeyS') ? 0 : -1; }
+      if (lane < 0) return;
+      const n = this.findNote(x => x.lane === lane);
+      if (!n) { if (this.now > 0) { Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
+      const j = this.judgeDt(this.now - n.t);
+      n.judged = true; n.hit = j !== 'miss'; n.judge = j;
+      this.flashes[lane] = 0.2;
+      this.applyJudge(j, n);
+      if (n.hit) {
+        const v = this.playHit(n, j, n.type === 'hold');
+        if (n.type === 'hold') { n.holding = true; this.holds[lane] = n; n.voice = v; }
+        else if (v) v.off && setTimeout(() => { }, 0);
+      } else if (n.type === 'hold') { n.tailJudged = true; this.counts.miss++; this.events.misses++; }
+    } else if (g === 'taiko') {
+      const isDon = code === 'KeyF' || code === 'KeyJ';
+      const isKa = code === 'KeyD' || code === 'KeyK';
+      if (!isDon && !isKa) return;
+      this.flashes[isDon ? 'don' : 'ka'] = 0.15;
+      // rolls
+      const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
+      if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.rollHits++; this.hype = clamp(this.hype + 0.6, 0, 100); Audio.drum(isDon ? 'don' : 'ka', 0, 0.6); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0 }); return; }
+      // big note second hit
+      if (isDon && this.lastDon.note && this.now - this.lastDon.t < 0.07 && this.lastDon.code !== code) {
+        const n = this.lastDon.note; this.lastDon.note = null;
+        if (n.type === 'big' && n.hit) { this.hype = clamp(this.hype + 2.5, 0, 100); this.popups.push({ text: 'BIG DON!', color: '#ff9f68', t: 0, big: true }); Audio.drum('don', 0, 1); Audio.drum('tom', 0, 0.6); }
+        return;
+      }
+      const n = this.findNote(x => x.type !== 'roll');
+      if (!n) { if (this.now > 0) Audio.drum(isDon ? 'don' : 'ka', 0, 0.25); return; }
+      const wantDon = n.type === 'don' || n.type === 'big';
+      let j = this.judgeDt(this.now - n.t);
+      if (wantDon !== isDon) j = 'miss';
+      n.judged = true; n.hit = j !== 'miss'; n.judge = j;
+      this.applyJudge(j, n, { suffix: j === 'miss' && wantDon !== isDon && Math.abs(this.now - n.t) < this.win('good') ? ' (WRONG)' : '' });
+      if (n.hit) { this.playHit(n, j); if (n.type === 'big') this.lastDon = { t: this.now, code, note: n }; }
+      else Audio.drum('clunk', 0, 0.4);
+    } else if (g === 'wind') {
+      if (code !== 'Space') return;
+      if (this.breath <= 0.02) { Audio.drum('clunk', 0, 0.3); return; }
+      const n = this.findNote(() => true);
+      this.flashes.wind = 0.2;
+      if (!n) { if (this.now > 0) Audio.drum('clunk', 0, 0.3); return; }
+      const j = this.judgeDt(this.now - n.t);
+      n.judged = true; n.hit = j !== 'miss'; n.judge = j;
+      this.applyJudge(j, n);
+      if (n.hit) { n.holding = true; this.breathNote = n; n.voice = this.playHit(n, j, true); }
+      else { n.tailJudged = true; this.counts.miss++; this.events.misses++; }
+    } else if (g === 'valves') {
+      const vi = instr.keys.indexOf(code);
+      if (vi < 0) return;
+      this.valveMask |= (1 << vi);
+      if (this.valveGroupT == null) this.valveGroupT = this.now;
+      this.valveEvalAt = this.now + 0.045;
+      this.flashes['v' + vi] = 0.15;
+    }
+  }
+  keyUp(code) {
+    this.keysDown.delete(code);
+    if (this.finished || this.startTime == null) return;
+    const instr = this.instrument; const g = instr.game;
+    if (g === 'lanes' || g === 'bow') {
+      let lane = instr.keys.indexOf(code);
+      if (g === 'bow') { lane = (code === 'ArrowUp' || code === 'KeyW') ? 1 : (code === 'ArrowDown' || code === 'KeyS') ? 0 : -1; }
+      const n = this.holds[lane];
+      if (n && n.holding) this.releaseHold(n, lane);
+    } else if (g === 'wind') {
+      if (code === 'Space' && this.breathNote) this.releaseWind(this.breathNote);
+    } else if (g === 'valves') {
+      const vi = instr.keys.indexOf(code);
+      if (vi >= 0) this.valveMask &= ~(1 << vi);
+    }
+  }
+  releaseHold(n, lane) {
+    n.holding = false; delete this.holds[lane];
+    if (n.voice) n.voice.off();
+    if (n.tailJudged) return;
+    n.tailJudged = true;
+    const early = (n.t + n.dur) - this.now;
+    if (early > this.win('good')) { this.applyJudge('miss', n, { suffix: ' (EARLY)' }); }
+    else this.applyJudge(early > this.win('great') ? 'good' : 'perfect', n, { suffix: ' HOLD' });
+  }
+  releaseWind(n) {
+    n.holding = false; this.breathNote = null;
+    if (n.voice) n.voice.off();
+    if (n.tailJudged) return;
+    n.tailJudged = true;
+    const dt = this.now - (n.t + n.dur);
+    let j = this.judgeDt(dt);
+    if (dt < -this.win('good')) j = 'miss';
+    this.applyJudge(j, n, { suffix: j === 'miss' ? (dt < 0 ? ' (EARLY)' : ' (LATE)') : ' RELEASE' });
+  }
+  evalValves() {
+    this.valveEvalAt = null;
+    const groupT = this.valveGroupT; this.valveGroupT = null;
+    const mask = this.valveMask;
+    const n = this.findNote(() => true);
+    if (!n) { if (this.now > 0) Audio.drum('clunk', 0, 0.3); return; }
+    let j = this.judgeDt(groupT - n.t);
+    const wrong = mask !== n.combo;
+    if (wrong) j = 'miss';
+    n.judged = true; n.hit = !wrong && j !== 'miss'; n.judge = j;
+    this.applyJudge(j, n, { suffix: wrong ? ' (VALVES)' : '' });
+    if (n.hit) this.playHit(n, j); else Audio.drum('clunk', 0, 0.4);
+  }
+  update(dt) {
+    if (this.startTime == null) return;
+    this.now = Audio.now() - this.startTime;
+    this.events = { perfects: 0, misses: 0, cheer: 0 };
+    // section switching
+    while (this.secIdx < this.sections.length - 1 && this.now >= this.sections[this.secIdx + 1].start) {
+      // release everything from the old instrument
+      for (const l in this.holds) { const n = this.holds[l]; if (n.holding) this.releaseHold(n, l); }
+      if (this.breathNote) this.releaseWind(this.breathNote);
+      const changed = this.sections[this.secIdx + 1].instrument !== this.section.instrument;
+      this.secIdx++; this.bannerT = changed ? 1.2 : 0; this.valveMask = 0; this.valveEvalAt = null; this.valveGroupT = null;
+      this.keysDown.clear();
+    }
+    const ns = this.nextSection;
+    this.switchWarn = ns && ns.instrument !== this.section.instrument && this.now > ns.start - 4 * this.song.beat && this.now < ns.start;
+    // misses
+    for (const n of this.notes) {
+      if (n.judged) continue;
+      if (n.t - this.now > 0.5) break;
+      if (this.now - n.t > this.win('good') + 0.02) {
+        n.judged = true; n.hit = false; n.judge = 'miss';
+        if (n.type === 'roll') { n.hits = n.hits || 0; continue; }
+        this.applyJudge('miss', n);
+        if (n.type === 'hold') { n.tailJudged = true; this.counts.miss++; }
+      }
+    }
+    // holds progression
+    for (const l in this.holds) {
+      const n = this.holds[l];
+      if (n.holding && this.now >= n.t + n.dur) { n.tailJudged = true; n.holding = false; delete this.holds[l]; if (n.voice) n.voice.off(); this.applyJudge('perfect', n, { suffix: ' HOLD' }); }
+    }
+    // wind breath
+    if (this.breathNote) {
+      const n = this.breathNote;
+      this.breath = Math.max(0, this.breath - dt * 0.28);
+      if (this.now > n.t + n.dur + this.win('good')) { n.tailJudged = true; this.applyJudge('miss', n, { suffix: ' (LATE)' }); n.holding = false; this.breathNote = null; if (n.voice) n.voice.off(); }
+      else if (this.breath <= 0) { this.popups.push({ text: 'OUT OF BREATH', color: '#ff5a5a', t: 0 }); this.releaseWind(n); }
+    } else if (this.keysDown.has('Space') && this.instrument.game === 'wind') {
+      this.breath = Math.max(0, this.breath - dt * 0.15);
+    } else this.breath = Math.min(1, this.breath + dt * 0.45);
+    // valves
+    if (this.valveEvalAt != null && this.now >= this.valveEvalAt) this.evalValves();
+    // hype decay
+    if (this.now > 0) this.hype = clamp(this.hype - dt * 0.7, 0, 100);
+    // popups / flashes
+    for (const p of this.popups) p.t += dt;
+    this.popups = this.popups.filter(p => p.t < (p.big ? 1.2 : 0.55));
+    for (const k in this.flashes) this.flashes[k] = Math.max(0, this.flashes[k] - dt);
+    this.bannerT = Math.max(0, this.bannerT - dt);
+    const beatPos = ((this.now % this.song.beat) + this.song.beat) % this.song.beat;
+    this.beatPulse = 1 - beatPos / this.song.beat;
+    if (this.now >= this.song.length) this.finished = true;
+  }
+  results() {
+    const c = this.counts; const total = c.perfect + c.great + c.good + c.miss;
+    const acc = total ? (c.perfect + c.great * 0.75 + c.good * 0.4) / total : 0;
+    return { ...c, total, acc, maxCombo: this.maxCombo, rollHits: this.rollHits };
+  }
+
+  // ---------- Rendering ----------
+  draw(ctx, A) {
+    const g = this.instrument.game;
+    rect(ctx, A.x, A.y, A.w, A.h, '#0d0b18');
+    rect(ctx, A.x, A.y - 1, A.w, 1, '#3a3560');
+    if (g === 'lanes') this.drawLanes(ctx, A);
+    else if (g === 'taiko') this.drawTaiko(ctx, A);
+    else if (g === 'wind') this.drawWind(ctx, A);
+    else if (g === 'valves') this.drawValves(ctx, A);
+    else if (g === 'bow') this.drawBow(ctx, A);
+    this.drawHud(ctx, A);
+  }
+  drawHud(ctx, A) {
+    // combo & hype
+    if (this.combo >= 5) drawText(ctx, this.combo + ' COMBO', A.x + A.w / 2, A.y + 8, '#fff', { align: 'center', scale: 2, shadow: '#000' });
+    // popups
+    let py = A.y + 34;
+    for (const p of this.popups.slice(-3)) {
+      ctx.globalAlpha = clamp(1 - p.t / (p.big ? 1.2 : 0.55) * 0.8 + 0.2, 0, 1);
+      drawText(ctx, p.text, A.x + A.w / 2, py - (p.big ? p.t * 10 : 0), p.color, { align: 'center', scale: p.big ? 2 : 1, shadow: '#000' });
+      ctx.globalAlpha = 1; py += p.big ? 12 : 7;
+    }
+    // count-in
+    if (this.now < 0) {
+      const beatsLeft = Math.ceil(-this.now / this.song.beat);
+      drawText(ctx, beatsLeft > 0 ? String(beatsLeft) : 'GO!', A.x + A.w / 2, A.y + A.h / 2 - 10, '#fff', { align: 'center', scale: 3, shadow: '#000' });
+      drawText(ctx, this.instrument.name.toUpperCase() + ' - ' + this.instrument.keyNames.join(' '), A.x + A.w / 2, A.y + A.h / 2 + 16, '#ffd166', { align: 'center', shadow: '#000' });
+    }
+    // banner on switch
+    if (this.bannerT > 0 && this.now > 0) {
+      ctx.globalAlpha = clamp(this.bannerT, 0, 1);
+      rect(ctx, A.x, A.y + A.h / 2 - 12, A.w, 24, '#000');
+      drawText(ctx, 'NOW: ' + this.instrument.name.toUpperCase() + ' (' + this.instrument.keyNames.join(' ') + ')', A.x + A.w / 2, A.y + A.h / 2 - 5, '#ffe14d', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    if (this.switchWarn) {
+      const ns = this.nextSection; const ni = INSTRUMENTS[ns.instrument];
+      const blink = Math.floor(this.now * 6) % 2 === 0;
+      rect(ctx, A.x + A.w - 130, A.y + 2, 128, 16, '#000');
+      drawText(ctx, 'SWITCH: ' + ni.name.toUpperCase(), A.x + A.w - 66, A.y + 4, blink ? '#ff9f68' : '#fff', { align: 'center' });
+      drawText(ctx, ni.keyNames.join(' ') + (ns.member ? ' - ' + ns.member.name : ''), A.x + A.w - 66, A.y + 11, '#ccc', { align: 'center' });
+    }
+    if (this.mods.metronome) {
+      const r = 2 + Math.round(this.beatPulse * 3);
+      circle(ctx, A.x + 8, A.y + 8, r, this.beatPulse > 0.8 ? '#ffe14d' : '#665');
+    }
+  }
+  drawLanes(ctx, A) {
+    const instr = this.instrument; const L = instr.lanes;
+    const padCols = A.touch && A.pads && A.pads.length === L ? A.pads : null;
+    const laneW = padCols ? padCols[0].w + 2 : Math.min(40, Math.floor((A.w - 40) / L));
+    const x0 = padCols ? padCols[0].x - 1 : A.x + Math.floor((A.w - laneW * L) / 2);
+    const laneX = (l) => padCols ? padCols[l].x - 1 : x0 + l * laneW;
+    const hitY = A.y + A.h - (A.touch ? 8 : 22), top = A.y + 10;
+    // highway
+    for (let l = 0; l < L; l++) {
+      const x = laneX(l);
+      rect(ctx, x, top, laneW, hitY - top + 8, l % 2 ? '#141126' : '#181430');
+      if (this.flashes[l] > 0) { ctx.globalAlpha = this.flashes[l] * 3; rect(ctx, x, top, laneW, hitY - top + 8, LANE_COLORS[l]); ctx.globalAlpha = 1; }
+      rect(ctx, x, top, 1, hitY - top + 8, '#2a2450');
+      // receptor
+      const held = this.keysDown.has(instr.keys[l]);
+      rect(ctx, x + 3, hitY - 2, laneW - 6, 5, held ? LANE_COLORS[l] : shade(LANE_COLORS[l], -90));
+      frame(ctx, x + 3, hitY - 2, laneW - 6, 5, LANE_COLORS[l]);
+      if (!A.touch) drawText(ctx, instr.keyNames[l], x + laneW / 2, hitY + 8, '#ccc', { align: 'center' });
+    }
+    if (!padCols) rect(ctx, x0 + L * laneW, top, 1, hitY - top + 8, '#2a2450');
+    // beat lines
+    const pxPerSec = (hitY - top) / this.approach;
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const t = b * this.song.beat; const y = hitY - (t - this.now) * pxPerSec;
+      if (y < top) break;
+      for (let l = 0; l < L; l++) rect(ctx, laneX(l), y, laneW, 1, b % 4 === 0 ? '#3a3560' : '#242040');
+    }
+    // notes
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      const y = hitY - (n.t - this.now) * pxPerSec;
+      if (y < top - 10) break;
+      if (n.judged && !n.holding && (n.type !== 'hold' || n.tailJudged || !n.hit)) { if (n.type !== 'hold' || !n.hit) continue; }
+      const x = laneX(n.lane) + 3, w = laneW - 6;
+      const col = LANE_COLORS[n.lane];
+      if (n.type === 'hold') {
+        const yEnd = hitY - (n.t + n.dur - this.now) * pxPerSec;
+        const yStart = n.holding ? hitY : y;
+        if (yEnd < hitY + 4) {
+          const yy = Math.max(top, yEnd), hh = Math.min(hitY + 3, yStart) - yy;
+          if (hh > 0) rect(ctx, x + w / 2 - 3, yy, 6, hh, n.holding ? col : shade(col, -60));
+        }
+        if (n.tailJudged && n.hit) continue;
+      }
+      if (n.judged && n.hit && (!n.holding)) continue;
+      if (y > hitY + 12) continue;
+      if (n.holding) continue;
+      rect(ctx, x, y - 3, w, 6, col);
+      rect(ctx, x + 1, y - 2, w - 2, 1, shade(col, 60));
+      rect(ctx, x, y + 3, w, 1, shade(col, -50));
+    }
+  }
+  drawTaiko(ctx, A) {
+    const hitX = A.x + 52, cy = A.y + A.h * (A.touch ? 0.6 : 0.5) - 6;
+    const lineH = A.touch ? 60 : 44, lineTop = cy - lineH / 2;
+    rect(ctx, A.x, lineTop, A.w, lineH, '#1a1428');
+    rect(ctx, A.x, lineTop, A.w, 1, '#3a3060'); rect(ctx, A.x, lineTop + lineH, A.w, 1, '#3a3060');
+    const pxPerSec = (A.w - 60) / this.approach;
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const t = b * this.song.beat; const x = hitX + (t - this.now) * pxPerSec;
+      if (x > A.x + A.w) break;
+      if (x > A.x) rect(ctx, x, lineTop, 1, lineH, b % 4 === 0 ? '#4a4070' : '#2a2448');
+    }
+    // hit circle
+    ringPx(ctx, hitX, cy, 12, '#666'); ringPx(ctx, hitX, cy, 11, '#444');
+    if (this.flashes.don > 0) circle(ctx, hitX, cy, 10, '#ff6b6b');
+    else if (this.flashes.ka > 0) circle(ctx, hitX, cy, 10, '#5bc0ff');
+    // drum face left
+    rect(ctx, A.x + 2, cy - 18, 32, 36, '#5a3a1e'); rect(ctx, A.x + 6, cy - 14, 24, 28, '#f0e8d8');
+    if (A.touch) { drawText(ctx, 'BIG NOTES: BOTH DON PADS', A.x + A.w / 2, A.y + A.h - 12, '#6b5f9a', { align: 'center' }); }
+    drawText(ctx, 'D K', A.x + 18, cy - 24, '#5bc0ff', { align: 'center' });
+    drawText(ctx, 'F J', A.x + 18, cy + 22, '#ff6b6b', { align: 'center' });
+    // notes, draw far ones first
+    const visible = [];
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      if (n.judged && n.type !== 'roll') continue;
+      const x = hitX + (n.t - this.now) * pxPerSec;
+      if (x > A.x + A.w + 20) break;
+      if (x < A.x - 20 && n.type !== 'roll') continue;
+      visible.push({ n, x });
+    }
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const { n, x } = visible[i];
+      if (n.type === 'roll') {
+        const xe = hitX + (n.t + n.dur - this.now) * pxPerSec;
+        const xs = Math.max(hitX, x);
+        if (xe > A.x) { rect(ctx, xs, cy - 7, Math.max(0, xe - xs), 14, '#ffd166'); circle(ctx, xe, cy, 7, '#ffd166'); circle(ctx, xs, cy, 7, '#ffd166'); drawText(ctx, 'ROLL!', (xs + xe) / 2, cy - 16, '#ffd166', { align: 'center' }); }
+        continue;
+      }
+      const big = n.type === 'big'; const r = big ? 12 : 8;
+      const col = n.type === 'ka' ? '#5bc0ff' : '#ff6b6b';
+      circle(ctx, x, cy, r, '#111'); circle(ctx, x, cy, r - 1, col); circle(ctx, x, cy, r - 4, shade(col, 50));
+      if (big) drawText(ctx, 'FJ', x, cy - 2, '#000', { align: 'center' });
+    }
+  }
+  drawWind(ctx, A) {
+    const hitX = A.x + 70, top = A.y + (A.touch ? 14 : 22), bot = A.y + A.h - (A.touch ? 24 : 30);
+    rect(ctx, A.x, top - 4, A.w, bot - top + 8, '#141126');
+    for (let i = 0; i <= 4; i++) rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#2a2450');
+    const pxPerSec = (A.w - 80) / this.approach;
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const t = b * this.song.beat; const x = hitX + (t - this.now) * pxPerSec;
+      if (x > A.x + A.w) break;
+      if (x > A.x) rect(ctx, x, top - 4, 1, bot - top + 8, b % 4 === 0 ? '#4a4070' : '#242040');
+    }
+    // hit line
+    rect(ctx, hitX, top - 6, 2, bot - top + 12, this.keysDown.has('Space') ? '#ffe14d' : '#887');
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      const xs = hitX + (n.t - this.now) * pxPerSec, xe = hitX + (n.t + n.dur - this.now) * pxPerSec;
+      if (xs > A.x + A.w + 10) break;
+      if (xe < A.x - 10) continue;
+      const y = bot - (bot - top) * n.pitch;
+      let col = '#e0b040';
+      if (n.judged && !n.hit) col = '#553';
+      else if (n.holding) col = '#ffe14d';
+      else if (n.tailJudged) col = '#6ff08a';
+      const x1 = Math.max(A.x, xs), x2 = Math.min(A.x + A.w, xe);
+      if (x2 > x1) rect(ctx, x1, y - 3, x2 - x1, 7, col);
+      if (xs >= A.x) { rect(ctx, xs, y - 5, 3, 11, shade(col, 60)); }
+      if (xe <= A.x + A.w) rect(ctx, xe - 2, y - 5, 3, 11, shade(col, -40));
+    }
+    // breath meter
+    const bw = 100, bx = A.x + A.w / 2 - bw / 2, by = A.y + A.h - 16;
+    rect(ctx, bx, by, bw, 6, '#222'); rect(ctx, bx, by, bw * this.breath, 6, this.breath < 0.25 ? '#ff5a5a' : '#6fb8ff'); frame(ctx, bx, by, bw, 6, '#889');
+    drawText(ctx, 'BREATH', bx - 4, by, '#aab', { align: 'right' });
+    drawText(ctx, 'HOLD SPACE', bx + bw + 6, by, '#aab');
+  }
+  drawValves(ctx, A) {
+    const hitX = A.x + 60, cy = A.y + A.h * (A.touch ? 0.52 : 0.5) - 14;
+    rect(ctx, A.x, cy - 22, A.w, 44, '#141126');
+    const pxPerSec = (A.w - 70) / this.approach;
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const t = b * this.song.beat; const x = hitX + (t - this.now) * pxPerSec;
+      if (x > A.x + A.w) break;
+      if (x > A.x) rect(ctx, x, cy - 20, 1, 40, b % 4 === 0 ? '#4a4070' : '#242040');
+    }
+    ringPx(ctx, hitX, cy, 13, '#777');
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged) continue;
+      const x = hitX + (n.t - this.now) * pxPerSec;
+      if (x > A.x + A.w + 14) break;
+      if (x < A.x - 14) continue;
+      circle(ctx, x, cy, 13, '#f0c040'); circle(ctx, x, cy, 12, '#c89a2a');
+      for (let v = 0; v < 3; v++) {
+        const on = (n.combo >> v) & 1;
+        rect(ctx, x - 8 + v * 5, cy - 6, 4, 12, on ? '#fff' : '#5a4210');
+        if (on) drawText(ctx, this.instrument.keyNames[v], x - 7 + v * 5, cy - 2, '#000');
+      }
+    }
+    // valve buttons (the touch pads stand in for these)
+    const names = this.instrument.keyNames;
+    if (!A.touch) for (let v = 0; v < 3; v++) {
+      const bx = A.x + A.w / 2 - 36 + v * 26, by = A.y + A.h - 30;
+      const on = (this.valveMask >> v) & 1;
+      rect(ctx, bx, by + (on ? 3 : 0), 20, 14 - (on ? 3 : 0), on ? '#ffe14d' : '#8a6a20'); frame(ctx, bx, by + (on ? 3 : 0), 20, 14 - (on ? 3 : 0), '#fff');
+      drawText(ctx, names[v], bx + 10, by + 5 + (on ? 2 : 0), '#000', { align: 'center' });
+    }
+    drawText(ctx, 'PRESS THE LIT VALVES TOGETHER', A.x + A.w / 2, A.y + A.h - (A.touch ? 8 : 10), '#aab', { align: 'center' });
+  }
+  drawBow(ctx, A) {
+    const hitX = A.x + 70, top = A.y + (A.touch ? 14 : 24), bot = A.y + A.h - (A.touch ? 16 : 30);
+    rect(ctx, A.x, top - 6, A.w, bot - top + 12, '#141126');
+    for (let i = 0; i < 4; i++) rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#3a3560');
+    const pxPerSec = (A.w - 80) / this.approach;
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const t = b * this.song.beat; const x = hitX + (t - this.now) * pxPerSec;
+      if (x > A.x + A.w) break;
+      if (x > A.x) rect(ctx, x, top - 6, 1, bot - top + 12, b % 4 === 0 ? '#4a4070' : '#242040');
+    }
+    rect(ctx, hitX, top - 8, 2, bot - top + 16, '#887');
+    if (this.flashes[1] > 0) rect(ctx, hitX - 3, top - 8, 8, (bot - top) / 2 + 8, '#c58bff');
+    if (this.flashes[0] > 0) rect(ctx, hitX - 3, top + (bot - top) / 2, 8, (bot - top) / 2 + 8, '#6be585');
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      const xs = hitX + (n.t - this.now) * pxPerSec;
+      if (xs > A.x + A.w + 10) break;
+      const xe = n.dur ? hitX + (n.t + n.dur - this.now) * pxPerSec : xs;
+      if (xe < A.x - 10) continue;
+      if (n.judged && !n.holding && (!n.type === 'hold' || n.tailJudged || !n.hit)) { if (!(n.type === 'hold' && n.hit && !n.tailJudged)) continue; }
+      const y = bot - (bot - top) * n.pitch;
+      const col = n.dir > 0 ? '#c58bff' : '#6be585';
+      if (n.dur) { const x1 = Math.max(A.x, n.holding ? hitX : xs), x2 = Math.min(A.x + A.w, xe); if (x2 > x1) rect(ctx, x1, y - 2, x2 - x1, 5, n.holding ? '#fff' : shade(col, -50)); }
+      if (n.holding) continue;
+      // arrow
+      circle(ctx, xs, y, 6, col);
+      drawText(ctx, n.dir > 0 ? '↑' : '↓', xs, y - 2, '#000', { align: 'center' });
+    }
+    if (!A.touch) {
+      drawText(ctx, 'UP BOW = ↑ / W', A.x + 6, A.y + A.h - 12, '#c58bff');
+      drawText(ctx, 'DOWN BOW = ↓ / S', A.x + A.w - 6, A.y + A.h - 12, '#6be585', { align: 'right' });
+    }
+  }
+}
+
+// ===== js/crowd.js =====
+// ---------- Passers-by, watchers, coins ----------
+'use strict';
+class Crowd {
+  // mods: {crowd, tips, watchTime, wealth}
+  constructor(venue, mods, rng) {
+    this.venue = venue; this.mods = mods; this.rng = rng;
+    this.peds = []; this.coins = []; this.popups = []; this.particles = [];
+    this.earned = 0; this.tipCount = 0; this.spawnAcc = 1.5; this.hype = 20;
+    this.stageX = 110; this.hatX = 150; this.hatY = 0; this.groundY = 0;
+    this.watchersMax = 8; this.time = 0;
+    this.cheerFlash = 0;
+  }
+  get watchers() { return this.peds.filter(p => p.state === 'watch'); }
+  spawn() {
+    const r = this.rng;
+    const dir = r.chance(0.5) ? 1 : -1;
+    const row = r.int(0, 2);
+    const species = r.pick(SPECIES_KEYS);
+    const hue = r.pick(['#c04040', '#4070c0', '#40a060', '#c0a040', '#8050b0', '#d07030', '#3aa0a0', '#b04080', '#777']);
+    this.peds.push({
+      x: dir > 0 ? -20 : W + 20, dir, row, species, speed: r.range(14, 26),
+      override: { s: hue }, hat: r.chance(0.35) ? r.pick(Object.keys(HATS)) : null,
+      state: 'walk', t: r.range(0, 10), watchT: 0, tipT: r.range(2, 5), generous: r.range(0.6, 1.6),
+      attention: r.range(0.5, 1.4), stopX: null, bob: r.range(0, 6), tipped: 0,
+    });
+  }
+  // events: {perfects, misses, cheer} since last frame
+  update(dt, hype, ev) {
+    this.time += dt;
+    this.hype = hype;
+    const traffic = this.venue.traffic * this.mods.crowd;
+    this.spawnAcc += dt * traffic * 0.42;
+    while (this.spawnAcc >= 1) { this.spawnAcc -= 1; if (this.peds.length < 26) this.spawn(); }
+    const attractRange = 70 * (this.mods.range || 1);
+    let watchers = this.watchers.length;
+    for (const p of this.peds) {
+      p.t += dt;
+      if (p.state === 'walk' || p.state === 'leave') {
+        p.x += p.dir * p.speed * dt;
+        if (p.state === 'walk' && Math.abs(p.x - this.stageX) < attractRange && watchers < this.watchersMax) {
+          const pStop = (hype / 100) * 0.9 * p.attention * dt;
+          if (this.rng.chance(pStop)) {
+            p.state = 'watch'; watchers++;
+            p.watchT = this.rng.range(8, 14) * this.mods.watchTime;
+            p.tipT = this.rng.range(1.5, 4);
+            // find a spot in front of the stage
+            p.stopX = this.stageX + this.rng.range(-60, 60);
+            p.row = this.rng.int(0, 2);
+          }
+        }
+      } else if (p.state === 'watch') {
+        // shuffle to stop spot
+        if (Math.abs(p.x - p.stopX) > 1) { const d = Math.sign(p.stopX - p.x); p.x += d * 20 * dt; p.dir = d; }
+        else p.dir = p.x < this.stageX ? 1 : -1;
+        p.watchT -= dt;
+        if (hype > 60) p.watchT += dt * 0.6; // hooked
+        p.tipT -= dt;
+        if (p.tipT <= 0) {
+          p.tipT = this.rng.range(3, 6);
+          if (this.rng.chance(clamp(hype / 100 + 0.1, 0.15, 1))) this.tip(p, 1);
+        }
+        if (ev.misses > 0 && this.rng.chance(0.18 * ev.misses * (hype < 40 ? 1.6 : 1))) { p.state = 'leave'; p.dir = this.rng.chance(0.5) ? 1 : -1; }
+        if (p.watchT <= 0 || (hype < 15 && this.rng.chance(dt * 0.5))) { p.state = 'leave'; p.dir = this.rng.chance(0.5) ? 1 : -1; }
+      }
+    }
+    if (ev.cheer) {
+      this.cheerFlash = 1;
+      for (const p of this.watchers) this.tip(p, ev.cheer);
+      Audio.applause(clamp(this.watchers.length / 8, 0.2, 1));
+    }
+    this.cheerFlash = Math.max(0, this.cheerFlash - dt * 2);
+    this.peds = this.peds.filter(p => p.x > -30 && p.x < W + 30);
+    // coins
+    for (const c of this.coins) {
+      c.t += dt / c.dur;
+      if (c.t >= 1 && !c.done) {
+        c.done = true; this.earned += c.value; this.tipCount++;
+        Audio.ui(c.bill ? 'bill' : 'coin');
+        this.popups.push({ x: this.hatX, y: this.hatY - 6, text: '+' + fmtMoney(c.value), t: 0, color: c.bill ? '#9af09a' : '#ffe680' });
+        for (let i = 0; i < 4; i++) this.particles.push({ x: this.hatX + 4, y: this.hatY, vx: this.rng.range(-20, 20), vy: this.rng.range(-40, -10), t: 0 });
+      }
+    }
+    this.coins = this.coins.filter(c => !c.done);
+    for (const p of this.popups) { p.t += dt; p.y -= dt * 14; }
+    this.popups = this.popups.filter(p => p.t < 1.2);
+    for (const p of this.particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 80 * dt; }
+    this.particles = this.particles.filter(p => p.t < 0.6);
+  }
+  tip(p, mult) {
+    const wealth = this.venue.wealth * (this.mods.wealth || 1);
+    let value, bill = false;
+    const roll = this.rng() * p.generous * (0.6 + this.hype / 120);
+    if (roll > 1.3 && this.hype > 60) { bill = true; value = this.rng.pick([1, 1, 2, 2, 5]) * (wealth > 1.5 ? 2 : 1); }
+    else value = this.rng.pick([0.25, 0.5, 0.5, 1]) * (wealth >= 1.4 ? 2 : 1);
+    value = Math.round(value * wealth * this.mods.tips * mult * 4) / 4;
+    value = Math.max(0.25, value);
+    p.tipped++;
+    this.coins.push({ x0: p.x + 8, y0: this.groundY - 8 - p.row * 3, t: 0, dur: 0.55 + this.rng() * 0.2, value, bill, done: false });
+  }
+  drawPeds(ctx, groundY, layer) {
+    // layer 0 = behind band (rows far), layer 1 = in front
+    const rows = layer === 0 ? [2] : [1, 0];
+    for (const row of rows) {
+      for (const p of this.peds) {
+        if (p.row !== row) continue;
+        const walking = p.state !== 'watch' || Math.abs(p.x - p.stopX) > 1;
+        const pose = walking ? (Math.floor(p.t * 6) % 2 ? 'walk' : 'stand') : (this.cheerFlash > 0 ? 'play' : 'stand');
+        const y = groundY - 18 + 4 - row * 3 + (p.state === 'watch' && !walking ? Math.round(Math.sin(this.time * 6 + p.bob) * (this.hype > 60 ? 1 : 0)) : 0);
+        drawBug(ctx, p.species, p.x, y, { pose, flip: p.dir < 0, override: p.override, hat: p.hat });
+        if (p.state === 'watch' && this.hype > 70 && Math.floor(this.time * 2 + p.bob) % 3 === 0) {
+          ctx.drawImage(propSprite('heart'), Math.round(p.x + 6), Math.round(y - 6 - Math.sin(this.time * 4 + p.bob) * 2));
+        } else if (p.state === 'watch' && Math.floor(this.time * 1.5 + p.bob) % 4 === 0) {
+          ctx.drawImage(propSprite('note'), Math.round(p.x + 7), Math.round(y - 6));
+        }
+      }
+    }
+  }
+  drawCoins(ctx) {
+    for (const c of this.coins) {
+      const t = clamp(c.t, 0, 1);
+      const x = lerp(c.x0, this.hatX + 3, t);
+      const y = lerp(c.y0, this.hatY, t) - Math.sin(t * Math.PI) * 28;
+      const spr = propSprite(c.bill ? 'bill' : 'coin');
+      ctx.drawImage(spr, Math.round(x), Math.round(y));
+    }
+    for (const p of this.particles) rect(ctx, p.x, p.y, 1, 1, '#ffe680');
+    for (const p of this.popups) {
+      ctx.globalAlpha = clamp(1.5 - p.t, 0, 1);
+      drawText(ctx, p.text, p.x + 4, p.y, p.color, { align: 'center', shadow: '#000' });
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+// ===== js/mapgen.js =====
+// ---------- Slay-the-Spire-style map of San Francisco ----------
+'use strict';
+const MAP_ROWS = 15;      // regular rows; row 15 = boss
+const MAP_COLS = 7;
+const ROWS_PER_DAY = 3;
+const MAP_ROW_H = 30;
+
+function generateMap(rng) {
+  const grid = []; // grid[r][c] = node or null
+  for (let r = 0; r <= MAP_ROWS; r++) { grid.push(new Array(MAP_COLS).fill(null)); }
+  const edges = new Set(); // "r,c>c2"
+  const node = (r, c) => grid[r][c] || (grid[r][c] = { r, c, type: 'gig', next: [], prev: [], visited: false, x: 0, y: 0 });
+  const crosses = (r, c, c2) => {
+    // would edge (r,c)->(r+1,c2) cross an existing edge?
+    if (c2 === c + 1 && edges.has(r + ',' + (c + 1) + '>' + c)) return true;
+    if (c2 === c - 1 && edges.has(r + ',' + (c - 1) + '>' + c)) return true;
+    return false;
+  };
+  const numPaths = 6;
+  const starts = [];
+  for (let i = 0; i < numPaths; i++) {
+    let c = rng.int(1, MAP_COLS - 2);
+    if (i === 1) { let tries = 0; while (c === starts[0] && tries++ < 10) c = rng.int(0, MAP_COLS - 1); }
+    starts.push(c);
+    node(0, c);
+    for (let r = 0; r < MAP_ROWS - 1; r++) {
+      const opts = [c - 1, c, c + 1].filter(x => x >= 0 && x < MAP_COLS && !crosses(r, c, x));
+      const c2 = opts.length ? rng.pick(opts) : c;
+      const a = node(r, c), b = node(r + 1, c2);
+      if (!a.next.includes(b)) { a.next.push(b); b.prev.push(a); }
+      edges.add(r + ',' + c + '>' + c2);
+      c = c2;
+    }
+    // connect last regular row to boss
+    const boss = node(MAP_ROWS, 3);
+    const last = grid[MAP_ROWS - 1][c];
+    if (!last.next.includes(boss)) { last.next.push(boss); boss.prev.push(last); }
+  }
+  // Assign types
+  const all = [];
+  for (let r = 0; r <= MAP_ROWS; r++) for (let c = 0; c < MAP_COLS; c++) if (grid[r][c]) all.push(grid[r][c]);
+  for (const n of all) {
+    const day = Math.min(4, Math.floor(n.r / ROWS_PER_DAY));
+    n.day = day;
+    if (n.r === MAP_ROWS) { n.type = 'boss'; n.venue = 'bridge'; continue; }
+    if (n.r === 0) { n.type = 'gig'; }
+    else if (n.r === 7) { n.type = 'treasure'; }
+    else {
+      const roll = rng();
+      const prevTypes = n.prev.map(p => p.type);
+      if (roll < 0.13 && n.r >= 3) n.type = 'elite';
+      else if (roll < 0.26) n.type = 'shop';
+      else if (roll < 0.47) n.type = 'event';
+      else if (roll < 0.56 && !prevTypes.includes('rest') && n.r % ROWS_PER_DAY !== ROWS_PER_DAY - 1) n.type = 'rest';
+      else if (roll < 0.65) n.type = 'openmic';
+      else n.type = 'gig';
+      // no two shops in a row on the same path
+      if (n.type === 'shop' && prevTypes.includes('shop')) n.type = 'gig';
+      if (n.type === 'event' && prevTypes.every(t => t === 'event') && prevTypes.length) n.type = 'gig';
+    }
+    if (n.type === 'gig' || n.type === 'elite' || n.type === 'openmic') n.venue = rng.pick(DAY_VENUES[day]);
+  }
+  // Guarantee: the last row before each dinner has a gig or elite in most spots (money before meal)
+  for (let d = 0; d < 5; d++) {
+    const r = d * ROWS_PER_DAY + ROWS_PER_DAY - 1;
+    const rowNodes = grid[r].filter(Boolean);
+    if (!rowNodes.some(n => n.type === 'gig' || n.type === 'elite')) { const n = rng.pick(rowNodes); n.type = 'gig'; n.venue = rng.pick(DAY_VENUES[d]); }
+  }
+  // positions (row 0 at bottom)
+  for (const n of all) {
+    n.x = 48 + n.c * 40 + (n.type === 'boss' ? 0 : rng.int(-5, 5));
+    n.y = (MAP_ROWS - n.r) * MAP_ROW_H + 30 + (n.type === 'boss' ? 0 : rng.int(-4, 4));
+  }
+  const boss = grid[MAP_ROWS][3]; boss.x = 48 + 3 * 40; boss.y = 22;
+  return { grid, nodes: all, boss };
+}
+
+// ===== js/scenes.js =====
+// ---------- Scenes: title, map, band, shop, event, rest, treasure, night, endings ----------
+'use strict';
+
+function drawBackdropCity(ctx, t, opts = {}) {
+  // night sky + bay + hills. Used by title and map.
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0820'); grad.addColorStop(0.6, '#1c1640'); grad.addColorStop(1, '#3a2a58');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  // stars
+  const r = makeRng(7);
+  for (let i = 0; i < 70; i++) { const x = r.int(0, W), y = r.int(0, 120); const tw = Math.sin(t * 2 + i) > 0.6; rect(ctx, x, y, 1, 1, tw ? '#fff' : '#8a86b0'); }
+  // moon
+  circle(ctx, 400, 36, 12, '#f4f0d8'); circle(ctx, 405, 33, 11, opts.moonBg || '#0f0c2a');
+}
+
+class TitleScene {
+  constructor() {
+    this.t = 0; this.page = 'main'; this.hasSave = !!RunState.load();
+    this.menu = new Menu([
+      { label: 'NEW RUN', onSelect: () => { RunState.clearSave(); Game.run = RunState.newRun(); Game.run.save(); Game.setScene(new MapScene(true)); } },
+      { label: 'CONTINUE', disabled: !this.hasSave, onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.setScene(r.nightPending ? new NightScene() : new MapScene()); } } },
+      { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
+      { label: 'SOUND: ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = 'SOUND: ' + (Game.muted ? 'OFF' : 'ON'); } },
+    ]);
+    if (Game.touch) this.menu.items.push({ label: 'SCREEN: TURN', onSelect: () => { Game.rotateOverride = !Game.rotated; Game.resize(); } });
+    this.bugs = []; const r = makeRng(3);
+    for (let i = 0; i < 7; i++) this.bugs.push({ x: 40 + i * 60, sp: r.pick(SPECIES_KEYS), inst: r.pick(INSTRUMENT_KEYS), o: r.range(0, 6) });
+  }
+  update(dt) { this.t += dt; }
+  key(code) {
+    if (this.page === 'help') { if (code === 'Escape' || code === 'Enter' || code === 'Space') { this.page = 'main'; Audio.ui('back'); } return; }
+    this.menu.key(code);
+  }
+  click(x, y) { if (this.page === 'help') { this.page = 'main'; return; } this.menu.click(x, y); }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    drawBackdropCity(ctx, this.t);
+    // bridge silhouette
+    rect(ctx, 0, 150, W, 3, '#8a2a1a');
+    for (let x = 60; x < W; x += 200) { rect(ctx, x, 90, 6, 70, '#a03020'); rect(ctx, x + 12, 90, 6, 70, '#a03020'); rect(ctx, x - 2, 88, 22, 4, '#a03020'); }
+    for (let x = 0; x < W; x++) { const c = Math.abs(((x + 40) % 200) - 100) / 100; const y = 150 - Math.round((1 - c * c) * 0 + c * c * 58); if (x % 2 === 0) rect(ctx, x, y, 1, 1, '#c04030'); if (x % 12 === 0) rect(ctx, x, y, 1, 150 - y, '#7a2a1a'); }
+    // fog bank
+    ctx.globalAlpha = 0.35; for (let i = 0; i < 6; i++) { const fx = ((this.t * 8 + i * 90) % (W + 100)) - 50; rect(ctx, fx, 140 + (i % 3) * 5, 70, 8, '#c8c8e0'); } ctx.globalAlpha = 1;
+    // ground
+    rect(ctx, 0, 200, W, 70, '#2a2438'); rect(ctx, 0, 200, W, 2, '#4a4468');
+    // marching bugs
+    for (const b of this.bugs) {
+      const x = ((b.x + this.t * 18) % (W + 40)) - 20;
+      const pose = Math.floor(this.t * 6 + b.o) % 2 ? 'walk' : 'stand';
+      drawBug(ctx, b.sp, x, 178 + Math.round(Math.sin(this.t * 6 + b.o)), { pose, instrument: b.inst });
+    }
+    if (this.page === 'help') { this.drawHelp(ctx); return; }
+    drawText(ctx, 'BUG BUSKER', W / 2, 28, '#ffe14d', { align: 'center', scale: 4, shadow: '#6a3a10' });
+    drawText(ctx, 'ORCHESTRA', W / 2, 52, '#ff9f68', { align: 'center', scale: 3, shadow: '#6a2a10' });
+    drawText(ctx, 'a rhythm roguelike on the streets of san francisco', W / 2, 74, '#cfc9e6', { align: 'center' });
+    panel(ctx, W / 2 - 64, 98, 128, 60);
+    this.menu.draw(ctx, W / 2 - 58, 106, 116, 12);
+    drawText(ctx, Game.touch ? 'TAP TO CHOOSE' : 'ARROWS + ENTER  /  MOUSE  /  M = MUTE', W / 2, 232, '#8a86b0', { align: 'center' });
+  }
+  drawHelp(ctx) {
+    panel(ctx, 20, 14, W - 40, H - 28);
+    let y = 22;
+    drawText(ctx, 'HOW TO PLAY', W / 2, y, '#ffe14d', { align: 'center', scale: 2 }); y += 16;
+    const lines = [
+      'You lead a street band of bug musicians. Travel the map of San Francisco (Slay the Spire style paths), busk for tips, and feed your band a full meal every night.',
+      '',
+      'GIGS are skill-based rhythm games. Each instrument plays differently:',
+      'GUITAR / BASS / KEYBOARD / TAMBOURINE: falling notes in lanes (Guitar Hero). Hold long notes.',
+      'TAIKO DRUMS: red DON = F or J, blue KA = D or K. Big notes: hit F+J together. Mash the ROLL bars.',
+      'SAXOPHONE: hold SPACE for each phrase, release on the end marker. Manage your breath meter.',
+      'TRUMPET: press the lit valve combination (J K L) together, on the beat.',
+      'VIOLIN: bow UP (arrow up / W) or DOWN (arrow down / S) on the marker. Hold long bows.',
+      '',
+      'With several band members, the song switches instruments every 4 bars. Watch the SWITCH warning!',
+      'Hype rises with PERFECT hits and drops with misses. Hyped crowds stop, watch and tip. Combos trigger cheers.',
+      'Each night dinner costs money per member. A starving bug leaves. If YOU starve, the run ends.',
+      'Shops sell instruments, relics and snacks. Events, rests and open mics hold surprises and recruits.',
+      '',
+      'On a phone or tablet: tap anything to choose it, drag the map to scroll, and play gigs with the big pads along the bottom of the screen. Hold a pad for hold notes.',
+      '',
+      'Press ENTER or tap to go back.',
+    ];
+    for (const l of lines) { y += drawWrapped(ctx, l, 28, y, 108, l.startsWith('GIG') || l.includes(':') && l === l.toUpperCase() ? '#ffe680' : '#e0dcf0', 7) * 7 + 1; }
+  }
+}
+
+// ---------- Map ----------
+class MapScene {
+  constructor(intro) {
+    this.t = 0; this.camY = 0; this.introT = intro ? 2.2 : 0; this.dayBanner = intro ? 2.5 : 0;
+    this.refresh();
+  }
+  enter() { const r = Game.run; if (r.dayBannerPending) { this.dayBanner = 2.5; r.dayBannerPending = false; } }
+  refresh() {
+    const r = Game.run; const cur = r.current;
+    this.avail = cur ? cur.next.slice() : r.map.grid[0].filter(Boolean);
+    this.sel = 0;
+    const focusY = cur ? cur.y : 480;
+    this.camY = clamp(focusY - 175, 0, 300);
+  }
+  update(dt) {
+    this.t += dt; this.introT = Math.max(0, this.introT - dt); this.dayBanner = Math.max(0, this.dayBanner - dt);
+    this.userPan = Math.max(0, (this.userPan || 0) - dt);
+    if (this.userPan > 0) return;
+    const cur = Game.run.current; const focusY = cur ? cur.y : 480;
+    const target = clamp(focusY - 175, 0, 300);
+    this.camY = lerp(this.camY, target, Math.min(1, dt * 4));
+  }
+  key(code) {
+    if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + this.avail.length) % this.avail.length; Audio.ui('move'); }
+    else if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % this.avail.length; Audio.ui('move'); }
+    else if (code === 'Enter' || code === 'Space' || code === 'KeyZ') { this.go(this.avail[this.sel]); }
+    else if (code === 'Tab' || code === 'KeyB') { Game.setScene(new BandScene()); }
+    else if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); }
+  }
+  click(x, y) { this.tap(x, y); }
+  tap(x, y) {
+    if (y >= H - 14 && x >= W - 148) { Game.setScene(new BandScene()); return; }
+    if (y >= H - 14 && x >= W - 300 && x < W - 152) { Game.run.save(); Game.setScene(new TitleScene()); return; }
+    const reach = Game.touch ? 16 : 10;
+    let best = null, bestD = Infinity;
+    for (const n of this.avail) {
+      const sy = n.y - this.camY; const d = Math.hypot(x - n.x, y - sy);
+      if (d < reach && d < bestD) { best = n; bestD = d; }
+    }
+    if (best) this.go(best);
+  }
+  pointerDown(x, y, id) { this.drag = { y, camY: this.camY, moved: 0, id }; }
+  pointerMove(x, y, id) {
+    if (!this.drag || this.drag.id !== id) return;
+    const dy = y - this.drag.y;
+    this.drag.moved = Math.max(this.drag.moved, Math.abs(dy));
+    if (this.drag.moved > 5 && x < 332) { this.camY = clamp(this.drag.camY - dy, 0, 300); this.userPan = 2.5; }
+  }
+  pointerUp(x, y, id) {
+    if (!this.drag || this.drag.id !== id) return;
+    const moved = this.drag.moved; this.drag = null;
+    if (moved <= 5 && x >= 0) this.tap(x, y);
+  }
+  hover(x, y) { this.avail.forEach((n, i) => { const sy = n.y - this.camY; if (Math.abs(x - n.x) < 10 && Math.abs(y - sy) < 10) this.sel = i; }); }
+  go(node) {
+    const r = Game.run; Audio.ui('select');
+    node.visited = true; r.current = node;
+    switch (node.type) {
+      case 'gig': case 'elite': case 'boss': case 'openmic': Game.setScene(new PerformScene(node)); break;
+      case 'shop': Game.setScene(new ShopScene(node)); break;
+      case 'event': Game.setScene(new EventScene(node)); break;
+      case 'rest': Game.setScene(new RestScene(node)); break;
+      case 'treasure': Game.setScene(new TreasureScene(node)); break;
+    }
+  }
+  nodeColor(n) { return { gig: '#6fb8ff', elite: '#ffd040', boss: '#ff5a5a', shop: '#f0a050', event: '#80d0ff', rest: '#d05070', treasure: '#ffd040', openmic: '#c58bff' }[n.type] || '#fff'; }
+  nodeLabel(n) { return { gig: 'GIG', elite: 'BIG GIG', boss: 'FINALE', shop: 'MUSIC SHOP', event: '???', rest: 'REST', treasure: 'TREASURE', openmic: 'OPEN MIC' }[n.type]; }
+  draw(ctx) {
+    const r = Game.run; const cam = this.camY;
+    drawBackdropCity(ctx, this.t, { moonBg: '#0d0a26' });
+    // bay water on the right of map area, hills left
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 13, 330, H - 13); ctx.clip();
+    for (let y = 0; y < H; y += 1) { const wy = y + cam; if ((wy + Math.floor(this.t * 6)) % 8 === 0) rect(ctx, 250 + Math.sin(wy * 0.05) * 20, y, 80, 1, '#2a3a70'); }
+    rect(ctx, 0, 13, 330, H, 'rgba(20,16,44,0.35)');
+    // districts / streets grid faint
+    for (let gy = -((cam) % 30); gy < H; gy += 30) rect(ctx, 0, gy, 330, 1, 'rgba(120,110,170,0.12)');
+    for (let gx = 0; gx < 330; gx += 40) rect(ctx, gx + 8, 13, 1, H, 'rgba(120,110,170,0.12)');
+    this.drawLandmarks(ctx, cam);
+    // day separators
+    for (let d = 1; d <= 5; d++) {
+      const rowY = (MAP_ROWS - (d * ROWS_PER_DAY - 0.5)) * MAP_ROW_H + 30 - cam;
+      if (rowY < 13 || rowY > H) continue;
+      dashedLine(ctx, 0, rowY, 330, rowY, '#6b5f9a', 4, 4, this.t * 10);
+      rect(ctx, 2, rowY - 8, textWidth('NIGHTFALL: DINNER ' + d) + 4, 8, '#0a0820');
+      drawText(ctx, 'NIGHTFALL: DINNER ' + d, 4, rowY - 7, '#9a8fd0');
+      if (d < 5) { const lbl = 'DAY ' + (d + 1) + ': ' + DAY_NAMES[d].toUpperCase(); rect(ctx, 2, rowY + 2, textWidth(lbl) + 4, 8, '#0a0820'); drawText(ctx, lbl, 4, rowY + 3, '#6b5f9a'); }
+    }
+    // edges
+    for (const n of r.map.nodes) for (const m of n.next) {
+      const onPath = n.visited && m.visited;
+      const avail = n === r.current && this.avail.includes(m);
+      const col = onPath ? '#ffe680' : avail ? '#cfc9e6' : '#4a4470';
+      dashedLine(ctx, n.x, n.y - cam, m.x, m.y - cam, col, 2, 3, avail ? this.t * 12 : 0);
+    }
+    // nodes
+    for (const n of r.map.nodes) {
+      const y = n.y - cam; if (y < 8 || y > H + 8) continue;
+      const isCur = n === r.current, isAvail = this.avail.includes(n);
+      const big = n.type === 'boss' || n.type === 'elite';
+      const rad = big ? 9 : 7;
+      const pulse = isAvail ? Math.round(Math.sin(this.t * 6) * 1.5 + 1.5) : 0;
+      if (isAvail) ringPx(ctx, n.x, y, rad + 3 + pulse, this.avail[this.sel] === n ? '#fff' : '#cfc9e6');
+      circle(ctx, n.x, y, rad, isCur ? '#ffe680' : n.visited ? '#3a3560' : '#1a1730');
+      ringPx(ctx, n.x, y, rad, n.visited && !isCur ? '#6b5f9a' : this.nodeColor(n));
+      const ic = iconSprite(n.type);
+      ctx.globalAlpha = n.visited && !isCur ? 0.5 : 1;
+      ctx.drawImage(ic, n.x - 4, y - 4); ctx.globalAlpha = 1;
+    }
+    // party marker
+    if (r.current) { const y = r.current.y - cam; drawBug(ctx, r.members[0].species, r.current.x - 8, y - 26 + Math.round(Math.sin(this.t * 5)), { pose: 'stand', instrument: r.members[0].instrument }); }
+    else { const n = this.avail[this.sel]; drawText(ctx, 'START HERE', n.x, n.y - cam + 12, '#ffe680', { align: 'center', shadow: '#000' }); }
+    // selected tooltip
+    const s = this.avail[this.sel];
+    if (s) {
+      const ty = s.y - cam - 22 - (s.type === 'boss' ? 6 : 0);
+      const label = this.nodeLabel(s) + (s.venue ? ': ' + VENUES[s.venue].name.toUpperCase() : '');
+      const tw = textWidth(label) + 8; const tx = clamp(s.x - tw / 2, 2, 330 - tw);
+      rect(ctx, tx, ty - 2, tw, 9, '#000'); drawText(ctx, label, tx + 4, ty, this.nodeColor(s));
+    }
+    ctx.restore();
+    // right panel
+    this.drawPanel(ctx);
+    Game.drawRunHud(ctx);
+    if (this.dayBanner > 0) {
+      ctx.globalAlpha = clamp(this.dayBanner, 0, 1);
+      rect(ctx, 0, 110, W, 40, '#000');
+      drawText(ctx, 'DAY ' + (r.day + 1), W / 2, 116, '#ffe14d', { align: 'center', scale: 2 });
+      drawText(ctx, DAY_NAMES[Math.min(4, r.day)].toUpperCase(), W / 2, 134, '#fff', { align: 'center' });
+      ctx.globalAlpha = 1;
+    }
+  }
+  drawLandmarks(ctx, cam) {
+    // world-space decorations kept clear of the node columns (nodes span x 43..295)
+    const y0 = -cam;
+    // Golden Gate bridge at the top
+    rect(ctx, 0, y0 + 40, 330, 2, '#c03a2a');
+    for (const bx of [70, 210]) { rect(ctx, bx, y0 + 8, 4, 34, '#c03a2a'); rect(ctx, bx + 8, y0 + 8, 4, 34, '#c03a2a'); rect(ctx, bx - 1, y0 + 8, 14, 2, '#c03a2a'); }
+    for (let x = 0; x < 330; x += 3) { const c = Math.abs(((x + 70) % 140) - 70) / 70; rect(ctx, x, y0 + 12 + Math.round(c * c * 28), 1, 1, '#e05040'); }
+    // Coit tower + Transamerica pyramid on the bay side
+    rect(ctx, 318, y0 + 150, 5, 22, '#d8d0c0'); rect(ctx, 317, y0 + 148, 7, 3, '#e8e0d0');
+    for (let i = 0; i < 12; i++) rect(ctx, 302 + i / 2, y0 + 205 + i, 12 - i, 1, '#c8c8d8');
+    rect(ctx, 307, y0 + 195, 2, 10, '#e0e0f0');
+    // painted ladies
+    const cols = ['#c86a8a', '#6a9ac8', '#c8b06a', '#8ac86a', '#a86ac8'];
+    for (let i = 0; i < 5; i++) { const x = 300 + i * 6; rect(ctx, x, y0 + 382, 5, 14, cols[i]); rect(ctx, x + 1, y0 + 379, 3, 3, shade(cols[i], -30)); rect(ctx, x + 2, y0 + 386, 1, 3, '#fff0c0'); }
+    // Sutro tower on the ocean side
+    rect(ctx, 14, y0 + 430, 2, 40, '#c04040'); rect(ctx, 20, y0 + 430, 2, 40, '#c04040'); rect(ctx, 8, y0 + 436, 20, 2, '#c04040'); rect(ctx, 10, y0 + 450, 16, 2, '#c04040');
+    // Dolores park palms
+    for (let i = 0; i < 2; i++) ctx.drawImage(propSprite('tree'), 302 + i * 14, y0 + 440);
+    drawText(ctx, 'BAY', 308, y0 + 300, '#3a5aa0'); drawText(ctx, 'OCEAN', 4, y0 + 240, '#3a5aa0');
+  }
+  drawPanel(ctx) {
+    const r = Game.run;
+    panel(ctx, 332, 14, W - 334, H - 16);
+    let y = 20;
+    drawText(ctx, 'THE BAND', 340, y, '#ffe14d'); y += 9;
+    for (const m of r.members) {
+      drawBug(ctx, m.species, 338, y - 2, { pose: 'stand', instrument: m.instrument });
+      drawText(ctx, m.name.toUpperCase(), 358, y, '#fff');
+      drawText(ctx, INSTRUMENTS[m.instrument].name, 358, y + 7, '#cfc9e6');
+      // stamina bar
+      rect(ctx, 358, y + 14, 60, 3, '#222'); rect(ctx, 358, y + 14, 60 * m.stamina / 100, 3, m.stamina > 50 ? '#6be585' : m.stamina > 25 ? '#ffd166' : '#ff5a5a');
+      drawText(ctx, 'SK' + m.skill, 422, y + 7, '#9a8fd0');
+      drawText(ctx, '★'.repeat(m.quality), 422, y, '#ffe680');
+      if (m.hunger > 0) drawText(ctx, m.hunger >= 2 ? 'STARVING' : 'HUNGRY', 422, y + 13, m.hunger >= 2 ? '#ff5a5a' : '#ff9f68');
+      y += 20;
+    }
+    y += 2; drawText(ctx, 'RELICS', 340, y, '#ffe14d'); y += 8;
+    r.relics.forEach((k, i) => ctx.drawImage(iconSprite(ITEMS[k].icon), 340 + (i % 14) * 10, y + Math.floor(i / 14) * 10));
+    if (!r.relics.length) drawText(ctx, '(none yet)', 340, y, '#6b5f9a');
+    y += 10 + Math.floor(Math.max(0, r.relics.length - 1) / 14) * 10;
+    drawText(ctx, 'ITEMS', 340, y, '#ffe14d'); y += 8;
+    r.consumables.forEach((k, i) => ctx.drawImage(iconSprite(ITEMS[k].icon), 340 + i * 10, y));
+    if (!r.consumables.length) drawText(ctx, '(none)', 340, y, '#6b5f9a');
+    y += 12;
+    drawText(ctx, 'TONIGHT\'S DINNER:', 340, y, '#cfc9e6'); y += 7;
+    drawText(ctx, fmtMoney(r.mealPrice()) + ' x ' + r.members.length + ' = ' + fmtMoney(r.mealPrice() * r.members.length), 340, y, r.money >= r.mealPrice() * r.members.length ? '#6be585' : '#ff9f68'); y += 10;
+    rect(ctx, W - 148, H - 14, 146, 12, '#3a3560'); frame(ctx, W - 148, H - 14, 146, 12, '#8a80c0');
+    drawText(ctx, Game.touch ? 'BAND & ITEMS' : 'TAB: BAND & ITEMS', W - 75, H - 11, '#fff', { align: 'center' });
+    rect(ctx, W - 300, H - 14, 148, 12, '#241f38'); frame(ctx, W - 300, H - 14, 148, 12, '#6b5f9a');
+    drawText(ctx, Game.touch ? 'SAVE & QUIT' : 'ESC: SAVE & QUIT', W - 226, H - 11, '#cfc9e6', { align: 'center' });
+    if (Game.touch) drawText(ctx, 'DRAG TO SCROLL - TAP A GLOWING STOP', 4, H - 11, '#6b5f9a');
+  }
+}
+
+// ---------- Band management ----------
+class BandScene {
+  constructor() { this.sel = 0; this.buildMenu(); }
+  buildMenu() {
+    const r = Game.run; const m = r.members[this.sel];
+    const items = [];
+    r.consumables.forEach((k, i) => {
+      if (k === 'bread') items.push({ label: 'Use Bread Crumbs on ' + m.name, icon: 'bread', disabled: m.hunger === 0, onSelect: () => { m.hunger = Math.max(0, m.hunger - 1); r.consumables.splice(i, 1); Audio.ui('eat'); this.buildMenu(); } });
+      if (k === 'bar') items.push({ label: 'Use Energy Bar on ' + m.name, icon: 'bar', disabled: m.stamina >= 100, onSelect: () => { m.stamina = Math.min(100, m.stamina + 40); r.consumables.splice(i, 1); Audio.ui('eat'); this.buildMenu(); } });
+    });
+    r.spareInstruments.forEach((s, i) => {
+      items.push({ label: 'Give ' + INSTRUMENTS[s.kind].name + ' ' + '★'.repeat(s.quality) + ' to ' + m.name, icon: 'case', onSelect: () => { const old = { kind: m.instrument, quality: m.quality }; m.instrument = s.kind; m.quality = s.quality; r.spareInstruments.splice(i, 1, old); this.buildMenu(); } });
+    });
+    if (r.members.length > 1 && !m.leader) items.push({ label: 'Part ways with ' + m.name, icon: 'event', onSelect: () => { r.members.splice(this.sel, 1); this.sel = 0; this.buildMenu(); } });
+    items.push({ label: 'Sound: ' + (Game.muted ? 'OFF' : 'ON'), icon: 'metronome', onSelect: () => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); this.buildMenu(); } });
+    items.push({ label: 'Back to map', onSelect: () => { r.save(); Game.setScene(new MapScene()); } });
+    this.menu = new Menu(items);
+  }
+  update() { }
+  key(code) {
+    if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + Game.run.members.length) % Game.run.members.length; this.buildMenu(); Audio.ui('move'); return; }
+    if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % Game.run.members.length; this.buildMenu(); Audio.ui('move'); return; }
+    if (code === 'Escape' || code === 'Tab') { Game.run.save(); Game.setScene(new MapScene()); return; }
+    this.menu.key(code);
+  }
+  click(x, y) {
+    Game.run.members.forEach((m, i) => { if (x >= 12 + i * 76 && x < 12 + i * 76 + 72 && y >= 24 && y < 96) { this.sel = i; this.buildMenu(); } });
+    this.menu.click(x, y);
+  }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    const r = Game.run;
+    rect(ctx, 0, 0, W, H, '#14112a');
+    Game.drawRunHud(ctx);
+    drawText(ctx, 'THE BAND  (LEFT/RIGHT to pick a member)', 12, 16, '#ffe14d');
+    r.members.forEach((m, i) => {
+      const x = 12 + i * 76; const sel = i === this.sel;
+      panel(ctx, x, 24, 72, 74, sel ? { border: '#ffe680' } : {});
+      drawBug(ctx, m.species, x + 4, 30, { pose: sel ? 'play' : 'stand', instrument: m.instrument });
+      drawText(ctx, m.name.toUpperCase() + (m.leader ? ' (YOU)' : ''), x + 22, 30, '#fff');
+      drawText(ctx, SPECIES[m.species].name, x + 22, 37, '#cfc9e6');
+      drawText(ctx, INSTRUMENTS[m.instrument].name, x + 4, 50, '#ffe680');
+      drawText(ctx, 'QUALITY ' + '★'.repeat(m.quality), x + 4, 58, '#ffe680');
+      drawText(ctx, 'SKILL ' + m.skill + '  XP ' + m.xp.toFixed(1) + '/3', x + 4, 66, '#9a8fd0');
+      drawText(ctx, 'STAMINA ' + Math.round(m.stamina), x + 4, 74, m.stamina > 50 ? '#6be585' : '#ff9f68');
+      rect(ctx, x + 4, 82, 64, 3, '#222'); rect(ctx, x + 4, 82, 64 * m.stamina / 100, 3, m.stamina > 50 ? '#6be585' : m.stamina > 25 ? '#ffd166' : '#ff5a5a');
+      drawText(ctx, ['FED', 'HUNGRY', 'STARVING'][m.hunger] || 'STARVING', x + 4, 89, ['#6be585', '#ff9f68', '#ff5a5a'][Math.min(2, m.hunger)]);
+    });
+    const m = r.members[this.sel];
+    panel(ctx, 12, 104, 250, 60);
+    drawText(ctx, INSTRUMENTS[m.instrument].name.toUpperCase() + ': ' + INSTRUMENTS[m.instrument].keyNames.join(' '), 18, 110, '#ffe680');
+    drawWrapped(ctx, INSTRUMENTS[m.instrument].desc, 18, 118, 58, '#e0dcf0');
+    drawWrapped(ctx, 'Skill boosts tips when they back you up. Stamina and hunger shrink your timing windows. STARVING bugs leave at dawn.', 18, 138, 58, '#9a8fd0');
+    panel(ctx, 270, 104, 198, 60);
+    drawText(ctx, 'RELICS', 276, 110, '#ffe14d');
+    r.relics.forEach((k, i) => { ctx.drawImage(iconSprite(ITEMS[k].icon), 276 + (i % 9) * 20, 118 + Math.floor(i / 9) * 10); });
+    if (this.hoverRelic != null) { }
+    const relicIdx = Math.floor((Game.mouse.x - 276) / 20) + Math.floor((Game.mouse.y - 118) / 10) * 9;
+    if (Game.mouse.x >= 276 && Game.mouse.y >= 118 && Game.mouse.y < 138 && r.relics[relicIdx]) { drawWrapped(ctx, ITEMS[r.relics[relicIdx]].name + ': ' + ITEMS[r.relics[relicIdx]].desc, 276, 140, 46, '#e0dcf0'); }
+    else drawText(ctx, 'hover a relic for details', 276, 140, '#6b5f9a');
+    panel(ctx, 12, 170, W - 24, H - 176);
+    drawText(ctx, 'ACTIONS', 18, 176, '#ffe14d');
+    this.menu.draw(ctx, 18, 186, W - 36, 10);
+  }
+}
+
+// ---------- Shop ----------
+class ShopScene {
+  constructor(node) {
+    this.node = node; const r = Game.run;
+    if (!node.stock) {
+      const rng = r.rng; const pm = 1 + r.day * 0.12;
+      const stock = [];
+      const ik = rng.shuffle(INSTRUMENT_KEYS.filter(k => k !== 'tambourine')).slice(0, 2);
+      for (const k of ik) { const q = rng.int(1, Math.min(3, 1 + r.day)); stock.push({ kind: 'instrument', key: k, quality: q, price: Math.round(INSTRUMENTS[k].price * (0.7 + q * 0.3) * pm) }); }
+      const relics = rng.shuffle(RELIC_KEYS.filter(k => !r.relics.includes(k))).slice(0, 3);
+      for (const k of relics) stock.push({ kind: 'relic', key: k, price: Math.round(ITEMS[k].price * pm) });
+      for (const k of rng.shuffle(USE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(ITEMS[k].price * pm) });
+      if (rng.chance(0.45)) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
+      node.stock = stock;
+    }
+    this.mode = 'shop'; this.msg = 'Welcome! Everything is slightly overpriced. It\'s San Francisco.'; this.buildMenu();
+  }
+  buildMenu() {
+    const r = Game.run; const items = [];
+    for (const s of this.node.stock) {
+      if (s.sold) continue;
+      const afford = r.money >= s.price;
+      if (s.kind === 'instrument') items.push({ label: INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality), right: fmtMoney(s.price), icon: 'case', disabled: !afford, stock: s, onSelect: () => this.pickMember(s) });
+      else if (s.kind === 'recruit') items.push({ label: 'HIRE ' + s.member.name + ' the ' + SPECIES[s.member.species].name + ' (' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + ')', right: fmtMoney(s.price), icon: 'openmic', disabled: !afford || r.members.length >= 6, stock: s, onSelect: () => { r.money -= s.price; s.sold = true; r.members.push(s.member); Audio.ui('cash'); this.msg = s.member.name + ' joins the band!'; this.buildMenu(); } });
+      else items.push({ label: ITEMS[s.key].name, right: fmtMoney(s.price), icon: ITEMS[s.key].icon, disabled: !afford || (s.kind === 'use' && r.consumables.length >= 6), stock: s, onSelect: () => { r.money -= s.price; s.sold = true; if (s.kind === 'relic') r.addRelic(s.key); else r.consumables.push(s.key); Audio.ui('cash'); this.msg = 'Bought ' + ITEMS[s.key].name + '.'; this.buildMenu(); } });
+    }
+    items.push({ label: 'Leave the shop', onSelect: () => Game.afterNode() });
+    this.menu = new Menu(items);
+  }
+  pickMember(s) {
+    const r = Game.run; this.mode = 'member';
+    this.sub = new Menu(r.members.map(m => ({ label: m.name + ' (' + INSTRUMENTS[m.instrument].name + ' ★'.repeat(m.quality) + ')', onSelect: () => {
+      r.money -= s.price; s.sold = true; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; Audio.ui('cash');
+      this.msg = m.name + ' now plays ' + INSTRUMENTS[s.key].name + '. Old instrument stored as a spare.'; this.mode = 'shop'; this.buildMenu();
+    } })).concat([{ label: 'Cancel', onSelect: () => { this.mode = 'shop'; } }]));
+  }
+  update() { }
+  key(code) {
+    if (this.mode === 'member') { if (code === 'Escape') { this.mode = 'shop'; return; } this.sub.key(code); return; }
+    if (code === 'Escape') { Game.afterNode(); return; }
+    this.menu.key(code);
+  }
+  click(x, y) { (this.mode === 'member' ? this.sub : this.menu).click(x, y); }
+  hover(x, y) { (this.mode === 'member' ? this.sub : this.menu).hover(x, y); }
+  draw(ctx) {
+    const r = Game.run;
+    rect(ctx, 0, 0, W, H, '#1a1420');
+    // shop interior
+    rect(ctx, 0, 13, W, 110, '#2a1e2a'); rect(ctx, 0, 123, W, H, '#3a2a20');
+    for (let x = 0; x < W; x += 24) rect(ctx, x, 123, 1, H, '#2a1a10');
+    for (let i = 0; i < 12; i++) { const k = INSTRUMENT_KEYS[i % INSTRUMENT_KEYS.length]; const s = instrumentSprite(k); ctx.drawImage(s, 260 + (i % 6) * 34, 30 + Math.floor(i / 6) * 40); }
+    rect(ctx, 250, 26, 220, 1, '#6a4a30'); rect(ctx, 250, 66, 220, 1, '#6a4a30'); rect(ctx, 250, 106, 220, 1, '#6a4a30');
+    drawBug(ctx, 'weevil', 300, 100, { pose: 'stand', hat: 'top' });
+    rect(ctx, 280, 118, 60, 14, '#5a3a20'); drawText(ctx, 'COUNTER', 310, 122, '#c0a080', { align: 'center' });
+    drawText(ctx, 'WEEVIL\'S MUSIC EMPORIUM', 12, 18, '#ffe14d', { scale: 2 });
+    panel(ctx, 8, 32, 236, 130);
+    (this.mode === 'member' ? this.sub : this.menu).draw(ctx, 14, 38, 224, 10);
+    // details
+    panel(ctx, 8, 166, W - 16, H - 170);
+    const it = this.mode === 'member' ? null : this.menu.items[this.menu.idx];
+    if (this.mode === 'member') drawText(ctx, 'Who gets the new instrument?', 14, 172, '#ffe680');
+    else if (it && it.stock) {
+      const s = it.stock;
+      if (s.kind === 'instrument') { drawText(ctx, INSTRUMENTS[s.key].name.toUpperCase() + ' - ' + INSTRUMENTS[s.key].keyNames.join(' '), 14, 172, '#ffe680'); drawWrapped(ctx, INSTRUMENTS[s.key].desc + ' Quality stars raise tips.', 14, 180, 110, '#e0dcf0'); }
+      else if (s.kind === 'recruit') { drawText(ctx, 'SESSION MUSICIAN', 14, 172, '#ffe680'); drawWrapped(ctx, 'A new band member. More members = more instruments to juggle, bigger backing bonus, and one more mouth to feed each night.', 14, 180, 110, '#e0dcf0'); drawBug(ctx, s.member.species, W - 40, 176, { pose: 'play', instrument: s.member.instrument }); }
+      else { drawText(ctx, ITEMS[s.key].name.toUpperCase() + (s.kind === 'relic' ? ' (RELIC)' : ' (CONSUMABLE)'), 14, 172, '#ffe680'); drawWrapped(ctx, ITEMS[s.key].desc, 14, 180, 110, '#e0dcf0'); }
+    } else drawText(ctx, this.msg, 14, 172, '#e0dcf0');
+    drawText(ctx, this.msg, 14, H - 12, '#9a8fd0');
+    Game.drawRunHud(ctx);
+  }
+}
+
+// ---------- Event ----------
+class EventScene {
+  constructor(node) {
+    const r = Game.run; r.seenEvents = r.seenEvents || [];
+    let pool = EVENTS.filter(e => !r.seenEvents.includes(e.id));
+    if (!pool.length) { r.seenEvents = []; pool = EVENTS; }
+    this.ev = r.rng.pick(pool); r.seenEvents.push(this.ev.id);
+    this.log = []; this.done = false; this.t = 0;
+    this.menu = new Menu(this.ev.choices.map(c => ({ label: c.label, disabled: c.req ? !c.req(r) : false, onSelect: () => {
+      c.apply(r, (s) => this.log.push(s)); this.done = true; Audio.ui('select');
+      this.menu = new Menu([{ label: 'Continue', onSelect: () => Game.afterNode() }]);
+    } })));
+  }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    drawBackdropCity(ctx, this.t);
+    rect(ctx, 0, 200, W, 70, '#2a2438');
+    const r = Game.run;
+    r.members.forEach((m, i) => drawBug(ctx, m.species, 30 + i * 22, 182 + Math.round(Math.sin(this.t * 3 + i)), { pose: 'stand', instrument: m.instrument }));
+    panel(ctx, 40, 24, W - 80, 160);
+    ctx.drawImage(iconSprite(this.ev.icon), 48, 30);
+    drawText(ctx, this.ev.title.toUpperCase(), 60, 30, '#ffe14d', { scale: 2 });
+    let y = 48;
+    y += drawWrapped(ctx, this.ev.text, 48, y, 96, '#e0dcf0') * 7 + 6;
+    if (!this.done) { drawText(ctx, 'WHAT DO YOU DO?', 48, y, '#9a8fd0'); y += 9; this.menu.draw(ctx, 48, y, W - 100, 11); }
+    else { for (const l of this.log) { y += drawWrapped(ctx, l, 48, y, 96, '#ffe680') * 7 + 2; } this.menu.draw(ctx, 48, y + 6, W - 100, 11); }
+    Game.drawRunHud(ctx);
+  }
+}
+
+// ---------- Rest ----------
+class RestScene {
+  constructor(node) {
+    const r = Game.run; this.t = 0; this.log = null;
+    this.menu = new Menu([
+      { label: 'Nap in the sun: +45 stamina for everyone', icon: 'rest', onSelect: () => { r.members.forEach(m => m.stamina = Math.min(100, m.stamina + 45)); this.finish('Everyone dozes off. Zzz. Stamina restored.'); } },
+      { label: 'Jam session: +1 skill to your least skilled member (-10 stamina all)', icon: 'metronome', onSelect: () => { const m = r.members.slice().sort((a, b) => a.skill - b.skill)[0]; m.skill = Math.min(10, m.skill + 1); r.members.forEach(x => x.stamina = Math.max(0, x.stamina - 10)); Audio.ui('levelup'); this.finish(m.name + ' finally nails that tricky part. Skill +1!'); } },
+      { label: 'Repair instruments: +1 quality to a random 1★ instrument (or +$6)', icon: 'case', onSelect: () => { const c = r.members.filter(m => m.quality < 3); if (c.length) { const m = r.rng.pick(c); m.quality++; this.finish(m.name + '\'s ' + INSTRUMENTS[m.instrument].name + ' sounds better than ever. Quality +1!'); } else { r.money += 6; this.finish('Nothing to fix, so you polish everything and find $6 in a case pocket.'); } } },
+    ]);
+  }
+  finish(msg) { this.log = msg; Audio.ui('select'); this.menu = new Menu([{ label: 'Continue', onSelect: () => Game.afterNode() }]); }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    const g = Game.run;
+    const grad = ctx.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, '#f0a060'); grad.addColorStop(1, '#6a3a80'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    circle(ctx, 380, 60, 16, '#fff0a0');
+    rect(ctx, 0, 150, W, 120, '#3f8a3f'); rect(ctx, 0, 150, W, 2, '#6ab04a');
+    for (let i = 0; i < 5; i++) ctx.drawImage(propSprite('tree'), 20 + i * 100, 132);
+    ctx.drawImage(propSprite('bench'), 300, 168);
+    g.members.forEach((m, i) => drawBug(ctx, m.species, 60 + i * 30, 170, { pose: Math.floor(this.t * 2 + i) % 2 ? 'stand' : 'play', instrument: m.instrument }));
+    panel(ctx, 30, 20, W - 60, 90);
+    drawText(ctx, 'A QUIET MOMENT', 38, 26, '#ffe14d', { scale: 2 });
+    if (!this.log) { drawText(ctx, 'The band finds a patch of grass. How do you spend the afternoon?', 38, 44, '#e0dcf0'); this.menu.draw(ctx, 38, 58, W - 76, 11); }
+    else { drawWrapped(ctx, this.log, 38, 44, 100, '#ffe680'); this.menu.draw(ctx, 38, 70, W - 76, 11); }
+    Game.drawRunHud(ctx);
+  }
+}
+
+// ---------- Treasure ----------
+class TreasureScene {
+  constructor(node) {
+    const r = Game.run; this.t = 0;
+    const picks = []; for (let i = 0; i < 3; i++) { const k = r.randomNewRelic(picks); if (k) picks.push(k); }
+    this.picks = picks;
+    const items = picks.map(k => ({ label: ITEMS[k].name, icon: ITEMS[k].icon, key: k, onSelect: () => { r.addRelic(k); Audio.ui('fanfare'); Game.afterNode(); } }));
+    items.push({ label: picks.length ? 'Take $25 instead' : 'Take $40', onSelect: () => { r.money += picks.length ? 25 : 40; Audio.ui('cash'); Game.afterNode(); } });
+    this.menu = new Menu(items);
+  }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    rect(ctx, 0, 0, W, H, '#1a1428');
+    drawText(ctx, 'LOST & FOUND', W / 2, 24, '#ffe14d', { align: 'center', scale: 2 });
+    drawText(ctx, 'Someone left a box of goodies by the cable car turnaround. Pick one.', W / 2, 44, '#e0dcf0', { align: 'center' });
+    ctx.drawImage(iconSprite('treasure'), W / 2 - 16, 60 + Math.round(Math.sin(this.t * 3)), 32, 32);
+    panel(ctx, W / 2 - 110, 100, 220, 70);
+    this.menu.draw(ctx, W / 2 - 104, 106, 208, 12);
+    const it = this.menu.items[this.menu.idx];
+    if (it && it.key) drawWrapped(ctx, ITEMS[it.key].desc, W / 2 - 104, 180, 52, '#ffe680');
+    Game.drawRunHud(ctx);
+  }
+}
+
+// ---------- Night / dinner ----------
+class NightScene {
+  constructor() {
+    const r = Game.run; this.t = 0; this.phase = 'dinner'; this.log = [];
+    const price = r.mealPrice(), n = r.members.length, total = price * n;
+    const canFeed = Math.min(n, Math.floor(r.money / price));
+    this.menu = new Menu([
+      { label: 'Full meal for everyone', right: fmtMoney(total), icon: 'food', disabled: r.money < total, onSelect: () => { r.money -= total; r.members.forEach(m => { m.hunger = 0; m.stamina = Math.min(100, m.stamina + 65); }); Audio.ui('eat'); this.log.push('Burritos the size of a bug\'s head. Everyone is fed and happy.'); this.morning(); } },
+      { label: 'Feed the hungriest ' + canFeed + ' member' + (canFeed === 1 ? '' : 's') + ', others go without', right: fmtMoney(price * canFeed), icon: 'bread', disabled: canFeed === 0 || canFeed === n, onSelect: () => {
+        const sorted = r.members.slice().sort((a, b) => b.hunger - a.hunger || a.stamina - b.stamina);
+        sorted.forEach((m, i) => { if (i < canFeed) { m.hunger = 0; m.stamina = Math.min(100, m.stamina + 65); } else { m.hunger++; m.stamina = Math.min(100, m.stamina + 25); } });
+        r.money -= price * canFeed; Audio.ui('eat'); this.log.push(canFeed + ' ate. ' + sorted.slice(canFeed).map(m => m.name).join(', ') + ' went hungry.'); this.morning(); } },
+      { label: 'Cheap snacks for all (hunger stays as it is)', right: fmtMoney(Math.ceil(price / 2) * n), icon: 'bar', disabled: r.money < Math.ceil(price / 2) * n, onSelect: () => { r.money -= Math.ceil(price / 2) * n; r.members.forEach(m => { m.stamina = Math.min(100, m.stamina + 40); }); Audio.ui('eat'); this.log.push('Vending machine chips. Nobody is full, nobody starves.'); this.morning(); } },
+      { label: 'Skip dinner (everyone +1 hunger)', icon: 'event', onSelect: () => { r.members.forEach(m => { m.hunger++; m.stamina = Math.min(100, m.stamina + 25); }); Audio.ui('sad'); this.log.push('Stomachs growl in a minor key.'); this.morning(); } },
+    ]);
+  }
+  morning() {
+    const r = Game.run; this.phase = 'morning';
+    const leaving = r.members.filter(m => m.hunger >= 2);
+    for (const m of leaving) {
+      if (m.leader) { this.gameOver = 'You collapsed from hunger on the sidewalk. The orchestra disbands.'; continue; }
+      r.members.splice(r.members.indexOf(m), 1);
+      this.log.push(m.name + ' the ' + SPECIES[m.species].name + ' left at dawn to find food elsewhere.');
+    }
+    if (!this.gameOver && r.members.some(m => m.hunger === 1)) this.log.push('Hungry bugs play with shaky hands (smaller timing windows).');
+    r.day++; r.nightPending = false; r.dayBannerPending = true; r.buffs = r.buffs || {};
+    if (!this.gameOver) this.log.push('A new day. ' + DAY_NAMES[Math.min(4, r.day)] + ' awaits.');
+    r.save();
+    this.menu = new Menu([{ label: this.gameOver ? '...' : 'Continue to the map', onSelect: () => { if (this.gameOver) Game.setScene(new GameOverScene(this.gameOver)); else Game.setScene(new MapScene()); } }]);
+  }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  hover(x, y) { this.menu.hover(x, y); }
+  draw(ctx) {
+    const r = Game.run;
+    rect(ctx, 0, 0, W, H, this.phase === 'dinner' ? '#0a0818' : '#3a3a68');
+    if (this.phase === 'dinner') { drawBackdropCity(ctx, this.t); rect(ctx, 0, 160, W, 110, '#1e1a2e'); }
+    else { const grad = ctx.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, '#5a6ab0'); grad.addColorStop(1, '#f0b070'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H); rect(ctx, 0, 160, W, 110, '#3a3448'); }
+    // table
+    rect(ctx, 120, 190, 240, 6, '#7a4a2a'); rect(ctx, 130, 196, 6, 30, '#5a3a1a'); rect(ctx, 344, 196, 6, 30, '#5a3a1a');
+    ctx.drawImage(propSprite('lamp'), 100, 150);
+    r.members.forEach((m, i) => { drawBug(ctx, m.species, 130 + i * 36, 172 + Math.round(Math.sin(this.t * 2 + i) * 0.5), { pose: 'stand' }); if (this.phase === 'morning' && m.hunger === 0) circle(ctx, 146 + i * 36, 188, 3, '#e0c080'); });
+    panel(ctx, 30, 20, W - 60, 120);
+    if (this.phase === 'dinner') {
+      drawText(ctx, 'NIGHTFALL - DAY ' + (r.day + 1), 38, 26, '#ffe14d', { scale: 2 });
+      drawText(ctx, 'Meals cost ' + fmtMoney(r.mealPrice()) + ' per bug tonight. You have ' + fmtMoney(r.money) + '.', 38, 44, '#e0dcf0');
+      drawText(ctx, 'A full meal resets hunger and restores 65 stamina. STARVING bugs (hunger 2) leave at dawn.', 38, 52, '#9a8fd0');
+      this.menu.draw(ctx, 38, 66, W - 76, 12);
+      const hungry = r.members.filter(m => m.hunger > 0);
+      if (hungry.length) drawText(ctx, 'Already hungry: ' + hungry.map(m => m.name + (m.hunger >= 2 ? ' (STARVING)' : '')).join(', '), 38, 124, '#ff9f68');
+    } else {
+      drawText(ctx, 'MORNING', 38, 26, '#ffe14d', { scale: 2 });
+      let y = 44; for (const l of this.log) y += drawWrapped(ctx, l, 38, y, 100, '#e0dcf0') * 7 + 2;
+      this.menu.draw(ctx, 38, Math.max(y + 4, 118), W - 76, 12);
+    }
+    Game.drawRunHud(ctx);
+  }
+}
+
+class GameOverScene {
+  constructor(reason) { this.reason = reason; this.t = 0; RunState.clearSave(); Audio.ui('sad'); this.menu = new Menu([{ label: 'Back to title', onSelect: () => { Game.run = null; Game.setScene(new TitleScene()); } }]); }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  draw(ctx) {
+    rect(ctx, 0, 0, W, H, '#100c14');
+    const r = Game.run;
+    drawText(ctx, 'THE SHOW IS OVER', W / 2, 40, '#ff5a5a', { align: 'center', scale: 3 });
+    drawWrapped(ctx, this.reason, W / 2 - 150, 74, 75, '#e0dcf0');
+    if (r) {
+      drawText(ctx, 'Days survived: ' + (r.day + 1), W / 2, 110, '#cfc9e6', { align: 'center' });
+      drawText(ctx, 'Total tips earned: ' + fmtMoney(r.stats.earned), W / 2, 120, '#cfc9e6', { align: 'center' });
+      drawText(ctx, 'Gigs played: ' + r.stats.gigs + '   Best combo: ' + r.stats.bestCombo, W / 2, 130, '#cfc9e6', { align: 'center' });
+      drawBug(ctx, r.members[0].species, W / 2 - 8, 150, { pose: 'stand' });
+    }
+    this.menu.draw(ctx, W / 2 - 50, 200, 100, 12);
+  }
+}
+
+class VictoryScene {
+  constructor() { this.t = 0; const r = Game.run; RunState.clearSave(); Audio.ui('fanfare'); r.day = 5; this.menu = new Menu([{ label: 'Play again', onSelect: () => { Game.run = null; Game.setScene(new TitleScene()); } }]); }
+  update(dt) { this.t += dt; }
+  key(code) { this.menu.key(code); }
+  click(x, y) { this.menu.click(x, y); }
+  draw(ctx) {
+    const r = Game.run;
+    const grad = ctx.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, '#f0a060'); grad.addColorStop(1, '#3a2a58'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    rect(ctx, 0, 170, W, 100, '#8a2a1a'); rect(ctx, 0, 170, W, 3, '#c04030');
+    for (let x = 40; x < W; x += 160) { rect(ctx, x, 60, 8, 110, '#a03020'); rect(ctx, x + 14, 60, 8, 110, '#a03020'); }
+    drawText(ctx, 'ENCORE!', W / 2, 20, '#ffe14d', { align: 'center', scale: 4, shadow: '#6a3a10' });
+    drawText(ctx, 'Your orchestra headlined the Golden Gate. San Francisco hums your tunes.', W / 2, 50, '#fff', { align: 'center' });
+    r.members.forEach((m, i) => drawBug(ctx, m.species, W / 2 - r.members.length * 12 + i * 24, 150 + Math.round(Math.sin(this.t * 5 + i) * 2), { pose: 'play', instrument: m.instrument }));
+    for (let i = 0; i < 20; i++) { const x = (i * 97 + this.t * 30) % W, y = (i * 53 + this.t * 40) % 170; rect(ctx, x, y, 2, 2, ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff'][i % 5]); }
+    panel(ctx, W / 2 - 100, 70, 200, 60);
+    drawText(ctx, 'FINAL SCORE: ' + fmtMoney(r.money), W / 2, 76, '#ffe680', { align: 'center', scale: 2 });
+    drawText(ctx, 'Total tips: ' + fmtMoney(r.stats.earned) + '   Gigs: ' + r.stats.gigs, W / 2, 96, '#e0dcf0', { align: 'center' });
+    drawText(ctx, 'Best combo: ' + r.stats.bestCombo + '   Perfects: ' + r.stats.perfects + '   Band size: ' + r.members.length, W / 2, 106, '#e0dcf0', { align: 'center' });
+    this.menu.draw(ctx, W / 2 - 50, 118, 100, 12);
+  }
+}
+
+// ===== js/perform.js =====
+// ---------- Performance scene: prep -> play -> results ----------
+'use strict';
+const STAGE_Y = 168, GROUND_Y = 256;
+
+// Static venue backgrounds (drawn once to an offscreen canvas)
+function buildBackground(venueKey, rng) {
+  const v = VENUES[venueKey]; const c = document.createElement('canvas'); c.width = W; c.height = H - STAGE_Y; const ctx = c.getContext('2d');
+  const h = c.height, gy = GROUND_Y - STAGE_Y;
+  const r = makeRng(rng.int(1, 99999));
+  switch (v.bg) {
+    case 'subway': {
+      rect(ctx, 0, 0, W, h, '#2a2a34');
+      for (let x = 0; x < W; x += 8) for (let y = 0; y < gy - 20; y += 6) rect(ctx, x, y, 7, 5, (x / 8 + y / 6) % 2 ? '#c8c0a8' : '#b8b09a');
+      rect(ctx, 0, 24, W, 8, '#2a4a9a'); drawText(ctx, 'MISSION ST      MISSION ST      MISSION ST', 8, 25, '#fff');
+      for (let x = 30; x < W; x += 120) { rect(ctx, x, 0, 12, gy, '#7a7a8a'); rect(ctx, x + 2, 0, 3, gy, '#9a9aaa'); }
+      rect(ctx, 0, gy - 20, W, 20, '#3a3a44'); rect(ctx, 0, gy - 20, W, 1, '#ffe040');
+      rect(ctx, 0, gy, W, h - gy, '#4a4a54'); for (let x = 0; x < W; x += 16) rect(ctx, x, gy, 1, h - gy, '#3a3a44');
+      ctx.drawImage(propSprite('bench'), 300, gy - 6); ctx.drawImage(propSprite('trash'), 400, gy - 6); ctx.drawImage(propSprite('sign'), 200, gy - 30);
+      break;
+    }
+    case 'park': {
+      const grad = ctx.createLinearGradient(0, 0, 0, gy); grad.addColorStop(0, '#7ab8e8'); grad.addColorStop(1, '#d8e8f0'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, gy);
+      circle(ctx, 400, 18, 10, '#fff8c0');
+      for (let i = 0; i < 6; i++) { const x = r.int(0, W), y = r.int(6, 30); rect(ctx, x, y, 16, 4, '#fff'); rect(ctx, x + 4, y - 3, 8, 3, '#fff'); }
+      // skyline far
+      for (let x = 0; x < W; x += 14) { const bh = r.int(8, 26); rect(ctx, x, gy - 30 - bh, 12, bh, '#98a8c8'); }
+      rect(ctx, 0, gy - 30, W, 30, '#5aa050'); rect(ctx, 0, gy - 30, W, 1, '#7ac060');
+      for (let i = 0; i < 6; i++) ctx.drawImage(propSprite('tree'), 10 + i * 85 + r.int(0, 20), gy - 40);
+      rect(ctx, 0, gy, W, h - gy, '#8a8a70'); for (let x = 0; x < W; x += 20) rect(ctx, x, gy, 1, h - gy, '#7a7a60');
+      ctx.drawImage(propSprite('bench'), 360, gy - 6); ctx.drawImage(propSprite('pigeon'), 420, gy - 4);
+      break;
+    }
+    case 'chinatown': {
+      rect(ctx, 0, 0, W, gy, '#3a1a2a');
+      for (let x = 0; x < W; x += 60) { rect(ctx, x, 0, 56, gy, x % 120 ? '#8a2a2a' : '#6a2a3a'); for (let y = 8; y < gy - 24; y += 20) for (let wx = 6; wx < 50; wx += 14) rect(ctx, x + wx, y, 8, 10, r.chance(0.6) ? '#ffd070' : '#302030'); rect(ctx, x, 0, 56, 4, '#d0a030'); }
+      for (let x = 20; x < W; x += 45) ctx.drawImage(propSprite('lantern'), x, 10 + (x % 90 ? 0 : 6));
+      rect(ctx, 0, 6, W, 1, '#552'); rect(ctx, 0, gy - 24, W, 24, '#4a2a2a'); rect(ctx, 0, gy - 24, W, 2, '#d0a030');
+      rect(ctx, 0, gy, W, h - gy, '#5a5050'); for (let x = 0; x < W; x += 12) rect(ctx, x, gy, 1, h - gy, '#4a4040');
+      ctx.drawImage(propSprite('trash'), 440, gy - 6);
+      break;
+    }
+    case 'pier': {
+      const grad = ctx.createLinearGradient(0, 0, 0, gy); grad.addColorStop(0, '#f0a060'); grad.addColorStop(0.5, '#e0c0a0'); grad.addColorStop(1, '#6aa0c0'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, gy);
+      circle(ctx, 80, 22, 9, '#fff0b0');
+      // alcatraz / bridge silhouette
+      rect(ctx, 200, 34, 60, 6, '#6a7a8a'); rect(ctx, 220, 28, 10, 8, '#6a7a8a');
+      rect(ctx, 0, 40, W, gy - 60, '#3a6a9a'); for (let y = 42; y < gy - 20; y += 5) for (let x = (y * 7) % 20; x < W; x += 20) rect(ctx, x, y, 8, 1, '#5a8ab8');
+      rect(ctx, 320, 44, 24, 10, '#f0f0f0'); rect(ctx, 316, 54, 32, 4, '#c04040'); // boat
+      rect(ctx, 0, gy - 20, W, 20, '#8a6a4a'); for (let x = 0; x < W; x += 10) rect(ctx, x, gy - 20, 1, 20, '#6a4a2a');
+      for (let x = 0; x < W; x += 36) { rect(ctx, x, gy - 36, 3, 16, '#5a3a1a'); }
+      rect(ctx, 0, gy - 22, W, 2, '#5a3a1a');
+      rect(ctx, 0, gy, W, h - gy, '#7a5a3a'); for (let x = 0; x < W; x += 10) rect(ctx, x, gy, 1, h - gy, '#5a3a1a');
+      ctx.drawImage(propSprite('seal'), 420, gy - 26); ctx.drawImage(propSprite('lamp'), 250, gy - 32);
+      break;
+    }
+    case 'bridge': {
+      const grad = ctx.createLinearGradient(0, 0, 0, gy); grad.addColorStop(0, '#2a1a4a'); grad.addColorStop(0.6, '#c05060'); grad.addColorStop(1, '#f0a060'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, gy);
+      circle(ctx, 240, 50, 14, '#ffd080');
+      rect(ctx, 0, 56, W, gy - 76, '#4a4a8a');
+      // bridge
+      rect(ctx, 0, 60, W, 4, '#c03a2a');
+      for (let x = 90; x < W; x += 200) { rect(ctx, x, 6, 8, 60, '#c03a2a'); rect(ctx, x + 14, 6, 8, 60, '#c03a2a'); rect(ctx, x - 2, 4, 26, 3, '#c03a2a'); rect(ctx, x - 2, 30, 26, 3, '#c03a2a'); }
+      for (let x = 0; x < W; x++) { const cc = Math.abs(((x + 110) % 200) - 100) / 100; const y = 8 + Math.round(cc * cc * 50); rect(ctx, x, y, 1, 1, '#e05040'); if (x % 10 === 0) rect(ctx, x, y, 1, 60 - y, '#a03020'); }
+      // fog
+      for (let i = 0; i < 12; i++) { ctx.globalAlpha = 0.4; rect(ctx, r.int(-20, W), 40 + r.int(0, 30), r.int(30, 90), 6, '#e0e0f0'); } ctx.globalAlpha = 1;
+      rect(ctx, 0, gy - 20, W, 20, '#5a5a6a'); rect(ctx, 0, gy - 20, W, 2, '#c03a2a');
+      rect(ctx, 0, gy, W, h - gy, '#6a6a74'); for (let x = 0; x < W; x += 14) rect(ctx, x, gy, 1, h - gy, '#5a5a64');
+      ctx.drawImage(propSprite('lamp'), 14, gy - 32); ctx.drawImage(propSprite('lamp'), 400, gy - 32);
+      break;
+    }
+    default: { // street
+      const grad = ctx.createLinearGradient(0, 0, 0, gy); grad.addColorStop(0, v.tall ? '#5a6a9a' : '#f0b070'); grad.addColorStop(1, '#e0d0c0'); ctx.fillStyle = grad; ctx.fillRect(0, 0, W, gy);
+      const cols = v.colorful ? ['#d05070', '#50a0d0', '#e0b040', '#60b060', '#a060c0'] : v.tall ? ['#4a5a7a', '#5a6a8a', '#3a4a6a'] : ['#c8b8a8', '#b0a090', '#d8c8b8', '#a8b8c8'];
+      let x = 0;
+      while (x < W) {
+        const bw = r.int(40, 70), bh = v.tall ? r.int(60, gy - 30) : r.int(30, 58);
+        const col = r.pick(cols);
+        rect(ctx, x, gy - 24 - bh, bw, bh, col); rect(ctx, x, gy - 24 - bh, bw, 3, shade(col, -30));
+        for (let wy = gy - 24 - bh + 8; wy < gy - 30; wy += 12) for (let wx = x + 5; wx < x + bw - 6; wx += 10) rect(ctx, wx, wy, 5, 7, r.chance(0.5) ? '#fff0c0' : '#403050');
+        if (!v.tall && r.chance(0.5)) { rect(ctx, x + 4, gy - 24 - bh - 6, bw - 8, 6, shade(col, -20)); } // bay window / cornice
+        rect(ctx, x, gy - 34, bw, 10, shade(col, -50)); // storefront
+        x += bw + 2;
+      }
+      rect(ctx, 0, gy - 24, W, 24, '#9a9a9a'); rect(ctx, 0, gy - 24, W, 1, '#c0c0c0'); // sidewalk back
+      rect(ctx, 0, gy, W, h - gy, '#a8a8a0'); for (let x = 0; x < W; x += 24) rect(ctx, x, gy, 1, h - gy, '#909088');
+      ctx.drawImage(propSprite('lamp'), 14, gy - 32); ctx.drawImage(propSprite('hydrant'), 300, gy - 6); ctx.drawImage(propSprite('trash'), 440, gy - 6);
+      if (v.hills) { rect(ctx, 0, gy - 24, W, 1, '#8a6a4a'); rect(ctx, 0, gy - 22, W, 1, '#8a6a4a'); }
+      break;
+    }
+  }
+  return c;
+}
+
+class PerformScene {
+  constructor(node) {
+    const r = Game.run; this.node = node; this.venue = VENUES[node.venue] || VENUES.corner;
+    this.mode = node.type; this.t = 0; this.phase = 'prep'; this.paused = false;
+    this.bg = buildBackground(node.venue || 'corner', r.rng);
+    this.difficulty = clamp(Math.round(1 + r.day * 0.9 + (this.mode === 'elite' ? 1 : 0) + (this.mode === 'boss' ? 1.5 : 0) - (this.mode === 'openmic' ? 0.5 : 0)), 1, 6);
+    this.bars = this.mode === 'boss' ? 20 : this.mode === 'elite' ? 16 : this.mode === 'openmic' ? 8 : 12;
+    this.bpm = r.rng.int(this.venue.bpm[0], this.venue.bpm[1]) + r.day * 2;
+    this.song = makeSong(r.rng, this.bpm, this.bars);
+    this.active = r.members.map(m => m.stamina >= 15 || m.leader);
+    this.useCoffee = false; this.useFlyer = false;
+    this.buildPrepMenu();
+    this.train = { x: -600, t: r.rng.range(3, 8) };
+    this.layout();
+    this.pads = []; this.padPointers = new Map(); this.buttons = [];
+  }
+  // Touch play squeezes the street scene and hands the bottom strip to the pads.
+  layout() {
+    const touch = Game.touch;
+    // On touch the street scene moves to a strip up top so the pads can sit
+    // directly under the note receptor, where your thumbs already are.
+    this.L = touch
+      ? { top: true, stageY: 0, groundY: 56, stageBottom: 62, rhythmY: 64, rhythmH: 148, padY: 214, padH: 54 }
+      : { top: false, stageY: STAGE_Y, groundY: GROUND_Y, stageBottom: H, rhythmY: 0, rhythmH: STAGE_Y, padY: 0, padH: 0 };
+  }
+  buildPrepMenu() {
+    const r = Game.run; const items = [];
+    r.members.forEach((m, i) => items.push({ label: (this.active[i] ? '[x] ' : '[ ] ') + m.name + ' - ' + INSTRUMENTS[m.instrument].name + ' (' + INSTRUMENTS[m.instrument].keyNames.join(' ') + ')', right: 'STA ' + Math.round(m.stamina), rightColor: m.stamina < 30 ? '#ff5a5a' : '#6be585', disabled: m.leader, onSelect: () => { if (m.stamina < 15) { Audio.ui('error'); return; } this.active[i] = !this.active[i]; this.buildPrepMenu(); this.menu.idx = i; } }));
+    if (r.consumables.includes('coffee')) items.push({ label: (this.useCoffee ? '[x] ' : '[ ] ') + 'Drink Espresso (+30% timing windows)', icon: 'coffee', onSelect: () => { this.useCoffee = !this.useCoffee; this.buildPrepMenu(); this.menu.idx = items.length - 1; } });
+    if (r.consumables.includes('flyer')) items.push({ label: (this.useFlyer ? '[x] ' : '[ ] ') + 'Hand out Gig Flyers (2x passers-by)', icon: 'flyer', onSelect: () => { this.useFlyer = !this.useFlyer; this.buildPrepMenu(); } });
+    items.push({ label: 'START THE SHOW', onSelect: () => this.startPlay() });
+    const keep = this.menu ? this.menu.idx : items.length - 1;
+    this.menu = new Menu(items); this.menu.idx = Math.min(keep, items.length - 1);
+  }
+  startPlay() {
+    const r = Game.run; Audio.init();
+    this.performers = r.members.filter((m, i) => this.active[i]);
+    if (!this.performers.length) this.performers = [r.members[0]];
+    if (this.useCoffee) { r.consumables.splice(r.consumables.indexOf('coffee'), 1); r.buffs.coffee = true; }
+    if (this.useFlyer) { r.consumables.splice(r.consumables.indexOf('flyer'), 1); r.buffs.flyer = true; }
+    // sections of 4 bars rotating through performers
+    const sections = [];
+    for (let b = 0, i = 0; b < this.bars; b += 4, i++) { const m = this.performers[i % this.performers.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), member: m }); }
+    this.sections = sections;
+    const notes = generateChart(this.song, sections, this.difficulty, r.rng);
+    this.mods = r.gigMods(this.performers, this.difficulty);
+    // backing bonus from non-active members' skill
+    const others = r.members.filter(m => !this.performers.includes(m));
+    this.mods.tips *= 1 + others.reduce((a, m) => a + m.skill, 0) * 0.03 + this.performers.reduce((a, m) => a + m.skill, 0) * 0.015;
+    this.rhythm = new RhythmGame(this.song, sections, notes, this.mods);
+    this.crowd = new Crowd(this.venue, this.mods, r.rng);
+    this.crowd.stageX = 70 + this.performers.length * 13; this.crowd.hatX = 58 + this.performers.length * 26; this.crowd.hatY = this.L.groundY - 4; this.crowd.groundY = this.L.groundY;
+    const start = Audio.now() + 0.6 + this.song.leadIn;
+    this.rhythm.begin(start);
+    this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); return sec ? { drums: sec.instrument === 'drums', bass: sec.instrument === 'bass' } : {}; });
+    this.phase = 'play'; this.playT = 0;
+    this.padInstr = sections[0].instrument;
+    this.pads = buildPads(INSTRUMENTS[this.padInstr], { x: 2, y: this.L.padY, w: W - 4, h: this.L.padH });
+    this.pauseBtn = new Btn(2, 2, 22, 14, 'II', () => this.togglePause(), { bg: '#1a1728' });
+    this.buttons = [
+      new Btn(W / 2 - 92, 88, 84, 26, 'RESUME', () => this.togglePause(), { scale: 2, activeBg: '#6be585' }),
+      new Btn(W / 2 + 8, 88, 84, 26, 'BAIL OUT', () => this.quit(), { scale: 1, bg: '#3a1a24', border: '#ff5a5a', sub: 'HALF THE TIPS' }),
+    ];
+  }
+  update(dt) {
+    this.t += dt;
+    if (this.phase === 'play') {
+      if (this.paused) return;
+      this.backing.update();
+      this.rhythm.update(dt);
+      if (Game.touch && this.padInstr !== this.rhythm.section.instrument) {
+        this.padInstr = this.rhythm.section.instrument;
+        this.pads = buildPads(this.rhythm.instrument, { x: 2, y: this.L.padY, w: W - 4, h: this.L.padH });
+      }
+      this.crowd.update(dt, this.rhythm.hype, this.rhythm.events);
+      this.train.t -= dt; if (this.train.t < 0 && this.venue.bg === 'subway') { this.train.x += dt * 260; if (this.train.x > W + 300) { this.train.x = -600; this.train.t = 6 + Math.random() * 8; } }
+      if (this.rhythm.finished) this.finish();
+    }
+  }
+  finish() {
+    const r = Game.run; const res = this.rhythm.results(); this.res = res;
+    let earned = Math.round(this.crowd.earned * 4) / 4;
+    this.bonusLines = [];
+    if (this.mode === 'boss') { const b = Math.round(60 * res.acc); earned += b; this.bonusLines.push('Festival fee: +' + fmtMoney(b)); }
+    if (this.mode === 'elite') { const b = Math.round(20 * res.acc); earned += b; this.bonusLines.push('Venue bonus: +' + fmtMoney(b)); }
+    if (r.pendingGig && r.pendingGig.battle) { if (res.acc >= 0.8) { earned += 30; this.bonusLines.push('BUSKER BATTLE WON: +$30!'); Audio.ui('fanfare'); } else this.bonusLines.push('Busker battle lost (needed 80% accuracy).'); }
+    if (r.pendingGig && r.pendingGig.bonus) this.bonusLines.push('Tourist fans boosted your tips.');
+    r.pendingGig = null; r.buffs = {};
+    this.earned = earned; r.money += earned; r.stats.earned += earned; r.stats.gigs++; r.stats.bestCombo = Math.max(r.stats.bestCombo, res.maxCombo); r.stats.perfects += res.perfect; r.stats.tips += this.crowd.tipCount;
+    // stamina & xp
+    const stCost = 22 * (r.hasRelic('strings') ? 0.7 : 1);
+    this.xpLines = [];
+    for (const m of this.performers) {
+      m.stamina = Math.max(0, m.stamina - stCost * (m.hunger ? 1.4 : 1)); m.gigs++;
+      let xp = (0.5 + res.acc * 1.5) * (r.hasRelic('medal') ? 2 : 1); m.xp += xp;
+      let ups = 0; while (m.xp >= 3 && m.skill < 10) { m.xp -= 3; m.skill++; ups++; }
+      this.xpLines.push(m.name + ': +' + xp.toFixed(1) + ' xp' + (ups ? '  SKILL UP! (' + m.skill + ')' : ''));
+      if (ups) Audio.ui('levelup');
+    }
+    this.grade = res.acc >= 0.95 ? 'S' : res.acc >= 0.85 ? 'A' : res.acc >= 0.7 ? 'B' : res.acc >= 0.5 ? 'C' : 'D';
+    // open mic recruit
+    this.recruit = null;
+    if (this.mode === 'openmic' && res.acc >= 0.6 && r.members.length < 6) this.recruit = r.makeMember();
+    this.phase = 'results';
+    const items = [];
+    if (this.recruit) {
+      items.push({ label: 'Welcome ' + this.recruit.name + ' the ' + SPECIES[this.recruit.species].name + ' (' + INSTRUMENTS[this.recruit.instrument].name + ', skill ' + this.recruit.skill + ') to the band!', icon: 'openmic', onSelect: () => { r.members.push(this.recruit); Audio.ui('fanfare'); Game.afterNode(); } });
+      items.push({ label: 'Politely decline. One more mouth is one more meal.', onSelect: () => Game.afterNode() });
+    } else items.push({ label: 'Continue', onSelect: () => Game.afterNode() });
+    this.menu = new Menu(items);
+    if (res.acc >= 0.7) Audio.applause(clamp(res.acc, 0.3, 1), 1.5);
+    r.save();
+  }
+  key(code) {
+    if (this.phase === 'prep') { if (code === 'Escape') { /* cannot back out of a gig */ } this.menu.key(code); return; }
+    if (this.phase === 'results') { this.menu.key(code); return; }
+    if (code === 'Escape') { this.togglePause(); return; }
+    if (this.paused) { if (code === 'KeyQ') { this.quit(); } return; }
+    this.rhythm.keyDown(code);
+  }
+  keyUp(code) { if (this.phase === 'play' && !this.paused) this.rhythm.keyUp(code); }
+  togglePause() { this.paused = !this.paused; if (Audio.ctx) { if (this.paused) Audio.ctx.suspend(); else Audio.ctx.resume(); } this.rhythm.keysDown.clear(); }
+  quit() { if (Audio.ctx) Audio.ctx.resume(); this.backing.stop(); this.rhythm.finished = true; this.paused = false; this.crowd.earned *= 0.5; this.finish(); this.bonusLines.push('You bailed on the set. Half the tips walked off.'); }
+  click(x, y) { if (this.phase !== 'play') this.menu.click(x, y); }
+  hover(x, y) { if (this.phase !== 'play') this.menu.hover(x, y); }
+  padAt(x, y) { return this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h); }
+  pointerDown(x, y, id) {
+    if (this.phase !== 'play') { this.menu.click(x, y); return; }
+    if (this.paused) { for (const b of this.buttons) if (b.hit(x, y)) { b.flash = 0.5; b.onTap(); return; } return; }
+    if (this.pauseBtn && this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
+    const pad = this.padAt(x, y);
+    if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); }
+  }
+  pointerMove(x, y, id) {
+    if (this.phase !== 'play' || this.paused) return;
+    const prev = this.padPointers.get(id);
+    if (prev === undefined) return;
+    const pad = this.padAt(x, y);
+    const next = pad ? pad.code : null;
+    if (next === prev) return;
+    this.rhythm.keyUp(prev);
+    if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); }
+    else this.padPointers.delete(id);
+  }
+  pointerUp(x, y, id) {
+    const code = this.padPointers.get(id);
+    if (code !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(code); }
+  }
+
+  drawStage(ctx) {
+    const L = this.L, GY = L.groundY;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, L.stageY, W, L.stageBottom - L.stageY); ctx.clip();
+    ctx.drawImage(this.bg, 0, GY - (GROUND_Y - STAGE_Y));
+    if (this.venue.bg === 'subway' && this.train.t < 0) {
+      const tx = this.train.x, ty = GY - 62;
+      rect(ctx, tx, ty, 600, 40, '#c8c8d0'); rect(ctx, tx, ty + 30, 600, 6, '#2a4a9a');
+      for (let x = tx + 10; x < tx + 600; x += 30) rect(ctx, x, ty + 8, 18, 14, '#ffe8a0');
+    }
+    const perf = this.performers || Game.run.members;
+    const cur = this.rhythm ? this.rhythm.section.member : null;
+    this.crowd && this.crowd.drawPeds(ctx, GY - 2, 0);
+    perf.forEach((m, i) => {
+      const x = 58 + i * 26, isCur = m === cur;
+      const bob = isCur && this.rhythm ? Math.round(this.rhythm.beatPulse > 0.7 ? -1 : 0) : 0;
+      drawBug(ctx, m.species, x, GY - 24 + bob, { pose: isCur ? 'play' : 'stand', instrument: m.instrument });
+      if (isCur) drawText(ctx, '↓', x + 6, GY - 34 + Math.round(Math.sin(this.t * 8)), '#ffe14d', { align: 'center', shadow: '#000' });
+      if (!isCur && this.rhythm && Math.floor(this.t * 2 + i) % 3 === 0) ctx.drawImage(propSprite('note'), x + 14, GY - 30);
+    });
+    if (this.crowd) ctx.drawImage(propSprite('hat'), this.crowd.hatX - 2, this.crowd.hatY - 2);
+    this.crowd && this.crowd.drawPeds(ctx, GY + 6, 1);
+    this.crowd && this.crowd.drawCoins(ctx);
+    ctx.restore();
+    if (this.rhythm) {
+      const hx = W - 14, hy = L.stageY + 6, hh = Math.min(70, L.stageBottom - L.stageY - (L.top ? 8 : 18));
+      rect(ctx, hx, hy, 8, hh, '#111'); const fill = hh * this.rhythm.hype / 100;
+      rect(ctx, hx, hy + hh - fill, 8, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx, hy, 8, hh, '#888');
+      if (!L.top) drawText(ctx, 'HYPE', hx + 4, hy + hh + 3, '#fff', { align: 'center', shadow: '#000' });
+      rect(ctx, W - 100, L.stageY + 4, 78, 26, 'rgba(0,0,0,0.65)');
+      drawText(ctx, 'TIPS', W - 96, L.stageY + 7, '#cfc9e6');
+      drawText(ctx, fmtMoney(this.crowd.earned), W - 26, L.stageY + 6, '#ffe680', { align: 'right', scale: 2, shadow: '#000' });
+      drawText(ctx, this.crowd.watchers.length + ' WATCHING', W - 96, L.stageY + 20, '#cfc9e6');
+    }
+  }
+  draw(ctx) {
+    rect(ctx, 0, 0, W, H, '#0d0b18');
+    const PY0 = this.L.top ? 66 : 14, PH = this.L.top ? H - 70 : this.L.stageY - 20;
+    if (this.phase === 'prep') {
+      this.drawStage(ctx);
+      panel(ctx, 20, PY0, W - 40, PH);
+      ctx.save(); ctx.translate(0, PY0 - 14);
+      const title = { gig: 'GIG', elite: 'BIG GIG', boss: 'THE FINALE', openmic: 'OPEN MIC' }[this.mode];
+      drawText(ctx, title + ': ' + this.venue.name.toUpperCase(), 28, 20, '#ffe14d', { scale: 2 });
+      drawText(ctx, '"' + this.song.name + '"  ' + this.bpm + ' BPM  ' + this.bars + ' BARS   DIFFICULTY ' + '★'.repeat(this.difficulty) + '☆'.repeat(6 - this.difficulty).replace(/☆/g, '.'), 28, 36, '#cfc9e6');
+      drawText(ctx, 'Crowd: ' + (this.venue.traffic >= 1.3 ? 'BUSY' : this.venue.traffic >= 1 ? 'STEADY' : 'QUIET') + '   Wallets: ' + (this.venue.wealth >= 1.5 ? 'FAT' : this.venue.wealth >= 1 ? 'AVERAGE' : 'THIN'), 28, 44, '#9a8fd0');
+      if (this.mode === 'openmic') drawText(ctx, 'Score 60%+ accuracy and a new musician may ask to join.', 28, 52, '#c58bff');
+      if (Game.run.pendingGig && Game.run.pendingGig.note) drawText(ctx, Game.run.pendingGig.note, 28, 52, '#ff9f68');
+      drawText(ctx, 'LINEUP (toggle who plays; the song rotates instruments every 4 bars):', 28, 62, '#e0dcf0');
+      this.menu.draw(ctx, 28, 72, W - 56, Game.touch ? 13 : 10);
+      const it = this.menu.items[this.menu.idx];
+      if (it && it.label.includes(' - ')) { const m = Game.run.members[this.menu.idx]; if (m) drawWrapped(ctx, INSTRUMENTS[m.instrument].desc, 28, PH - 8, 110, '#ffe680'); }
+      ctx.restore();
+      this.menu.rects.forEach(r => { if (r) r.y += PY0 - 14; });
+      Game.drawRunHud(ctx);
+      return;
+    }
+    if (this.phase === 'play') {
+      const L = this.L;
+      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads });
+      this.drawStage(ctx);
+      const p = clamp(this.rhythm.now / this.song.length, 0, 1);
+      const barY = L.top ? L.stageBottom : L.stageY - 3;
+      rect(ctx, 0, barY, W, 2, '#222'); rect(ctx, 0, barY, W * p, 2, '#ffe14d');
+      const lbl = this.rhythm.section.member.name.toUpperCase() + ' ON ' + this.rhythm.instrument.name.toUpperCase();
+      const lblY = L.top ? L.stageBottom - 10 : L.stageY + 5;
+      rect(ctx, 2, lblY - 2, textWidth(lbl) + 6, 9, 'rgba(0,0,0,0.65)');
+      drawText(ctx, lbl, 5, lblY, '#fff');
+      if (Game.touch) {
+        rect(ctx, 0, L.padY - 2, W, H - L.padY + 2, '#0a0814');
+        drawPads(ctx, this.pads, this.rhythm.keysDown, this.t);
+        this.pauseBtn.draw(ctx);
+      }
+      if (this.paused) {
+        rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.75)');
+        drawText(ctx, 'PAUSED', W / 2, 60, '#fff', { align: 'center', scale: 3 });
+        if (Game.touch) this.buttons.forEach(b => b.draw(ctx));
+        else drawText(ctx, 'ESC: RESUME    Q: BAIL ON THE SET (HALF TIPS)', W / 2, 100, '#cfc9e6', { align: 'center' });
+      }
+      return;
+    }
+    // results
+    this.drawStage(ctx);
+    panel(ctx, 20, PY0, W - 40, PH);
+    ctx.save(); ctx.translate(0, PY0 - 10);
+    const res = this.res;
+    drawText(ctx, 'SET COMPLETE', 28, 16, '#ffe14d', { scale: 2 });
+    drawText(ctx, this.grade, W - 50, 14, { S: '#ffe14d', A: '#6be585', B: '#6fb8ff', C: '#ffd166', D: '#ff5a5a' }[this.grade], { scale: 4, shadow: '#000' });
+    let y = 34;
+    drawText(ctx, 'PERFECT ' + res.perfect + '   GREAT ' + res.great + '   GOOD ' + res.good + '   MISS ' + res.miss, 28, y, '#e0dcf0'); y += 8;
+    drawText(ctx, 'ACCURACY ' + Math.round(res.acc * 100) + '%   MAX COMBO ' + res.maxCombo + (res.rollHits ? '   ROLL HITS ' + res.rollHits : ''), 28, y, '#e0dcf0'); y += 10;
+    drawText(ctx, 'TIPS: ' + fmtMoney(this.crowd.earned) + ' from ' + this.crowd.tipCount + ' tips', 28, y, '#ffe680', { scale: 2 }); y += 14;
+    for (const l of this.bonusLines) { drawText(ctx, l, 28, y, '#ff9f68'); y += 7; }
+    drawText(ctx, 'EARNED ' + fmtMoney(this.earned) + '  ->  WALLET ' + fmtMoney(Game.run.money), 28, y, '#6be585'); y += 9;
+    for (const l of this.xpLines) { drawText(ctx, l, 28, y, '#9a8fd0'); y += 7; }
+    if (this.recruit) { y += 2; drawText(ctx, 'Someone from the crowd wants to join!', 28, y, '#c58bff'); drawBug(ctx, this.recruit.species, W - 60, y - 6, { pose: 'play', instrument: this.recruit.instrument }); y += 8; }
+    this.menu.draw(ctx, 28, Math.max(y + 2, PH - 30), W - 56, Game.touch ? 13 : 10);
+    ctx.restore();
+    this.menu.rects.forEach(r => { if (r) r.y += PY0 - 10; });
+    Game.drawRunHud(ctx);
+  }
+}
+
+// ===== js/game.js =====
+// ---------- Game core: loop, input, run state, save ----------
+'use strict';
+const SAVE_KEY = 'bugbusker_save_v1';
+
+class Member {
+  constructor(o) { Object.assign(this, { name: 'Bug', species: 'beetle', instrument: 'guitar', quality: 1, skill: 1, stamina: 100, hunger: 0, xp: 0, leader: false, gigs: 0 }, o); }
+}
+
+class RunState {
+  constructor(seed) {
+    this.seed = seed; this.rng = makeRng(seed);
+    this.money = 6; this.day = 0; this.members = []; this.relics = []; this.consumables = []; this.spareInstruments = [];
+    this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tips: 0 };
+    this.map = generateMap(this.rng); this.current = null; this.nightPending = false;
+    this.buffs = {}; // next-gig buffs: {coffee, flyer}
+    this.rowTurns = 0;
+  }
+  static newRun() {
+    const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    const sp = s.rng.pick(['beetle', 'ant', 'grasshopper', 'cricket', 'ladybug']);
+    s.members.push(new Member({ name: s.rng.pick(FIRST_NAMES), species: sp, instrument: 'guitar', quality: 1, skill: 2, leader: true }));
+    s.consumables.push('bread');
+    return s;
+  }
+  hasRelic(k) { return this.relics.includes(k); }
+  addRelic(k) { if (!this.relics.includes(k)) this.relics.push(k); }
+  randomNewRelic(exclude = []) { const c = RELIC_KEYS.filter(k => !this.relics.includes(k) && !exclude.includes(k)); return c.length ? this.rng.pick(c) : null; }
+  makeMember(instrs) {
+    const used = this.members.map(m => m.species);
+    const sp = this.rng.pick(SPECIES_KEYS.filter(k => !used.includes(k))) || this.rng.pick(SPECIES_KEYS);
+    const usedNames = this.members.map(m => m.name);
+    return new Member({ name: this.rng.pick(FIRST_NAMES.filter(n => !usedNames.includes(n))), species: sp, instrument: this.rng.pick(instrs || INSTRUMENT_KEYS), quality: this.rng.int(1, 2), skill: this.rng.int(1, 3 + this.day), stamina: this.rng.int(60, 100) });
+  }
+  recruitRandom(instrs) { const m = this.makeMember(instrs); this.members.push(m); return m; }
+  mealPrice() { return Math.max(3, 7 + this.day * 2 - (this.hasRelic('pass') ? 2 : 0)); }
+  avgSkill() { return this.members.reduce((a, m) => a + m.skill, 0) / Math.max(1, this.members.length); }
+  isDayEnd(node) { return node.type !== 'boss' && (node.r + 1) % ROWS_PER_DAY === 0; }
+  // Performance modifiers
+  gigMods(performers, difficulty) {
+    const avgSt = performers.reduce((a, m) => a + m.stamina, 0) / performers.length;
+    const hungerPen = performers.reduce((a, m) => a + m.hunger, 0) / performers.length;
+    let windowMult = (0.78 + 0.22 * (avgSt / 100)) * (1 - 0.08 * hungerPen);
+    if (this.buffs.coffee) windowMult *= 1.3;
+    const qual = performers.reduce((a, m) => a + m.quality + (this.hasRelic('case') ? 1 : 0), 0) / performers.length;
+    let tips = 1 + (qual - 1) * 0.12 + (this.avgSkill() - 1) * 0.04;
+    if (this.hasRelic('jar')) tips *= 1.2;
+    performers.forEach(m => { tips *= INSTRUMENTS[m.instrument].tipMult ** (1 / performers.length); });
+    if (this.pendingGig && this.pendingGig.bonus) tips *= this.pendingGig.bonus;
+    let crowd = 1; if (this.hasRelic('amp')) crowd *= 1.35; if (this.buffs.flyer) crowd *= 2;
+    return {
+      difficulty, windowMult, tips, crowd, range: this.hasRelic('amp') ? 1.4 : 1, watchTime: this.hasRelic('cred') ? 1.5 : 1, wealth: 1,
+      luckyPick: this.hasRelic('pick'), metronome: this.hasRelic('metronome'), kazoo: this.hasRelic('kazoo'), earplugs: this.hasRelic('earplugs'),
+      missMult: this.hasRelic('shades') ? 0.6 : 1,
+    };
+  }
+  save() {
+    try {
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, relics: this.relics, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig,
+        visited: this.map.nodes.filter(n => n.visited).map(n => [n.r, n.c]), current: this.current ? [this.current.r, this.current.c] : null, nightPending: this.nightPending,
+        types: this.map.nodes.map(n => [n.r, n.c, n.type, n.venue || null]) };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch (e) { }
+  }
+  static load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null;
+      const d = JSON.parse(raw);
+      const s = new RunState(d.seed);
+      // regenerate map with same seed, then restore types (in case of drift)
+      s.money = d.money; s.day = d.day; s.members = d.members.map(m => new Member(m)); s.relics = d.relics; s.consumables = d.consumables; s.spareInstruments = d.spareInstruments || [];
+      s.karma = d.karma; s.stats = d.stats; s.buffs = d.buffs || {}; s.pendingGig = d.pendingGig; s.nightPending = d.nightPending;
+      for (const [r, c, t, v] of d.types) { const n = s.map.grid[r][c]; if (n) { n.type = t; n.venue = v || undefined; } }
+      for (const [r, c] of d.visited) { const n = s.map.grid[r][c]; if (n) n.visited = true; }
+      if (d.current) s.current = s.map.grid[d.current[0]][d.current[1]];
+      return s;
+    } catch (e) { return null; }
+  }
+  static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+}
+
+// Simple vertical menu helper
+class Menu {
+  constructor(items, opts = {}) { this.items = items; this.idx = 0; this.opts = opts; this.rects = []; this.fixIdx(1); }
+  fixIdx(dir) { let n = 0; while (this.items[this.idx] && this.items[this.idx].disabled && n++ < this.items.length) this.idx = (this.idx + dir + this.items.length) % this.items.length; }
+  move(d) { if (!this.items.length) return; this.idx = (this.idx + d + this.items.length) % this.items.length; this.fixIdx(d); Audio.ui('move'); }
+  key(code) {
+    if (code === 'ArrowUp' || code === 'KeyW') { this.move(-1); return true; }
+    if (code === 'ArrowDown' || code === 'KeyS') { this.move(1); return true; }
+    if (code === 'Enter' || code === 'Space' || code === 'KeyZ') { this.select(); return true; }
+    return false;
+  }
+  select() { const it = this.items[this.idx]; if (!it || it.disabled) { Audio.ui('error'); return; } Audio.ui('select'); it.onSelect && it.onSelect(it); }
+  click(x, y) {
+    const pad = Game.touch ? 2 : 0;
+    for (let i = 0; i < this.rects.length; i++) {
+      const r = this.rects[i];
+      if (r && x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad) { this.idx = i; this.select(); return true; }
+    }
+    return false;
+  }
+  hover(x, y) { for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && !this.items[i].disabled) { if (this.idx !== i) { this.idx = i; } return; } } }
+  draw(ctx, x, y, w, lineH = 12) {
+    this.rects = [];
+    this.items.forEach((it, i) => {
+      const yy = y + i * lineH; const sel = i === this.idx;
+      this.rects.push({ x, y: yy - 2, w, h: lineH });
+      if (sel) rect(ctx, x, yy - 2, w, lineH - 1, it.disabled ? '#2a2030' : '#3a3560');
+      const col = it.disabled ? '#666' : sel ? '#fff' : '#cfc9e6';
+      if (it.icon) { ctx.drawImage(iconSprite(it.icon), x + 2, yy - 1); }
+      drawText(ctx, (sel ? '> ' : '  ') + it.label, x + (it.icon ? 12 : 2), yy, col);
+      if (it.right) drawText(ctx, it.right, x + w - 4, yy, it.disabled ? '#666' : it.rightColor || '#ffe680', { align: 'right' });
+    });
+    return y + this.items.length * lineH;
+  }
+}
+
+const Game = {
+  canvas: null, ctx: null, scene: null, run: null, last: 0, mouse: { x: 0, y: 0 }, scale: 1, time: 0, muted: false, keys: new Set(),
+  init() {
+    this.canvas = document.getElementById('game'); this.ctx = this.canvas.getContext('2d');
+    this.ctx.imageSmoothingEnabled = false;
+    this.pointers = new Map();
+    this.touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    this.rotated = false;
+    window.addEventListener('resize', () => this.resize());
+    if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => setTimeout(() => this.resize(), 120));
+    this.resize();
+    window.addEventListener('keydown', (e) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
+      if (e.repeat) return;
+      Audio.init();
+      if (e.code === 'KeyM' && !(this.scene instanceof PerformScene && this.scene.phase === 'play')) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
+      this.keys.add(e.code);
+      if (this.scene && this.scene.key) this.scene.key(e.code, e);
+    });
+    window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
+    const c = this.canvas;
+    c.style.touchAction = 'none';
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true;
+      Audio.init();
+      try { c.setPointerCapture(e.pointerId); } catch (err) { }
+      const p = this.toCanvas(e);
+      this.pointers.set(e.pointerId, p);
+      if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId);
+      else if (this.scene && this.scene.click) this.scene.click(p.x, p.y);
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = this.toCanvas(e);
+      this.mouse = p;
+      if (this.pointers.has(e.pointerId)) {
+        this.pointers.set(e.pointerId, p);
+        if (this.scene && this.scene.pointerMove) this.scene.pointerMove(p.x, p.y, e.pointerId);
+      } else if (e.pointerType === 'mouse' && this.scene && this.scene.hover) this.scene.hover(p.x, p.y);
+    });
+    const release = (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      const p = this.toCanvas(e);
+      this.pointers.delete(e.pointerId);
+      if (this.scene && this.scene.pointerUp) this.scene.pointerUp(p.x, p.y, e.pointerId);
+    };
+    c.addEventListener('pointerup', release);
+    c.addEventListener('pointercancel', release);
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      for (const id of Array.from(this.pointers.keys())) { if (this.scene && this.scene.pointerUp) this.scene.pointerUp(-1, -1, id); }
+      this.pointers.clear();
+    });
+    this.setScene(new TitleScene());
+    requestAnimationFrame((t) => this.frame(t));
+  },
+  // Map a pointer event to canvas pixels, accounting for the portrait rotation.
+  toCanvas(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const dx = e.clientX - cx, dy = e.clientY - cy;
+    const s = this.scale || 1;
+    if (this.rotated) return { x: W / 2 + dy / s, y: H / 2 - dx / s };
+    return { x: W / 2 + dx / s, y: H / 2 + dy / s };
+  },
+  toggleFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
+    else if (el.requestFullscreen) el.requestFullscreen().catch(() => { });
+  },
+  resize() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // A portrait viewport plays rotated so the game always fills the long edge.
+    const rotate = this.rotateOverride != null ? this.rotateOverride : (vh > vw * 1.05 && vw < 700);
+    this.rotated = rotate;
+    const availW = rotate ? vh : vw, availH = rotate ? vw : vh - (this.touch ? 0 : 24);
+    const raw = Math.min(availW / W, availH / H);
+    const s = raw >= 2 ? Math.floor(raw) : Math.max(0.25, Math.floor(raw * 8) / 8);
+    this.scale = s;
+    const st = this.canvas.style;
+    st.width = (W * s) + 'px'; st.height = (H * s) + 'px';
+    st.position = 'fixed';
+    st.left = Math.round((vw - W * s) / 2) + 'px';
+    st.top = Math.round((vh - H * s) / 2) + 'px';
+    st.transform = rotate ? 'rotate(90deg)' : 'none';
+    const hint = document.getElementById('hint');
+    if (hint) hint.style.display = (rotate || this.touch || vh - H * s < 30) ? 'none' : 'block';
+  },
+  setScene(s) { this.scene = s; if (s.enter) s.enter(); },
+  frame(t) {
+    const dt = Math.min(0.05, (t - this.last) / 1000 || 0.016); this.last = t; this.time += dt;
+    if (this.scene) {
+      try { this.scene.update(dt); this.scene.draw(this.ctx); }
+      catch (e) { console.error(e); this.lastError = String(e && e.message || e); }
+    }
+    if (this.lastError) drawText(this.ctx, 'ERR: ' + this.lastError.slice(0, 100), 2, H - 7, '#ff5a5a');
+    if (this.muted) drawText(this.ctx, this.touch ? 'MUTED' : 'MUTED (M)', W - 4, 2, '#888', { align: 'right' });
+    requestAnimationFrame((tt) => this.frame(tt));
+  },
+  // common HUD for run screens
+  drawRunHud(ctx) {
+    const r = this.run; if (!r) return;
+    rect(ctx, 0, 0, W, 12, '#0d0b18'); rect(ctx, 0, 12, W, 1, '#3a3560');
+    drawText(ctx, fmtMoney(r.money), 4, 3, '#ffe680', { shadow: '#000' });
+    drawText(ctx, (r.day >= 5 ? 'FINAL NIGHT' : 'DAY ' + (r.day + 1) + '/5') + ' - ' + DAY_NAMES[Math.min(4, r.day)].toUpperCase(), W / 2, 3, '#cfc9e6', { align: 'center' });
+    drawText(ctx, r.members.length + ' BUG' + (r.members.length > 1 ? 'S' : '') + '  ' + r.relics.length + ' RELICS', W - 4, 3, '#cfc9e6', { align: 'right' });
+  },
+  afterNode() {
+    // called when a node's activity finishes: night check, boss victory, otherwise back to map
+    const r = this.run; const node = r.current;
+    if (node.type === 'boss') { this.setScene(new VictoryScene()); return; }
+    if (r.isDayEnd(node)) { r.nightPending = true; r.save(); this.setScene(new NightScene()); return; }
+    r.save(); this.setScene(new MapScene());
+  },
+};
+window.addEventListener('load', () => Game.init());
+
+</script>
+</body>
+</html>

@@ -20,7 +20,9 @@ class TitleScene {
       { label: 'NEW RUN', onSelect: () => { RunState.clearSave(); Game.run = RunState.newRun(); Game.run.save(); Game.setScene(new MapScene(true)); } },
       { label: 'CONTINUE', disabled: !this.hasSave, onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.setScene(r.nightPending ? new NightScene() : new MapScene()); } } },
       { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
+      { label: 'SOUND: ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = 'SOUND: ' + (Game.muted ? 'OFF' : 'ON'); } },
     ]);
+    if (Game.touch) this.menu.items.push({ label: 'SCREEN: TURN', onSelect: () => { Game.rotateOverride = !Game.rotated; Game.resize(); } });
     this.bugs = []; const r = makeRng(3);
     for (let i = 0; i < 7; i++) this.bugs.push({ x: 40 + i * 60, sp: r.pick(SPECIES_KEYS), inst: r.pick(INSTRUMENT_KEYS), o: r.range(0, 6) });
   }
@@ -51,10 +53,9 @@ class TitleScene {
     drawText(ctx, 'BUG BUSKER', W / 2, 28, '#ffe14d', { align: 'center', scale: 4, shadow: '#6a3a10' });
     drawText(ctx, 'ORCHESTRA', W / 2, 52, '#ff9f68', { align: 'center', scale: 3, shadow: '#6a2a10' });
     drawText(ctx, 'a rhythm roguelike on the streets of san francisco', W / 2, 74, '#cfc9e6', { align: 'center' });
-    panel(ctx, W / 2 - 60, 100, 120, 48);
-    this.menu.draw(ctx, W / 2 - 54, 108, 108, 12);
-    drawText(ctx, 'ARROWS + ENTER  /  MOUSE', W / 2, 230, '#8a86b0', { align: 'center' });
-    drawText(ctx, 'M = MUTE', W / 2, 240, '#8a86b0', { align: 'center' });
+    panel(ctx, W / 2 - 64, 98, 128, 60);
+    this.menu.draw(ctx, W / 2 - 58, 106, 116, 12);
+    drawText(ctx, Game.touch ? 'TAP TO CHOOSE' : 'ARROWS + ENTER  /  MOUSE  /  M = MUTE', W / 2, 232, '#8a86b0', { align: 'center' });
   }
   drawHelp(ctx) {
     panel(ctx, 20, 14, W - 40, H - 28);
@@ -75,7 +76,9 @@ class TitleScene {
       'Each night dinner costs money per member. A starving bug leaves. If YOU starve, the run ends.',
       'Shops sell instruments, relics and snacks. Events, rests and open mics hold surprises and recruits.',
       '',
-      'Press ENTER to go back.',
+      'On a phone or tablet: tap anything to choose it, drag the map to scroll, and play gigs with the big pads along the bottom of the screen. Hold a pad for hold notes.',
+      '',
+      'Press ENTER or tap to go back.',
     ];
     for (const l of lines) { y += drawWrapped(ctx, l, 28, y, 108, l.startsWith('GIG') || l.includes(':') && l === l.toUpperCase() ? '#ffe680' : '#e0dcf0', 7) * 7 + 1; }
   }
@@ -97,6 +100,8 @@ class MapScene {
   }
   update(dt) {
     this.t += dt; this.introT = Math.max(0, this.introT - dt); this.dayBanner = Math.max(0, this.dayBanner - dt);
+    this.userPan = Math.max(0, (this.userPan || 0) - dt);
+    if (this.userPan > 0) return;
     const cur = Game.run.current; const focusY = cur ? cur.y : 480;
     const target = clamp(focusY - 175, 0, 300);
     this.camY = lerp(this.camY, target, Math.min(1, dt * 4));
@@ -108,9 +113,29 @@ class MapScene {
     else if (code === 'Tab' || code === 'KeyB') { Game.setScene(new BandScene()); }
     else if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); }
   }
-  click(x, y) {
-    if (x >= W - 148 && y >= H - 14) { Game.setScene(new BandScene()); return; }
-    for (const n of this.avail) { const sy = n.y - this.camY; if (Math.abs(x - n.x) < 10 && Math.abs(y - sy) < 10) { this.go(n); return; } }
+  click(x, y) { this.tap(x, y); }
+  tap(x, y) {
+    if (y >= H - 14 && x >= W - 148) { Game.setScene(new BandScene()); return; }
+    if (y >= H - 14 && x >= W - 300 && x < W - 152) { Game.run.save(); Game.setScene(new TitleScene()); return; }
+    const reach = Game.touch ? 16 : 10;
+    let best = null, bestD = Infinity;
+    for (const n of this.avail) {
+      const sy = n.y - this.camY; const d = Math.hypot(x - n.x, y - sy);
+      if (d < reach && d < bestD) { best = n; bestD = d; }
+    }
+    if (best) this.go(best);
+  }
+  pointerDown(x, y, id) { this.drag = { y, camY: this.camY, moved: 0, id }; }
+  pointerMove(x, y, id) {
+    if (!this.drag || this.drag.id !== id) return;
+    const dy = y - this.drag.y;
+    this.drag.moved = Math.max(this.drag.moved, Math.abs(dy));
+    if (this.drag.moved > 5 && x < 332) { this.camY = clamp(this.drag.camY - dy, 0, 300); this.userPan = 2.5; }
+  }
+  pointerUp(x, y, id) {
+    if (!this.drag || this.drag.id !== id) return;
+    const moved = this.drag.moved; this.drag = null;
+    if (moved <= 5 && x >= 0) this.tap(x, y);
   }
   hover(x, y) { this.avail.forEach((n, i) => { const sy = n.y - this.camY; if (Math.abs(x - n.x) < 10 && Math.abs(y - sy) < 10) this.sel = i; }); }
   go(node) {
@@ -236,7 +261,11 @@ class MapScene {
     y += 12;
     drawText(ctx, 'TONIGHT\'S DINNER:', 340, y, '#cfc9e6'); y += 7;
     drawText(ctx, fmtMoney(r.mealPrice()) + ' x ' + r.members.length + ' = ' + fmtMoney(r.mealPrice() * r.members.length), 340, y, r.money >= r.mealPrice() * r.members.length ? '#6be585' : '#ff9f68'); y += 10;
-    rect(ctx, W - 148, H - 14, 146, 12, '#3a3560'); drawText(ctx, 'TAB: BAND & ITEMS    ESC: SAVE', W - 75, H - 11, '#fff', { align: 'center' });
+    rect(ctx, W - 148, H - 14, 146, 12, '#3a3560'); frame(ctx, W - 148, H - 14, 146, 12, '#8a80c0');
+    drawText(ctx, Game.touch ? 'BAND & ITEMS' : 'TAB: BAND & ITEMS', W - 75, H - 11, '#fff', { align: 'center' });
+    rect(ctx, W - 300, H - 14, 148, 12, '#241f38'); frame(ctx, W - 300, H - 14, 148, 12, '#6b5f9a');
+    drawText(ctx, Game.touch ? 'SAVE & QUIT' : 'ESC: SAVE & QUIT', W - 226, H - 11, '#cfc9e6', { align: 'center' });
+    if (Game.touch) drawText(ctx, 'DRAG TO SCROLL - TAP A GLOWING STOP', 4, H - 11, '#6b5f9a');
   }
 }
 
@@ -254,6 +283,7 @@ class BandScene {
       items.push({ label: 'Give ' + INSTRUMENTS[s.kind].name + ' ' + '★'.repeat(s.quality) + ' to ' + m.name, icon: 'case', onSelect: () => { const old = { kind: m.instrument, quality: m.quality }; m.instrument = s.kind; m.quality = s.quality; r.spareInstruments.splice(i, 1, old); this.buildMenu(); } });
     });
     if (r.members.length > 1 && !m.leader) items.push({ label: 'Part ways with ' + m.name, icon: 'event', onSelect: () => { r.members.splice(this.sel, 1); this.sel = 0; this.buildMenu(); } });
+    items.push({ label: 'Sound: ' + (Game.muted ? 'OFF' : 'ON'), icon: 'metronome', onSelect: () => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); this.buildMenu(); } });
     items.push({ label: 'Back to map', onSelect: () => { r.save(); Game.setScene(new MapScene()); } });
     this.menu = new Menu(items);
   }

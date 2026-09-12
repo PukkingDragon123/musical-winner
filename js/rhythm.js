@@ -260,6 +260,7 @@ class RhythmGame {
   draw(ctx, A) {
     const g = this.instrument.game;
     rect(ctx, A.x, A.y, A.w, A.h, '#0d0b18');
+    rect(ctx, A.x, A.y - 1, A.w, 1, '#3a3560');
     if (g === 'lanes') this.drawLanes(ctx, A);
     else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A);
@@ -304,12 +305,14 @@ class RhythmGame {
   }
   drawLanes(ctx, A) {
     const instr = this.instrument; const L = instr.lanes;
-    const laneW = Math.min(40, Math.floor((A.w - 40) / L));
-    const x0 = A.x + Math.floor((A.w - laneW * L) / 2);
-    const hitY = A.y + A.h - 22, top = A.y + 10;
+    const padCols = A.touch && A.pads && A.pads.length === L ? A.pads : null;
+    const laneW = padCols ? padCols[0].w + 2 : Math.min(40, Math.floor((A.w - 40) / L));
+    const x0 = padCols ? padCols[0].x - 1 : A.x + Math.floor((A.w - laneW * L) / 2);
+    const laneX = (l) => padCols ? padCols[l].x - 1 : x0 + l * laneW;
+    const hitY = A.y + A.h - (A.touch ? 8 : 22), top = A.y + 10;
     // highway
     for (let l = 0; l < L; l++) {
-      const x = x0 + l * laneW;
+      const x = laneX(l);
       rect(ctx, x, top, laneW, hitY - top + 8, l % 2 ? '#141126' : '#181430');
       if (this.flashes[l] > 0) { ctx.globalAlpha = this.flashes[l] * 3; rect(ctx, x, top, laneW, hitY - top + 8, LANE_COLORS[l]); ctx.globalAlpha = 1; }
       rect(ctx, x, top, 1, hitY - top + 8, '#2a2450');
@@ -317,15 +320,15 @@ class RhythmGame {
       const held = this.keysDown.has(instr.keys[l]);
       rect(ctx, x + 3, hitY - 2, laneW - 6, 5, held ? LANE_COLORS[l] : shade(LANE_COLORS[l], -90));
       frame(ctx, x + 3, hitY - 2, laneW - 6, 5, LANE_COLORS[l]);
-      drawText(ctx, instr.keyNames[l], x + laneW / 2, hitY + 8, '#ccc', { align: 'center' });
+      if (!A.touch) drawText(ctx, instr.keyNames[l], x + laneW / 2, hitY + 8, '#ccc', { align: 'center' });
     }
-    rect(ctx, x0 + L * laneW, top, 1, hitY - top + 8, '#2a2450');
+    if (!padCols) rect(ctx, x0 + L * laneW, top, 1, hitY - top + 8, '#2a2450');
     // beat lines
     const pxPerSec = (hitY - top) / this.approach;
     for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
       const t = b * this.song.beat; const y = hitY - (t - this.now) * pxPerSec;
       if (y < top) break;
-      rect(ctx, x0, y, L * laneW, 1, b % 4 === 0 ? '#3a3560' : '#242040');
+      for (let l = 0; l < L; l++) rect(ctx, laneX(l), y, laneW, 1, b % 4 === 0 ? '#3a3560' : '#242040');
     }
     // notes
     for (const n of this.notes) {
@@ -333,7 +336,7 @@ class RhythmGame {
       const y = hitY - (n.t - this.now) * pxPerSec;
       if (y < top - 10) break;
       if (n.judged && !n.holding && (n.type !== 'hold' || n.tailJudged || !n.hit)) { if (n.type !== 'hold' || !n.hit) continue; }
-      const x = x0 + n.lane * laneW + 3, w = laneW - 6;
+      const x = laneX(n.lane) + 3, w = laneW - 6;
       const col = LANE_COLORS[n.lane];
       if (n.type === 'hold') {
         const yEnd = hitY - (n.t + n.dur - this.now) * pxPerSec;
@@ -353,7 +356,8 @@ class RhythmGame {
     }
   }
   drawTaiko(ctx, A) {
-    const hitX = A.x + 52, cy = A.y + A.h / 2 - 6, lineTop = cy - 22, lineH = 44;
+    const hitX = A.x + 52, cy = A.y + A.h * (A.touch ? 0.6 : 0.5) - 6;
+    const lineH = A.touch ? 60 : 44, lineTop = cy - lineH / 2;
     rect(ctx, A.x, lineTop, A.w, lineH, '#1a1428');
     rect(ctx, A.x, lineTop, A.w, 1, '#3a3060'); rect(ctx, A.x, lineTop + lineH, A.w, 1, '#3a3060');
     const pxPerSec = (A.w - 60) / this.approach;
@@ -368,6 +372,7 @@ class RhythmGame {
     else if (this.flashes.ka > 0) circle(ctx, hitX, cy, 10, '#5bc0ff');
     // drum face left
     rect(ctx, A.x + 2, cy - 18, 32, 36, '#5a3a1e'); rect(ctx, A.x + 6, cy - 14, 24, 28, '#f0e8d8');
+    if (A.touch) { drawText(ctx, 'BIG NOTES: BOTH DON PADS', A.x + A.w / 2, A.y + A.h - 12, '#6b5f9a', { align: 'center' }); }
     drawText(ctx, 'D K', A.x + 18, cy - 24, '#5bc0ff', { align: 'center' });
     drawText(ctx, 'F J', A.x + 18, cy + 22, '#ff6b6b', { align: 'center' });
     // notes, draw far ones first
@@ -395,7 +400,7 @@ class RhythmGame {
     }
   }
   drawWind(ctx, A) {
-    const hitX = A.x + 70, top = A.y + 22, bot = A.y + A.h - 30;
+    const hitX = A.x + 70, top = A.y + (A.touch ? 14 : 22), bot = A.y + A.h - (A.touch ? 24 : 30);
     rect(ctx, A.x, top - 4, A.w, bot - top + 8, '#141126');
     for (let i = 0; i <= 4; i++) rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#2a2450');
     const pxPerSec = (A.w - 80) / this.approach;
@@ -428,7 +433,7 @@ class RhythmGame {
     drawText(ctx, 'HOLD SPACE', bx + bw + 6, by, '#aab');
   }
   drawValves(ctx, A) {
-    const hitX = A.x + 60, cy = A.y + A.h / 2 - 14;
+    const hitX = A.x + 60, cy = A.y + A.h * (A.touch ? 0.52 : 0.5) - 14;
     rect(ctx, A.x, cy - 22, A.w, 44, '#141126');
     const pxPerSec = (A.w - 70) / this.approach;
     for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
@@ -449,18 +454,18 @@ class RhythmGame {
         if (on) drawText(ctx, this.instrument.keyNames[v], x - 7 + v * 5, cy - 2, '#000');
       }
     }
-    // valve buttons
+    // valve buttons (the touch pads stand in for these)
     const names = this.instrument.keyNames;
-    for (let v = 0; v < 3; v++) {
+    if (!A.touch) for (let v = 0; v < 3; v++) {
       const bx = A.x + A.w / 2 - 36 + v * 26, by = A.y + A.h - 30;
       const on = (this.valveMask >> v) & 1;
       rect(ctx, bx, by + (on ? 3 : 0), 20, 14 - (on ? 3 : 0), on ? '#ffe14d' : '#8a6a20'); frame(ctx, bx, by + (on ? 3 : 0), 20, 14 - (on ? 3 : 0), '#fff');
       drawText(ctx, names[v], bx + 10, by + 5 + (on ? 2 : 0), '#000', { align: 'center' });
     }
-    drawText(ctx, 'PRESS THE LIT VALVES TOGETHER', A.x + A.w / 2, A.y + A.h - 10, '#aab', { align: 'center' });
+    drawText(ctx, 'PRESS THE LIT VALVES TOGETHER', A.x + A.w / 2, A.y + A.h - (A.touch ? 8 : 10), '#aab', { align: 'center' });
   }
   drawBow(ctx, A) {
-    const hitX = A.x + 70, top = A.y + 24, bot = A.y + A.h - 30;
+    const hitX = A.x + 70, top = A.y + (A.touch ? 14 : 24), bot = A.y + A.h - (A.touch ? 16 : 30);
     rect(ctx, A.x, top - 6, A.w, bot - top + 12, '#141126');
     for (let i = 0; i < 4; i++) rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#3a3560');
     const pxPerSec = (A.w - 80) / this.approach;
@@ -487,7 +492,9 @@ class RhythmGame {
       circle(ctx, xs, y, 6, col);
       drawText(ctx, n.dir > 0 ? '↑' : '↓', xs, y - 2, '#000', { align: 'center' });
     }
-    drawText(ctx, 'UP BOW = ↑ / W', A.x + 6, A.y + A.h - 12, '#c58bff');
-    drawText(ctx, 'DOWN BOW = ↓ / S', A.x + A.w - 6, A.y + A.h - 12, '#6be585', { align: 'right' });
+    if (!A.touch) {
+      drawText(ctx, 'UP BOW = ↑ / W', A.x + 6, A.y + A.h - 12, '#c58bff');
+      drawText(ctx, 'DOWN BOW = ↓ / S', A.x + A.w - 6, A.y + A.h - 12, '#6be585', { align: 'right' });
+    }
   }
 }

@@ -50,3 +50,19 @@ js/scenes.js      title, map, band, shop, event, rest, treasure, night, endings
 js/perform.js     performance scene (prep, play, results)
 js/game.js        game loop, input, run state, save/load
 ```
+
+## Mobile
+
+The game is fully playable by touch. Every screen is tap-driven, the map scrolls by
+dragging, and gigs get a row of large pads along the bottom of the screen, laid out per
+instrument (four lanes, DON/KA drum pads, a BLOW pad for the sax, three trumpet valves,
+two bowing pads). During a touch gig the street scene moves to a strip along the top so
+the pads sit directly under the note receptor. A portrait phone rotates the game to fill
+the long edge; `SCREEN: TURN` on the title menu overrides that either way.
+
+## Builds
+
+```
+node build.js           # dist/bug-busker-orchestra.html  (standalone single file)
+node build-artifact.js  # dist/artifact.html              (body-only fragment for publishing)
+```
