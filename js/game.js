@@ -11,12 +11,23 @@ class RunState {
     this.seed = seed; this.rng = makeRng(seed);
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
-    this.map = generateMap(this.rng); this.current = null; this.nightPending = false; this.seenEvents = []; this.log = [];
+    this.pos = 'mission'; this.tickets = 7; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
   }
-  static newRun() {
+  static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
-    s.members.push(new Member({ name: 'Buzz', presetKey: 'buzz', spec: HERO_PRESETS.buzz, instrument: 'guitar', quality: 1, skill: 3, leader: true }));
-    s.consumables.push('bread'); return s;
+    const c = char || ROSTER[0], p = HERO_PRESETS[c.key];
+    s.hero = c.key;
+    s.members.push(new Member({ name: p.name, presetKey: c.key, spec: p, instrument: c.instrument, quality: 1, skill: 2 + c.stats[0], leader: true }));
+    s.money = c.money; if (c.charm) s.addCharm(c.charm);
+    s.stats.charSkill = c.stats;
+    s.consumables.push('bread');
+    s.pos = 'mission'; s.tickets = 7; s.weather = 'clear'; s.doneNodes = {};
+    return s;
+  }
+  newDay() {
+    const bonus = collectMods(this).tickets || 0;
+    this.tickets = 7 + bonus; this.doneNodes = {};
+    this.weather = this.day === 0 ? 'clear' : this.rng.pick(WEATHER_KEYS);
   }
   hasCharm(k) { return this.charms.includes(k); }
   addCharm(k) { if (this.charms.includes(k) || this.charms.length >= this.charmSlots) return false; this.charms.push(k); return true; }
@@ -35,7 +46,6 @@ class RunState {
   recruitPreset(key, instrument, skill) { const p = HERO_PRESETS[key]; const m = new Member({ name: p.name, presetKey: key, spec: p, instrument, quality: 2, skill: skill || 4 }); this.members.push(m); return m; }
   mealPrice() { return Math.max(3, 7 + this.day * 3 - (this.perks.mealDiscount || 0)); }
   avgSkill() { return this.members.reduce((a, m) => a + m.skill, 0) / Math.max(1, this.members.length); }
-  isDayEnd(node) { return node.type !== 'boss' && (node.r + 1) % ROWS_PER_DAY === 0; }
   gigMods(performers, difficulty, bossMod) {
     const avgSt = performers.reduce((a, m) => a + m.stamina, 0) / performers.length, hungerPen = performers.reduce((a, m) => a + m.hunger, 0) / performers.length;
     const m = collectMods(this, { difficulty, bossMod });
@@ -44,19 +54,15 @@ class RunState {
   }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, dayBannerPending: this.dayBannerPending,
-        visited: this.map.nodes.filter(n => n.visited).map(n => [n.r, n.c]), current: this.current ? [this.current.r, this.current.c] : null, types: this.map.nodes.map(n => [n.r, n.c, n.type, n.venue || null, n.bossMod || null]) };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, dayBannerPending: d.dayBannerPending });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
-      for (const [r, c, t, v, b] of d.types) { const n = s.map.grid[r][c]; if (n) { n.type = t; n.venue = v || undefined; n.bossMod = b || undefined; } }
-      for (const [r, c] of d.visited) { const n = s.map.grid[r][c]; if (n) n.visited = true; }
-      if (d.current) s.current = s.map.grid[d.current[0]][d.current[1]];
       return s;
     } catch (e) { return null; }
   }
@@ -137,18 +143,14 @@ const Game = {
     const r = this.run; if (!r) return;
     rect(ctx, 0, 0, W, 18, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 15); rect(ctx, 0, 16, W, 1, UI.wood); rect(ctx, 0, 17, W, 1, UI.woodHi);
     ctx.drawImage(icon('coin'), 6, 5); drawText(ctx, fmtMoney(r.money), 18, 5, '#7a4a10');
-    const dayLabel = r.day >= 5 ? 'FINAL NIGHT' : 'DAY ' + (r.day + 1) + '/5'; drawText(ctx, dayLabel + ' - ' + DAY_NAMES[Math.min(4, r.day)].toUpperCase(), W / 2, 5, UI.ink, { align: 'center' });
+    ctx.drawImage(icon('phone'), 78, 5); drawText(ctx, String(r.tickets), 90, 5, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
+    drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 5, UI.ink, { align: 'center' });
     // charms mini icons
     let cx = W - 6; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 12; uiSlotMini(ctx, cx, 3); ctx.drawImage(icon(CHARMS[ck].icon), cx + 2, 5); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 12; uiSlotMini(ctx, cx, 3, true); }
     drawText(ctx, r.members.length + ' BUG' + (r.members.length > 1 ? 'S' : ''), cx - 8, 5, UI.ink, { align: 'right' });
   },
-  afterNode() {
-    const r = this.run; const node = r.current;
-    if (node.type === 'boss') { this.setScene(new VictoryScene()); return; }
-    if (r.isDayEnd(node)) { r.nightPending = true; r.save(); this.setScene(new NightScene()); return; }
-    r.save(); this.setScene(new MapScene());
-  },
+  afterNode() { this.run.save(); this.setScene(new CityScene()); },
 };
 function uiSlotMini(ctx, x, y, empty) { rect(ctx, x, y, 11, 11, UI.goldOl); rect(ctx, x + 1, y + 1, 9, 9, empty ? '#5a4a38' : UI.gold); rect(ctx, x + 2, y + 2, 7, 7, empty ? '#4a3a2a' : UI.slot); }
 // Charm icon fallbacks: any icon name not in ICON_DEFS maps to a themed generated glyph

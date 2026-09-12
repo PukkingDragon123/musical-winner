@@ -29,6 +29,15 @@ function propCanvas(kind, variant = 0) {
       case 'leaf': { P = new Pix(4, 3); P.set(1, 0, '#c8703a'); P.set(0, 1, '#e08a40'); P.set(1, 1, '#e08a40'); P.set(2, 1, '#c8703a'); P.set(2, 2, '#a05a2a'); P.set(3, 1, '#c8703a'); break; }
       case 'boat': { P = new Pix(30, 12); const h = P.mask(); P.mPoly(h, [[0, 6], [30, 6], [26, 11], [4, 11]]); P.fill(h, '#c04040', { outline: OL }); const c = P.mask(); P.mRect(c, 8, 1, 14, 5); P.fill(c, '#f0f0f0', { outline: OL }); P.paint(c, (x, y) => y === 3 && x % 3 === 0 ? '#4060a0' : null); P.set(14, 0, '#333'); break; }
       case 'sailboat': { P = new Pix(16, 18); const s = P.mask(); P.mPoly(s, [[8, 0], [8, 12], [1, 12]]); P.fill(s, '#f4f0e8', { outline: OL }); const h = P.mask(); P.mPoly(h, [[0, 13], [16, 13], [13, 17], [3, 17]]); P.fill(h, '#3a4a8a', { outline: OL }); break; }
+      case 'tomato': { P = new Pix(10, 10); const m = P.mask(); P.mEllipse(m, 5, 6, 4.5, 4); P.fill(m, '#d83a2a', { outline: OL }); const g = P.mask(); P.mRect(g, 3, 1, 4, 2); P.mRect(g, 4, 0, 2, 2); P.fill(g, '#4f9a3a', { outline: OL, shade: false }); P.set(3, 4, '#ff8a7a'); break; }
+      case 'can': { P = new Pix(8, 12); const m = P.mask(); P.mRect(m, 1, 1, 6, 10); P.fill(m, '#c8c8d0', { outline: OL }); P.paint(m, (x, y) => y > 3 && y < 8 ? (x % 2 ? '#d83a3a' : '#f0f0f4') : null); P.set(2, 2, '#fff'); break; }
+      case 'boot': { P = new Pix(14, 10); const m = P.mask(); P.mRect(m, 4, 0, 6, 7); P.mRect(m, 1, 6, 12, 4); P.fill(m, '#5a3a24', { outline: OL }); P.paint(m, (x, y) => y === 9 ? '#2a1a10' : null); break; }
+      case 'cabbage': { P = new Pix(12, 11); const m = P.mask(); P.mEllipse(m, 6, 6, 5.5, 5); P.fill(m, '#6fc050', { outline: OL }); P.paint(m, (x, y) => (x * 3 + y * 5) % 7 === 0 ? '#4f9a3a' : (x + y) % 9 === 0 ? '#a8e090' : null); break; }
+      case 'fish': { P = new Pix(16, 8); const m = P.mask(); P.mEllipse(m, 6, 4, 5, 3); P.mPoly(m, [[11, 4], [15, 1], [15, 7]]); P.fill(m, '#8ab8d8', { outline: OL }); P.set(3, 3, '#fff'); P.set(3, 3, '#1a1410'); break; }
+      case 'laser': { P = new Pix(8, 6); const m = P.mask(); P.mRect(m, 0, 1, 8, 4); P.fill(m, '#2a2a34', { outline: OL, shade: false }); P.set(7, 3, '#ff4040'); break; }
+      case 'suitcase': { P = new Pix(18, 14); const m = P.mask(); P.mRound(m, 0, 3, 18, 11, 2); P.fill(m, '#8a5a3a', { outline: OL }); const h = P.mask(); P.mRect(h, 6, 0, 6, 4); P.fill(h, '#5a3a20', { outline: OL, shade: false }); P.paint(m, (x, y) => y === 8 ? '#5a3a20' : null); break; }
+      case 'seat': { P = new Pix(30, 34); const m = P.mask(); P.mRound(m, 2, 0, 26, 24, 3); P.fill(m, '#3a4a6a', { outline: OL }); const c = P.mask(); P.mRound(c, 5, 22, 20, 10, 2); P.fill(c, '#4a5a7a', { outline: OL }); P.paint(m, (x, y) => y === 4 || y === 18 ? '#2a3a5a' : null); break; }
+      case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
       default: P = new Pix(4, 4);
     }
     return P.toCanvas();

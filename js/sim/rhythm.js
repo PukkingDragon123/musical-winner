@@ -18,7 +18,7 @@ class RhythmGame {
     this.difficulty = mods.difficulty || 1; this.approach = clamp(1.8 - this.difficulty * 0.12, 0.85, 1.8);
     this.notesTotal = notes.filter(n => n.type !== 'bomb' && n.type !== 'roll').length + notes.filter(n => n.type === 'hold').length;
     this.hypeScale = clamp(230 / Math.max(1, this.notesTotal), 1, 2.8);
-    this.fx = new Particles(); this.beatPulse = 0; this.lastBeat = -1; this.hitLog = [];
+    this.fx = new Particles(); this.stringVib = {}; this.beatPulse = 0; this.lastBeat = -1; this.hitLog = [];
     sections.forEach((s, i) => { s.start = song.leadIn + s.startBar * 4 * song.beat; s.end = song.leadIn + s.endBar * 4 * song.beat; s.idx = i; });
     notes.forEach(n => { n.sec = sections.findIndex(s => n.t >= s.start - 0.001 && n.t < s.end + 0.001); if (n.sec < 0) n.sec = sections.length - 1; });
     this.receptors = {}; // lane -> {x,y} for effects
@@ -186,6 +186,7 @@ class RhythmGame {
     if (this.now > 0) this.hype = clamp(this.hype - dt * 0.7 * (this.mods.decay || 1) * (this.mods.bossMod === 'rain' ? 2 : 1), 0, 100);
     for (const p of this.popups) p.t += dt; this.popups = this.popups.filter(p => p.t < (p.big ? 1.2 : 0.55));
     for (const k in this.flashes) this.flashes[k] = Math.max(0, this.flashes[k] - dt);
+    for (const k in this.stringVib) this.stringVib[k] = Math.max(0, this.stringVib[k] - dt * 2.6);
     this.bannerT = Math.max(0, this.bannerT - dt);
     const beatPos = ((this.now % this.song.beat) + this.song.beat) % this.song.beat; this.beatPulse = 1 - beatPos / this.song.beat;
     const beatIdx = Math.floor(this.now / this.song.beat); if (beatIdx !== this.lastBeat) { this.lastBeat = beatIdx; this.onBeat = true; } else this.onBeat = false;
@@ -197,180 +198,236 @@ class RhythmGame {
   results() { const c = this.counts, total = c.perfect + c.great + c.good + c.miss; return { ...c, total, acc: total ? (c.perfect + c.great * 0.75 + c.good * 0.4) / total : 0, maxCombo: this.maxCombo }; }
 
   // ---------- Rendering ----------
-  noteAlpha(dtToHit) {
-    const k = dtToHit / this.approach; // 1 = far, 0 = at receptor
-    if (this.mods.bossMod === 'fog') return clamp((k - 0.12) / 0.3, 0, 1);
-    if (this.mods.bossMod === 'blackout') return k < 0.35 ? 1 : 0.06;
+  noteAlpha(k) {
+    if (this.mods.bossMod === 'fog') return clamp((k - 0.1) / 0.3, 0, 1);
+    if (this.mods.bossMod === 'blackout') return k < 0.35 ? 1 : 0.08;
     return 1;
   }
   draw(ctx, A) {
-    rect(ctx, A.x, A.y, A.w, A.h, '#0d0b18');
-    if (A.backdrop) { ctx.globalAlpha = 0.28; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, A.h); ctx.globalAlpha = 1; vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(13,11,24,0.2)', 'rgba(13,11,24,0.9)'); }
-    rect(ctx, A.x, A.y - 1, A.w, 1, '#3a3560');
+    rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
+    if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
+    vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
     const g = this.game;
-    if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A); else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
-    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 30, A.w, A.h + 30); ctx.clip(); this.fx.draw(ctx); ctx.restore();
+    if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
+    else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
+    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx); ctx.restore();
     this.drawHud(ctx, A);
   }
   drawHud(ctx, A) {
-    if (this.combo >= 5) { const pulse = this.onBeat ? 1 : 0; drawText(ctx, this.combo + ' COMBO', A.x + A.w / 2, A.y + 10 - pulse, this.combo >= 70 ? '#ffd24a' : this.combo >= 30 ? '#ff9f68' : '#fff', { align: 'center', scale: 2, outline: '#1a1410' }); }
+    if (this.combo >= 5) {
+      const pop = this.onBeat ? 1 : 0, big = this.combo >= 50;
+      drawText(ctx, this.combo, A.x + A.w / 2, A.y + 6 - pop, big ? '#ffd24a' : this.combo >= 25 ? '#ff9f68' : '#fff', { align: 'center', scale: big ? 4 : 3, outline: '#1a1410' });
+      drawText(ctx, 'COMBO', A.x + A.w / 2, A.y + (big ? 34 : 28) - pop, '#cfc9e6', { align: 'center', font: 'small' });
+    }
     for (const p of this.popups) {
-      const k = p.t / (p.big ? 1.2 : 0.55); const scale = p.big ? 2 : 1;
-      const pop = k < 0.15 ? 1 + (0.15 - k) * 4 : 1; // squash-stretch pop-in
+      const k = p.t / (p.big ? 1.2 : 0.55), scale = p.big ? 2 : 1;
+      const pop = k < 0.15 ? 1 + (0.15 - k) * 4 : 1;
       ctx.globalAlpha = clamp(1 - k * 0.8 + 0.2, 0, 1);
-      const x = p.x != null ? p.x : A.x + A.w / 2, y = (p.y != null ? p.y : A.y + 34) - (p.big ? k * 14 : k * 8);
-      ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(pop, 1 / Math.max(0.7, pop)); drawText(ctx, p.text, 0, 0, p.color, { align: 'center', scale, outline: '#1a1410' }); ctx.restore();
-      ctx.globalAlpha = 1;
+      const x = p.x != null ? p.x : A.x + A.w / 2, y = (p.y != null ? p.y : A.y + 40) - (p.big ? k * 16 : k * 10);
+      ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(pop, 1 / Math.max(0.7, pop));
+      drawText(ctx, p.text, 0, 0, p.color, { align: 'center', scale, outline: '#1a1410' }); ctx.restore(); ctx.globalAlpha = 1;
     }
     if (this.now < 0) {
       const beatsLeft = Math.ceil(-this.now / this.song.beat);
-      drawText(ctx, beatsLeft > 0 ? String(beatsLeft) : 'GO!', A.x + A.w / 2, A.y + A.h / 2 - 16, '#fff', { align: 'center', scale: 4, outline: '#1a1410' });
-      const ins = this.instrument; drawText(ctx, (this.section.qte ? 'BACK UP ' + (this.section.member ? this.section.member.name.toUpperCase() : 'THE BAND') + ' - SPACE / F / J' : ins.name.toUpperCase() + ' - ' + ins.keyNames.join(' ')), A.x + A.w / 2, A.y + A.h / 2 + 22, '#ffd166', { align: 'center', outline: '#1a1410' });
+      const s = beatsLeft > 0 ? String(beatsLeft) : 'GO';
+      const k = 1 - (((-this.now) % this.song.beat) / this.song.beat);
+      ctx.globalAlpha = 0.9; drawText(ctx, s, A.x + A.w / 2, A.y + A.h / 2 - 30, '#fff', { align: 'center', scale: 5 + Math.round(k * 2), outline: '#1a1410' }); ctx.globalAlpha = 1;
     }
     if (this.bannerT > 0 && this.now > 0) {
-      ctx.globalAlpha = clamp(this.bannerT, 0, 1); rect(ctx, A.x, A.y + A.h / 2 - 14, A.w, 28, 'rgba(0,0,0,0.8)');
-      const t = this.section.qte ? (this.section.member ? this.section.member.name.toUpperCase() + ' TAKES THE SPOTLIGHT' : 'BAND SPOTLIGHT') : 'NOW: ' + this.instrument.name.toUpperCase() + ' (' + this.instrument.keyNames.join(' ') + ')';
-      drawText(ctx, t, A.x + A.w / 2, A.y + A.h / 2 - 7, '#ffe14d', { align: 'center', scale: 2 }); ctx.globalAlpha = 1;
+      ctx.globalAlpha = clamp(this.bannerT, 0, 1); rect(ctx, A.x, A.y + A.h / 2 - 16, A.w, 32, 'rgba(0,0,0,0.82)');
+      const t = this.section.qte ? (this.section.member ? this.section.member.name.toUpperCase() + '!' : 'BAND!') : this.instrument.name.toUpperCase();
+      drawText(ctx, t, A.x + A.w / 2, A.y + A.h / 2 - 8, '#ffe14d', { align: 'center', scale: 2 }); ctx.globalAlpha = 1;
     }
     if (this.switchWarn) {
-      const ns = this.nextSection; const blink = Math.floor(this.now * 6) % 2 === 0;
-      rect(ctx, A.x + A.w - 170, A.y + 2, 168, 20, 'rgba(0,0,0,0.75)');
-      const label = ns.qte ? 'NEXT: BACK UP ' + (ns.member ? ns.member.name.toUpperCase() : 'BAND') : 'SWITCH: ' + INSTRUMENTS[ns.instrument].name.toUpperCase();
-      drawText(ctx, label, A.x + A.w - 86, A.y + 4, blink ? '#ff9f68' : '#fff', { align: 'center' });
-      drawText(ctx, ns.qte ? 'SPACE / F / J' : INSTRUMENTS[ns.instrument].keyNames.join(' '), A.x + A.w - 86, A.y + 13, '#ccc', { align: 'center', font: 'small' });
+      const ns = this.nextSection, blink = Math.floor(this.now * 6) % 2 === 0;
+      const label = ns.qte ? (ns.member ? ns.member.name.toUpperCase() : 'BAND') : INSTRUMENTS[ns.instrument].name.toUpperCase();
+      rect(ctx, A.x + A.w - 120, A.y + 4, 116, 16, 'rgba(0,0,0,0.7)');
+      ctx.drawImage(icon('arrowR'), A.x + A.w - 116, A.y + 8);
+      drawText(ctx, label, A.x + A.w - 58, A.y + 9, blink ? '#ff9f68' : '#fff', { align: 'center', font: 'small' });
     }
-    if (this.mods.metronome) { const r = 3 + Math.round(this.beatPulse * 3); circle(ctx, A.x + 12, A.y + 12, r, this.beatPulse > 0.8 ? '#ffe14d' : '#665'); }
+    if (this.mods.metronome) { const r = 3 + Math.round(this.beatPulse * 3); circle(ctx, A.x + 14, A.y + 14, r, this.beatPulse > 0.8 ? '#ffe14d' : '#554a66'); }
   }
-  beatLinesV(ctx, x0, w, top, hitY, pxPerSec) { for (let b = Math.ceil(this.now / this.song.beat); ; b++) { const y = hitY - (b * this.song.beat - this.now) * pxPerSec; if (y < top) break; rect(ctx, x0, y, w, 1, b % 4 === 0 ? '#3a3560' : '#242040'); } }
   beatLinesH(ctx, hitX, xEnd, top, h, pxPerSec) { for (let b = Math.ceil(this.now / this.song.beat); ; b++) { const x = hitX + (b * this.song.beat - this.now) * pxPerSec; if (x > xEnd) break; if (x > hitX - 60) rect(ctx, x, top, 1, h, b % 4 === 0 ? '#4a4070' : '#2a2448'); } }
-  drawNoteGem(ctx, x, y, w, h, col, star, alpha = 1) {
+  gemColor(n, lane) { return n.star ? '#ffd24a' : LANE_COLORS[lane % LANE_COLORS.length]; }
+  drawGem(ctx, x, y, w, h, col, star, alpha, p) {
     ctx.globalAlpha = alpha;
-    rect(ctx, x, y, w, h, darken(col, 0.35)); rect(ctx, x + 1, y + 1, w - 2, h - 2, col); rect(ctx, x + 2, y + 1, w - 4, 1, lighten(col, 0.35)); rect(ctx, x + 1, y + h - 2, w - 2, 1, darken(col, 0.2));
-    if (star) { const cx = x + w / 2, cy = y + h / 2; rect(ctx, cx - 3, cy, 7, 1, '#fff'); rect(ctx, cx, cy - 3, 1, 7, '#fff'); px(ctx, cx - 1, cy - 1, '#fff8c0'); px(ctx, cx + 1, cy - 1, '#fff8c0'); px(ctx, cx - 1, cy + 1, '#fff8c0'); px(ctx, cx + 1, cy + 1, '#fff8c0'); }
+    const r = Math.max(2, Math.round(h / 2));
+    rect(ctx, x - w / 2, y - h / 2, w, h, '#120e1c');
+    rect(ctx, x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2, darken(col, 0.22));
+    rect(ctx, x - w / 2 + 2, y - h / 2 + 1, w - 4, Math.max(1, h - 4), col);
+    rect(ctx, x - w / 2 + 3, y - h / 2 + 2, w - 6, Math.max(1, Math.round(h / 3)), lighten(col, 0.3));
+    if (star && w > 10) { drawText(ctx, '★', x, y - 4, '#fff8c0', { align: 'center', outline: darken(col, 0.4) }); }
     ctx.globalAlpha = 1;
   }
-  drawBomb(ctx, x, y, r, alpha = 1) { ctx.globalAlpha = alpha; circle(ctx, x, y, r, '#1a1410'); circle(ctx, x, y, r - 1, '#3a2a30'); circle(ctx, x, y, r - 3, '#c8302a'); rect(ctx, x - 1, y - r - 3, 2, 3, '#555'); const sp = Math.floor(this.now * 12) % 2; px(ctx, x, y - r - 4, sp ? '#ffd24a' : '#ff8030'); line(ctx, x - 2, y - 2, x + 2, y + 2, '#fff'); line(ctx, x + 2, y - 2, x - 2, y + 2, '#fff'); ctx.globalAlpha = 1; }
   drawLanes(ctx, A) {
-    const instr = this.instrument, L = instr.lanes;
-    const padCols = A.touch && A.pads && A.pads.length === L ? A.pads : null;
-    const laneW = padCols ? padCols[0].w + 2 : Math.min(56, Math.floor((A.w - 60) / L));
-    const x0 = padCols ? padCols[0].x - 1 : A.x + Math.floor((A.w - laneW * L) / 2);
-    const laneX = (l) => padCols ? padCols[l].x - 1 : x0 + l * laneW;
-    const hitY = A.y + A.h - (A.touch ? 10 : 26), top = A.y + 14;
+    const instr = this.instrument, L = instr.lanes, kind = this.section.instrument;
+    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads });
+    this.hw = hw;
+    const cols = []; for (let l = 0; l < L; l++) cols.push(LANE_COLORS[l % LANE_COLORS.length]);
+    // lane floor glow
     for (let l = 0; l < L; l++) {
-      const x = laneX(l); rect(ctx, x, top, laneW, hitY - top + 10, l % 2 ? '#141126' : '#181430');
-      if (this.flashes[l] > 0) { ctx.globalAlpha = this.flashes[l] * 2.5; vgrad(ctx, x, top, laneW, hitY - top + 10, 'rgba(0,0,0,0)', LANE_COLORS[l]); ctx.globalAlpha = 1; }
-      rect(ctx, x, top, 1, hitY - top + 10, '#2a2450');
-      const held = this.keysDown.has(instr.keys[l]);
-      rect(ctx, x + 3, hitY - 3, laneW - 6, 7, held ? LANE_COLORS[l] : darken(LANE_COLORS[l], 0.35)); frame(ctx, x + 3, hitY - 3, laneW - 6, 7, held ? '#fff' : LANE_COLORS[l]);
-      if (!A.touch) drawText(ctx, instr.keyNames[l], x + laneW / 2, hitY + 9, '#ddd', { align: 'center' });
-      this.receptors[l] = { x: x + laneW / 2, y: hitY };
+      const steps = 10;
+      for (let i = 0; i < steps; i++) {
+        const k0 = i / steps, k1 = (i + 1) / steps; const a = hw.pos(l, k0), b = hw.pos(l, k1);
+        ctx.globalAlpha = 0.1 + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
+        ctx.fillStyle = cols[l]; ctx.beginPath();
+        ctx.moveTo(a.x - a.w / 2 + 1, a.y); ctx.lineTo(a.x + a.w / 2 - 1, a.y); ctx.lineTo(b.x + b.w / 2 - 1, b.y); ctx.lineTo(b.x - b.w / 2 + 1, b.y); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
-    if (!padCols) rect(ctx, x0 + L * laneW, top, 1, hitY - top + 10, '#2a2450');
-    const pxPerSec = (hitY - top) / this.approach;
-    for (let b = Math.ceil(this.now / this.song.beat); ; b++) { const y = hitY - (b * this.song.beat - this.now) * pxPerSec; if (y < top) break; for (let l = 0; l < L; l++) rect(ctx, laneX(l), y, laneW, 1, b % 4 === 0 ? '#3a3560' : '#242040'); }
+    const isString = kind === 'guitar' || kind === 'bass';
+    if (isString) drawFretboard(ctx, hw, this, { bass: kind === 'bass', beat: this.song.beat, now: this.now, approach: this.approach, time: this.now, laneColors: cols, bodyColor: kind === 'bass' ? '#3a2a5a' : '#8a3a22' });
+    else {
+      for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+        const k = (b * this.song.beat - this.now) / this.approach; if (k > 1) break; if (k < 0) continue;
+        const p = persp(k), y = perspY(k, hw.nearY, hw.farY), hwid = (hw.nearW / 2) * p;
+        rect(ctx, hw.cx - hwid, y, hwid * 2, b % 4 === 0 ? 2 : 1, b % 4 === 0 ? '#4a4278' : '#2a2450');
+      }
+      for (let l = 0; l <= L; l++) { const steps = 12; for (let i = 0; i < steps; i++) { const k0 = i / steps, k1 = (i + 1) / steps; const x0 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k0), x1 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k1); line(ctx, x0, perspY(k0, hw.nearY, hw.farY), x1, perspY(k1, hw.nearY, hw.farY), 'rgba(120,110,190,0.35)'); } }
+      if (kind === 'piano') drawKeyboard(ctx, hw, this, { keys: instr.keys, laneColors: cols });
+    }
+    // receptors
+    for (let l = 0; l < L; l++) {
+      const x = hw.laneCx(l), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
+      this.receptors[l] = { x, y: hw.nearY };
+      if (!isString && kind !== 'piano') {
+        const w = hw.laneW - 8;
+        rect(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? cols[l] : '#181430');
+        frame(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? '#fff' : cols[l]);
+      }
+      if (held) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
+      if (!A.touch && !isString && kind !== 'piano') drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
+    }
+    // notes, far to near
+    const vis = [];
     for (const n of this.notes) {
       if (n.sec !== this.secIdx) continue;
-      const y = hitY - (n.t - this.now) * pxPerSec; if (y < top - 12) break;
-      const x = laneX(n.lane) + 3, w = laneW - 6, col = LANE_COLORS[n.lane];
-      const alpha = this.noteAlpha(n.t - this.now);
-      if (n.type === 'roll') { if (n.judged && this.now > n.t + n.dur) continue; const yEnd = hitY - (n.t + n.dur - this.now) * pxPerSec; const yy = Math.max(top, yEnd), hh = Math.min(hitY + 3, Math.max(y, hitY)) - yy; if (hh > 0) { ctx.globalAlpha = alpha; rect(ctx, x + 2, yy, w - 4, hh, '#ffd166'); rect(ctx, x + 4, yy, w - 8, hh, '#fff0a0'); drawText(ctx, 'ROLL', x + w / 2, yy + hh / 2 - 3, '#5a3a00', { align: 'center', font: 'small' }); ctx.globalAlpha = 1; } continue; }
-      if (n.type === 'bomb') { if (n.judged) continue; if (y > hitY + 14) continue; this.drawBomb(ctx, x + w / 2, y, 6, alpha); continue; }
-      if (n.type === 'hold') {
-        const yEnd = hitY - (n.t + n.dur - this.now) * pxPerSec; const yStart = n.holding ? hitY : y;
-        if (!(n.tailJudged) && yEnd < hitY + 4) { const yy = Math.max(top, yEnd), hh = Math.min(hitY + 3, yStart) - yy; if (hh > 0) { ctx.globalAlpha = alpha; rect(ctx, x + w / 2 - 4, yy, 8, hh, n.holding ? col : darken(col, 0.4)); rect(ctx, x + w / 2 - 2, yy, 2, hh, n.holding ? lighten(col, 0.3) : darken(col, 0.25)); ctx.globalAlpha = 1; if (n.holding && Math.random() < 0.5) this.fx.add({ x: x + w / 2 + (Math.random() - 0.5) * 8, y: hitY, vx: (Math.random() - 0.5) * 20, vy: -40, life: 0.3, color: col, kind: 'px', gravity: 0 }); } }
-        if (n.judged) continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1.02) break;
+      if (n.type === 'hold' || n.type === 'roll') { if (n.judged && (n.tailJudged || !n.hit)) continue; if ((n.t + n.dur - this.now) / this.approach < -0.1) continue; }
+      else { if (n.judged) continue; if (k < -0.12) continue; }
+      vis.push({ n, k });
+    }
+    vis.sort((a, b) => b.k - a.k);
+    for (const { n, k } of vis) {
+      const kk = clamp(k, 0, 1), pos = hw.pos(n.lane, kk), alpha = this.noteAlpha(kk);
+      const col = this.gemColor(n, n.lane);
+      if (n.type === 'roll') {
+        const k2 = clamp((n.t + n.dur - this.now) / this.approach, 0, 1); const p2 = hw.pos(n.lane, k2);
+        ctx.globalAlpha = alpha; ctx.fillStyle = '#ffd166'; ctx.beginPath();
+        ctx.moveTo(pos.x - pos.w * 0.3, pos.y); ctx.lineTo(pos.x + pos.w * 0.3, pos.y); ctx.lineTo(p2.x + p2.w * 0.3, p2.y); ctx.lineTo(p2.x - p2.w * 0.3, p2.y); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fff4c0'; ctx.beginPath();
+        ctx.moveTo(pos.x - pos.w * 0.15, pos.y); ctx.lineTo(pos.x + pos.w * 0.15, pos.y); ctx.lineTo(p2.x + p2.w * 0.15, p2.y); ctx.lineTo(p2.x - p2.w * 0.15, p2.y); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1; drawText(ctx, 'MASH', pos.x, pos.y - 16, '#ffd166', { align: 'center', font: 'small', outline: '#1a1410' }); continue;
       }
-      if (n.judged) continue; if (y > hitY + 14) continue;
-      this.drawNoteGem(ctx, x, y - 4, w, 8, n.star ? '#ffd24a' : col, n.star, alpha);
+      if (n.type === 'bomb') { ctx.globalAlpha = alpha; const r = Math.max(3, 9 * pos.p); circle(ctx, pos.x, pos.y, r, '#1a1410'); circle(ctx, pos.x, pos.y, r - 1, '#c8302a'); circle(ctx, pos.x, pos.y, Math.max(1, r - 4), '#5a1a14'); const sp = Math.floor(this.now * 12) % 2; px(ctx, pos.x, pos.y - r - 2, sp ? '#ffd24a' : '#ff8030'); ctx.globalAlpha = 1; continue; }
+      if (n.type === 'hold') {
+        const k2 = clamp((n.t + n.dur - this.now) / this.approach, 0, 1); const p2 = hw.pos(n.lane, k2);
+        const startK = n.holding ? 0 : kk, ps = hw.pos(n.lane, startK);
+        ctx.globalAlpha = alpha * (n.holding ? 1 : 0.85); ctx.fillStyle = n.holding ? lighten(col, 0.2) : darken(col, 0.25); ctx.beginPath();
+        ctx.moveTo(ps.x - ps.w * 0.22, ps.y); ctx.lineTo(ps.x + ps.w * 0.22, ps.y); ctx.lineTo(p2.x + p2.w * 0.22, p2.y); ctx.lineTo(p2.x - p2.w * 0.22, p2.y); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = n.holding ? '#fff' : col; ctx.beginPath();
+        ctx.moveTo(ps.x - ps.w * 0.08, ps.y); ctx.lineTo(ps.x + ps.w * 0.08, ps.y); ctx.lineTo(p2.x + p2.w * 0.08, p2.y); ctx.lineTo(p2.x - p2.w * 0.08, p2.y); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+        if (n.holding) { if (Math.random() < 0.6) this.fx.add({ x: hw.laneCx(n.lane) + (Math.random() - 0.5) * 10, y: hw.nearY, vx: (Math.random() - 0.5) * 30, vy: -50, life: 0.3, color: col, kind: 'px', gravity: 0 }); continue; }
+      }
+      if (n.judged) continue;
+      this.drawGem(ctx, pos.x, pos.y, Math.max(6, pos.w * 0.82), Math.max(4, 11 * pos.p), col, n.star, alpha, pos.p);
     }
   }
   drawTaiko(ctx, A) {
-    const hitX = A.x + 60, cy = A.y + A.h * (A.touch ? 0.6 : 0.5) - 4; const lineH = A.touch ? 64 : 52, lineTop = cy - lineH / 2;
-    rect(ctx, A.x, lineTop, A.w, lineH, '#1a1428'); rect(ctx, A.x, lineTop, A.w, 1, '#3a3060'); rect(ctx, A.x, lineTop + lineH, A.w, 1, '#3a3060');
-    const pxPerSec = (A.w - 70) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, lineTop, lineH, pxPerSec);
-    ringPx(ctx, hitX, cy, 14, '#777'); ringPx(ctx, hitX, cy, 13, '#444');
-    if (this.flashes.don > 0) circle(ctx, hitX, cy, 12, '#ff6b6b'); else if (this.flashes.ka > 0) circle(ctx, hitX, cy, 12, '#5bc0ff');
-    rect(ctx, A.x + 4, cy - 22, 38, 44, '#5a3a1e'); rect(ctx, A.x + 8, cy - 18, 30, 36, '#f0e8d8'); rect(ctx, A.x + 10, cy - 16, 26, 2, '#fff8ee');
-    drawText(ctx, 'D K', A.x + 23, cy - 32, '#5bc0ff', { align: 'center' }); drawText(ctx, 'F J', A.x + 23, cy + 26, '#ff6b6b', { align: 'center' });
+    const hitX = A.x + 86, cy = A.y + A.h * (A.touch ? 0.56 : 0.5); const lineH = A.touch ? 70 : 66, lineTop = cy - lineH / 2;
+    vgrad(ctx, A.x, lineTop, A.w, lineH, '#241a30', '#14101f');
+    rect(ctx, A.x, lineTop, A.w, 2, '#4a3a60'); rect(ctx, A.x, lineTop + lineH, A.w, 2, '#4a3a60');
+    const pxPerSec = (A.w - 100) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, lineTop + 2, lineH - 2, pxPerSec);
+    ringPx(ctx, hitX, cy, 20, '#8a80b0'); ringPx(ctx, hitX, cy, 19, '#4a4270');
     this.receptors.main = { x: hitX, y: cy }; this.receptors[0] = this.receptors.main;
-    const visible = [];
-    for (const n of this.notes) { if (n.sec !== this.secIdx) continue; if (n.judged && n.type !== 'roll') continue; const x = hitX + (n.t - this.now) * pxPerSec; if (x > A.x + A.w + 20) break; if (x < A.x - 20 && n.type !== 'roll') continue; visible.push({ n, x }); }
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const { n, x } = visible[i]; const alpha = this.noteAlpha(n.t - this.now);
-      if (n.type === 'roll') { if (this.now > n.t + n.dur) continue; const xe = hitX + (n.t + n.dur - this.now) * pxPerSec, xs = Math.max(hitX, x); if (xe > A.x) { rect(ctx, xs, cy - 9, Math.max(0, xe - xs), 18, '#ffd166'); rect(ctx, xs, cy - 5, Math.max(0, xe - xs), 10, '#fff0a0'); circle(ctx, xe, cy, 9, '#ffd166'); circle(ctx, xs, cy, 9, '#ffd166'); drawText(ctx, 'ROLL!', (xs + xe) / 2, cy - 20, '#ffd166', { align: 'center', outline: '#1a1410' }); } continue; }
-      if (n.type === 'bomb') { this.drawBomb(ctx, x, cy, 8, alpha); continue; }
-      const big = n.type === 'big', r = big ? 14 : 10, col = n.type === 'ka' ? '#5bc0ff' : '#ff6b6b';
-      ctx.globalAlpha = alpha; circle(ctx, x, cy, r, '#1a1410'); circle(ctx, x, cy, r - 1, n.star ? '#ffd24a' : col); circle(ctx, x, cy, r - 4, lighten(n.star ? '#ffd24a' : col, 0.2)); px(ctx, x - 3, cy - 4, '#fff'); px(ctx, x - 4, cy - 3, '#fff');
-      if (big) drawText(ctx, 'FJ', x, cy - 3, '#1a1410', { align: 'center' }); ctx.globalAlpha = 1;
+    const vis = [];
+    for (const n of this.notes) { if (n.sec !== this.secIdx) continue; if (n.judged && n.type !== 'roll') continue; const x = hitX + (n.t - this.now) * pxPerSec; if (x > A.x + A.w + 24) break; if (x < A.x - 24 && n.type !== 'roll') continue; vis.push({ n, x }); }
+    for (let i = vis.length - 1; i >= 0; i--) {
+      const { n, x } = vis[i], alpha = this.noteAlpha((n.t - this.now) / this.approach);
+      if (n.type === 'roll') { if (this.now > n.t + n.dur) continue; const xe = hitX + (n.t + n.dur - this.now) * pxPerSec, xs = Math.max(hitX, x); if (xe > A.x) { rect(ctx, xs, cy - 11, Math.max(0, xe - xs), 22, '#ffd166'); rect(ctx, xs, cy - 6, Math.max(0, xe - xs), 12, '#fff4c0'); circle(ctx, xe, cy, 11, '#ffd166'); circle(ctx, xs, cy, 11, '#ffd166'); drawText(ctx, 'MASH!', (xs + xe) / 2, cy - 24, '#ffd166', { align: 'center', outline: '#1a1410' }); } continue; }
+      if (n.type === 'bomb') { ctx.globalAlpha = alpha; circle(ctx, x, cy, 10, '#1a1410'); circle(ctx, x, cy, 9, '#c8302a'); ctx.globalAlpha = 1; continue; }
+      const big = n.type === 'big', r = big ? 17 : 12, col = n.type === 'ka' ? '#5bc0ff' : '#ff6b6b';
+      ctx.globalAlpha = alpha;
+      circle(ctx, x, cy + 2, r, 'rgba(0,0,0,0.35)');
+      circle(ctx, x, cy, r, '#120e1c'); circle(ctx, x, cy, r - 1, n.star ? '#ffd24a' : darken(col, 0.15)); circle(ctx, x, cy, r - 4, n.star ? '#ffe89a' : col);
+      ctx.globalAlpha = alpha * 0.6; circle(ctx, x - r / 3, cy - r / 3, Math.round(r / 3), '#fff'); ctx.globalAlpha = alpha;
+      if (big) drawText(ctx, 'FJ', x, cy - 3, '#1a1410', { align: 'center' });
+      ctx.globalAlpha = 1;
     }
+    drawTaikoDrum(ctx, hitX, cy, 22, this.flashes.don || 0, this.flashes.ka || 0, this.now);
+    drawText(ctx, 'D K', hitX, cy - 44, '#5bc0ff', { align: 'center', font: 'small' }); drawText(ctx, 'F J', hitX, cy + 38, '#ff6b6b', { align: 'center', font: 'small' });
   }
   drawWind(ctx, A) {
-    const hitX = A.x + 80, top = A.y + (A.touch ? 16 : 26), bot = A.y + A.h - (A.touch ? 26 : 34);
-    rect(ctx, A.x, top - 4, A.w, bot - top + 8, '#141126'); for (let i = 0; i <= 4; i++) rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#2a2450');
-    const pxPerSec = (A.w - 90) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 4, bot - top + 8, pxPerSec);
-    rect(ctx, hitX, top - 6, 2, bot - top + 12, this.keysDown.has('Space') ? '#ffe14d' : '#887');
+    const hitX = A.x + 110, top = A.y + (A.touch ? 22 : 34), bot = A.y + A.h - (A.touch ? 34 : 44);
+    vgrad(ctx, A.x, top - 6, A.w, bot - top + 12, '#1c1630', '#120e20');
+    for (let i = 0; i <= 4; i++) rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#2e2650');
+    const pxPerSec = (A.w - 130) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
+    rect(ctx, hitX, top - 8, 2, bot - top + 16, this.keysDown.has('Space') ? '#ffe14d' : '#7a7290');
     this.receptors.main = { x: hitX, y: (top + bot) / 2 }; this.receptors[0] = this.receptors.main;
     for (const n of this.notes) {
-      if (n.sec !== this.secIdx) continue; const xs = hitX + (n.t - this.now) * pxPerSec, xe = hitX + (n.t + n.dur - this.now) * pxPerSec; if (xs > A.x + A.w + 10) break; if (xe < A.x - 10) continue;
-      const y = bot - (bot - top) * n.pitch; let col = n.star ? '#ffd24a' : '#e0b040'; if (n.judged && !n.hit) col = '#553'; else if (n.holding) col = '#ffe14d'; else if (n.tailJudged) col = '#6ff08a';
-      const x1 = Math.max(A.x, xs), x2 = Math.min(A.x + A.w, xe); ctx.globalAlpha = this.noteAlpha(n.t - this.now);
-      if (x2 > x1) { rect(ctx, x1, y - 4, x2 - x1, 9, darken(col, 0.3)); rect(ctx, x1, y - 3, x2 - x1, 7, col); rect(ctx, x1, y - 3, x2 - x1, 1, lighten(col, 0.3)); }
-      if (xs >= A.x) rect(ctx, xs, y - 6, 3, 13, lighten(col, 0.3)); if (xe <= A.x + A.w) rect(ctx, xe - 2, y - 6, 3, 13, darken(col, 0.3)); ctx.globalAlpha = 1;
-      if (n.holding && Math.random() < 0.6) this.fx.add({ x: hitX + 2, y: y + (Math.random() - 0.5) * 6, vx: 30 + Math.random() * 30, vy: (Math.random() - 0.5) * 20, life: 0.4, color: '#fff0a0', kind: 'px' });
+      if (n.sec !== this.secIdx) continue; const xs = hitX + (n.t - this.now) * pxPerSec, xe = hitX + (n.t + n.dur - this.now) * pxPerSec;
+      if (xs > A.x + A.w + 10) break; if (xe < A.x - 10) continue;
+      const y = bot - (bot - top) * n.pitch; let col = n.star ? '#ffd24a' : '#e0b040';
+      if (n.judged && !n.hit) col = '#4a4438'; else if (n.holding) col = '#ffe14d'; else if (n.tailJudged) col = '#6ff08a';
+      const x1 = Math.max(A.x, xs), x2 = Math.min(A.x + A.w, xe); ctx.globalAlpha = this.noteAlpha((n.t - this.now) / this.approach);
+      if (x2 > x1) { rect(ctx, x1, y - 6, x2 - x1, 13, darken(col, 0.35)); rect(ctx, x1, y - 5, x2 - x1, 11, col); rect(ctx, x1, y - 5, x2 - x1, 2, lighten(col, 0.3)); }
+      if (xs >= A.x) rect(ctx, xs - 1, y - 8, 4, 17, lighten(col, 0.3)); if (xe <= A.x + A.w) rect(ctx, xe - 3, y - 8, 4, 17, darken(col, 0.3));
+      ctx.globalAlpha = 1;
+      if (n.holding && Math.random() < 0.7) this.fx.add({ x: hitX + 2, y: y + (Math.random() - 0.5) * 8, vx: 40 + Math.random() * 40, vy: (Math.random() - 0.5) * 24, life: 0.4, color: '#fff0a0', kind: 'px' });
     }
-    const bw = 120, bx = A.x + A.w / 2 - bw / 2, by = A.y + A.h - 16;
-    uiBar(ctx, bx, by, bw, 8, this.breath, this.breath < 0.25 ? '#ff5a5a' : '#6fb8ff', { label: 'BREATH' });
-    if (!A.touch) drawText(ctx, 'HOLD SPACE', bx + bw + 8, by + 1, '#aab');
+    drawSaxBody(ctx, A.x + 44, bot + 6, this.breath, !!this.breathNote, this.now);
+    const bw = 130, bx = A.x + A.w - bw - 14, by = A.y + A.h - 16;
+    uiBar(ctx, bx, by, bw, 9, this.breath, this.breath < 0.25 ? '#ff5a5a' : '#6fb8ff', { label: 'BREATH' });
   }
   drawValves(ctx, A) {
-    const hitX = A.x + 70, cy = A.y + A.h * (A.touch ? 0.52 : 0.5) - 14;
-    rect(ctx, A.x, cy - 24, A.w, 48, '#141126'); const pxPerSec = (A.w - 80) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, cy - 24, 48, pxPerSec);
-    ringPx(ctx, hitX, cy, 15, '#777'); this.receptors.main = { x: hitX, y: cy }; this.receptors[0] = this.receptors.main;
+    const hitX = A.x + 96, cy = A.y + A.h * 0.42;
+    vgrad(ctx, A.x, cy - 30, A.w, 60, '#1c1630', '#120e20');
+    const pxPerSec = (A.w - 120) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, cy - 30, 60, pxPerSec);
+    ringPx(ctx, hitX, cy, 20, '#8a80b0'); this.receptors.main = { x: hitX, y: cy }; this.receptors[0] = this.receptors.main;
     for (const n of this.notes) {
-      if (n.sec !== this.secIdx || n.judged) continue; const x = hitX + (n.t - this.now) * pxPerSec; if (x > A.x + A.w + 16) break; if (x < A.x - 16) continue;
-      ctx.globalAlpha = this.noteAlpha(n.t - this.now);
-      if (n.type === 'bomb') { this.drawBomb(ctx, x, cy, 8); ctx.globalAlpha = 1; continue; }
-      circle(ctx, x, cy, 14, '#1a1410'); circle(ctx, x, cy, 13, n.star ? '#ffd24a' : '#f0c040'); circle(ctx, x, cy, 12, n.star ? '#e0b030' : '#c89a2a');
-      for (let v = 0; v < 3; v++) { const on = (n.combo >> v) & 1; rect(ctx, x - 9 + v * 6, cy - 7, 5, 14, on ? '#fff' : '#5a4210'); if (on) drawText(ctx, this.instrument.keyNames[v], x - 8 + v * 6, cy - 2, '#000', { font: 'small' }); }
+      if (n.sec !== this.secIdx || n.judged) continue; const x = hitX + (n.t - this.now) * pxPerSec; if (x > A.x + A.w + 20) break; if (x < A.x - 20) continue;
+      ctx.globalAlpha = this.noteAlpha((n.t - this.now) / this.approach);
+      if (n.type === 'bomb') { circle(ctx, x, cy, 10, '#1a1410'); circle(ctx, x, cy, 9, '#c8302a'); ctx.globalAlpha = 1; continue; }
+      circle(ctx, x, cy + 2, 17, 'rgba(0,0,0,0.3)'); circle(ctx, x, cy, 17, '#120e1c'); circle(ctx, x, cy, 16, n.star ? '#ffd24a' : '#f0c040'); circle(ctx, x, cy, 14, n.star ? '#e0b030' : '#c89a2a');
+      for (let v = 0; v < 3; v++) { const on = (n.combo >> v) & 1; rect(ctx, x - 10 + v * 7, cy - 8, 5, 16, on ? '#fffbe0' : '#5a4210'); if (on) drawText(ctx, this.instrument.keyNames[v], x - 9 + v * 7, cy - 2, '#1a1410', { font: 'small' }); }
       ctx.globalAlpha = 1;
     }
-    if (!A.touch) { const names = this.instrument.keyNames; for (let v = 0; v < 3; v++) { const bx = A.x + A.w / 2 - 44 + v * 32, by = A.y + A.h - 34; const on = (this.valveMask >> v) & 1; uiButton(ctx, bx, by + (on ? 2 : 0), 26, 16, names[v], on ? 'down' : 'normal', { color: '#c89a2a', hi: '#ffe080', lo: '#8a6010', ol: '#4a3208' }); } }
-    drawText(ctx, 'PRESS THE LIT VALVES TOGETHER', A.x + A.w / 2, A.y + A.h - (A.touch ? 10 : 12), '#aab', { align: 'center', font: 'small' });
+    drawTrumpetBody(ctx, A.x + A.w / 2, A.y + A.h - (A.touch ? 26 : 40), this.valveMask, this.now);
   }
   drawBow(ctx, A) {
-    const hitX = A.x + 80, top = A.y + (A.touch ? 16 : 28), bot = A.y + A.h - (A.touch ? 18 : 34);
-    rect(ctx, A.x, top - 6, A.w, bot - top + 12, '#141126'); for (let i = 0; i < 4; i++) rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#3a3560');
-    const pxPerSec = (A.w - 90) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
-    rect(ctx, hitX, top - 8, 2, bot - top + 16, '#887');
-    if (this.flashes[1] > 0) rect(ctx, hitX - 3, top - 8, 8, (bot - top) / 2 + 8, '#c58bff'); if (this.flashes[0] > 0) rect(ctx, hitX - 3, top + (bot - top) / 2, 8, (bot - top) / 2 + 8, '#6be585');
+    const hitX = A.x + 118, top = A.y + (A.touch ? 22 : 32), bot = A.y + A.h - (A.touch ? 30 : 44);
+    vgrad(ctx, A.x, top - 6, A.w, bot - top + 12, '#1c1630', '#120e20');
+    for (let i = 0; i < 4; i++) rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#332a58');
+    const pxPerSec = (A.w - 140) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
+    rect(ctx, hitX, top - 8, 2, bot - top + 16, '#7a7290');
+    if (this.flashes[1] > 0) { ctx.globalAlpha = this.flashes[1] * 2; rect(ctx, hitX - 4, top - 8, 10, (bot - top) / 2 + 8, '#c58bff'); ctx.globalAlpha = 1; }
+    if (this.flashes[0] > 0) { ctx.globalAlpha = this.flashes[0] * 2; rect(ctx, hitX - 4, top + (bot - top) / 2, 10, (bot - top) / 2 + 8, '#6be585'); ctx.globalAlpha = 1; }
     this.receptors[1] = { x: hitX, y: top + (bot - top) * 0.25 }; this.receptors[0] = { x: hitX, y: top + (bot - top) * 0.75 }; this.receptors.main = { x: hitX, y: (top + bot) / 2 };
     for (const n of this.notes) {
-      if (n.sec !== this.secIdx) continue; const xs = hitX + (n.t - this.now) * pxPerSec; if (xs > A.x + A.w + 10) break; const xe = n.dur ? hitX + (n.t + n.dur - this.now) * pxPerSec : xs; if (xe < A.x - 10) continue;
+      if (n.sec !== this.secIdx) continue; const xs = hitX + (n.t - this.now) * pxPerSec; if (xs > A.x + A.w + 12) break;
+      const xe = n.dur ? hitX + (n.t + n.dur - this.now) * pxPerSec : xs; if (xe < A.x - 12) continue;
       if (n.judged && !(n.type === 'hold' && n.hit && !n.tailJudged)) continue;
-      const y = bot - (bot - top) * n.pitch, col = n.dir > 0 ? '#c58bff' : '#6be585'; ctx.globalAlpha = this.noteAlpha(n.t - this.now);
-      if (n.dur) { const x1 = Math.max(A.x, n.holding ? hitX : xs), x2 = Math.min(A.x + A.w, xe); if (x2 > x1) { rect(ctx, x1, y - 3, x2 - x1, 7, n.holding ? '#fff' : darken(col, 0.4)); rect(ctx, x1, y - 1, x2 - x1, 2, n.holding ? col : darken(col, 0.2)); } }
-      if (!n.holding) { circle(ctx, xs, y, 8, '#1a1410'); circle(ctx, xs, y, 7, n.star ? '#ffd24a' : col); drawText(ctx, n.dir > 0 ? '↑' : '↓', xs, y - 3, '#1a1410', { align: 'center' }); }
+      const y = bot - (bot - top) * n.pitch, col = n.dir > 0 ? '#c58bff' : '#6be585';
+      ctx.globalAlpha = this.noteAlpha((n.t - this.now) / this.approach);
+      if (n.dur) { const x1 = Math.max(A.x, n.holding ? hitX : xs), x2 = Math.min(A.x + A.w, xe); if (x2 > x1) { rect(ctx, x1, y - 5, x2 - x1, 11, n.holding ? '#fff' : darken(col, 0.4)); rect(ctx, x1, y - 2, x2 - x1, 4, n.holding ? col : darken(col, 0.2)); } }
+      if (!n.holding) { circle(ctx, xs, y + 2, 11, 'rgba(0,0,0,0.3)'); circle(ctx, xs, y, 11, '#120e1c'); circle(ctx, xs, y, 10, n.star ? '#ffd24a' : col); drawText(ctx, n.dir > 0 ? '↑' : '↓', xs, y - 3, '#1a1410', { align: 'center' }); }
       ctx.globalAlpha = 1;
     }
-    if (!A.touch) { drawText(ctx, 'UP BOW = ↑ / W', A.x + 8, A.y + A.h - 14, '#c58bff'); drawText(ctx, 'DOWN BOW = ↓ / S', A.x + A.w - 8, A.y + A.h - 14, '#6be585', { align: 'right' }); }
+    drawViolinBody(ctx, A.x + 52, A.y + A.h / 2, this.keysDown.has('ArrowUp') || this.keysDown.has('KeyW') ? 1 : -1, !!Object.keys(this.holds).length, this.now);
   }
   drawQte(ctx, A) {
-    const cx = A.x + A.w / 2, cy = A.y + A.h / 2 + 4; this.receptors.main = { x: cx, y: cy }; this.receptors[0] = this.receptors.main;
+    const cx = A.x + A.w / 2, cy = A.y + A.h / 2 - 6; this.receptors.main = { x: cx, y: cy }; this.receptors[0] = this.receptors.main;
     const m = this.section.member;
-    // spotlight cone
-    ctx.globalAlpha = 0.12; ctx.fillStyle = '#ffe680'; ctx.beginPath(); ctx.moveTo(cx - 20, A.y); ctx.lineTo(cx + 20, A.y); ctx.lineTo(cx + 120, A.y + A.h); ctx.lineTo(cx - 120, A.y + A.h); ctx.fill(); ctx.globalAlpha = 1;
-    drawText(ctx, (m ? m.name.toUpperCase() : 'THE BAND') + ' ON ' + INSTRUMENTS[this.section.instrument].name.toUpperCase(), cx, A.y + A.h - 26, '#ffd166', { align: 'center', outline: '#1a1410' });
-    drawText(ctx, 'HIT THE RING AS IT CLOSES  (SPACE / F / J / TAP)', cx, A.y + A.h - 14, '#aab', { align: 'center', font: 'small' });
-    if (m) drawBugAt(ctx, m.spec, cx - 110, cy + 30, { pose: this.onBeat ? 'play' : 'idle', instrument: m.instrument });
-    // target
-    circle(ctx, cx, cy, 16, this.flashes.qte > 0 ? '#ffe14d' : '#2a2540'); ringPx(ctx, cx, cy, 16, '#ffd166'); ringPx(ctx, cx, cy, 17, '#8a7030');
-    drawText(ctx, 'TAP', cx, cy - 3, this.flashes.qte > 0 ? '#1a1410' : '#ffd166', { align: 'center' });
+    ctx.globalAlpha = 0.14; ctx.fillStyle = '#ffe680'; ctx.beginPath(); ctx.moveTo(cx - 26, A.y); ctx.lineTo(cx + 26, A.y); ctx.lineTo(cx + 150, A.y + A.h); ctx.lineTo(cx - 150, A.y + A.h); ctx.fill(); ctx.globalAlpha = 1;
+    if (m) { drawShadow(ctx, cx - 130, cy + 54, 24); drawBugAt(ctx, m.spec, cx - 130, cy + 54, { pose: this.onBeat ? 'play' : 'idle', instrument: m.instrument, scale: 1.4 }); }
+    circle(ctx, cx, cy, 22, this.flashes.qte > 0 ? '#ffe14d' : '#231d3a'); ringPx(ctx, cx, cy, 22, '#ffd166'); ringPx(ctx, cx, cy, 23, '#8a7030');
+    ctx.drawImage(icon('note'), cx - 3, cy - 8);
     for (const n of this.notes) {
       if (n.sec !== this.secIdx || n.judged) continue; const dt = n.t - this.now; if (dt > this.approach) break; if (dt < -0.2) continue;
-      const k = clamp(dt / this.approach, 0, 1); const r = 16 + k * 70; const col = k < 0.15 ? '#fff' : '#5bc0ff';
-      ringPx(ctx, cx, cy, r, col); ringPx(ctx, cx, cy, r + 1, darken(col, 0.3));
-      if (k < 0.3) { ctx.globalAlpha = (0.3 - k) * 2; circle(ctx, cx, cy, r, withAlpha('#5bc0ff', 0.2)); ctx.globalAlpha = 1; }
+      const k = clamp(dt / this.approach, 0, 1), r = 22 + k * 86, col = k < 0.12 ? '#fff' : '#5bc0ff';
+      ringPx(ctx, cx, cy, r, col); ringPx(ctx, cx, cy, r + 1, darken(col, 0.35));
     }
+    drawText(ctx, m ? m.name.toUpperCase() : 'BAND', cx, A.y + A.h - 24, '#ffd166', { align: 'center', outline: '#1a1410' });
   }
 }

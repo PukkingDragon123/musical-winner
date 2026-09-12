@@ -1,57 +1,66 @@
 # Bug Busker Orchestra
 
-A 2D pixel-art **rhythm roguelike**. You were MONARCH's lead guitarist until The Solo.
-Now you busk the streets of San Francisco with six dollars and a four-string guitar,
-building a bug orchestra that puts hers to shame.
+A 2D pixel-art **rhythm roguelike**. Pick a busker, headline a stadium, blow the solo,
+get flown to San Francisco, and rebuild a band one street corner at a time.
 
-Runs in any modern browser with no build step: open `index.html`, or run `node build.js`
-for a single-file `dist/bug-busker-orchestra.html`. Everything, including the music and
-every sprite, is generated procedurally in code.
+Open `index.html`, or run `node build.js` for a single-file `dist/bug-busker-orchestra.html`.
+No build step, no dependencies. Every sprite, every note and every street is generated in code.
 
-## The run
+## The opening
 
-* **Opening concert.** A six-movement stadium set in the spirit of a certain rhapsody:
-  ballad, riff, opera, fanfare, band spotlight, and The Solo. Each movement teaches an
-  instrument. The Solo is unwinnable. You are fired on stage.
-* **The map.** An oblique-view San Francisco with skyscrapers, Victorians, parks, the bay,
-  landmarks, traffic and pedestrians. Slay-the-Spire paths run north: gigs, Big Gigs with
-  crowd modifiers, shops, `?` events, rests, open mics, treasure, and the Golden Gate finale.
-  Every three stops it is night and dinner costs money per bug. Starving bugs leave.
-* **Gigs.** Detailed street venues with parallax facades, passers-by, cars, wind-blown
-  leaves, fog and pigeons. Your instrument leads; bandmates take spotlights you back with
-  quick-time taps. Hype draws watchers who tip.
-* **Payout.** Every hit and every watcher adds APPLAUSE. Combos, hype and your CHARMS build
-  MULT. Cash = Applause x Mult, tallied Balatro-style at the end of each set.
-* **Builds.** 30 charms in five slots (instrument boosts, crowd synergies, band-composition
-  bonuses, genre multipliers, risky trade-offs), permanent vouchers, one-shot consumables,
-  instrument swaps, recruits with skill levels, and shop rerolls.
+**Character select** in fighting-game style: eight buskers with stats, instruments and a
+starting ability. Then **RHAPSODY OF THE BUG**, a six-movement stadium set with a four-piece
+band (drums, keys, vocals and you), sweeping lights, lasers and pyro that escalate each
+movement. The final solo cannot be landed. The crowd boos and throws tomatoes, cans and a
+boot. Backstage is silent. They put you on a plane. You practise once at 30,000 feet.
 
-## Instruments
+## The city
 
-| Instrument | Minigame | Keys |
-|---|---|---|
-| Guitar / Bass / Keyboard / Tambourine | Falling lanes with holds, gold stars, bombs and roll bars | `D F J K` / `F J` / `S D F J K L` / `Space` |
-| Taiko Drums | DON and KA notes, big notes with both hands, rolls | `F J` don, `D K` ka |
-| Saxophone | Hold through phrases, release on the marker, manage breath | `Space` |
-| Trumpet | Press the lit valve combination together | `J K L` |
-| Violin | Bow up or down on the marker, hold long bows | `↑/W`, `↓/S` |
-| Bandmate spotlight | Tap the closing ring | `Space` / `F` / `J` |
+San Francisco drawn like a street map: white roads with names, beige blocks, green parks,
+the bay, Chinatown, the Mission, Twin Peaks, the Sunset, piers and the Golden Gate. Cars and
+pedestrians move along the roads; weather rolls through.
+
+You travel on **Uber tickets** — one per hop, two for a long one, seven a day. Pins mark
+venues to play, music shops, food (Dumpling Dynasty, Burrito Beetle, Sourdough Sam's),
+open mics to recruit, events, rest stops and street-corner pickups. Tickets run out, night
+falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
+
+## Playing
+
+Every set is **real public-domain music** — Ode to Joy, Flight of the Bumblebee, In the Hall
+of the Mountain King, The Entertainer, Habanera, Toccata, St. Louis Blues and more. The chart
+follows the actual melody, so the notes you hit are the tune.
+
+The play area *is* your instrument. Guitar and bass are a wooden fretboard receding to a
+vanishing point, with strings that ring and wobble when you hit them. Keyboard is a real
+keyboard whose keys depress. Drums, saxophone, trumpet and violin each draw their own body,
+keys, valves and bow.
+
+| Instrument | Keys |
+|---|---|
+| Guitar / Bass / Keyboard / Tambourine | `D F J K` / `F J` / `S D F J K L` / `Space` |
+| Taiko Drums | `F J` don, `D K` ka |
+| Saxophone | hold `Space` |
+| Trumpet | `J K L` valve combos |
+| Violin | `↑/W` up bow, `↓/S` down bow |
+| Bandmate spotlight | tap the closing ring |
+
+Gold stars pay triple, red bombs cost you, roll bars are mashed. Applause x Mult = cash,
+tallied Balatro-style. **After every set you draft one of three abilities** — more stars,
+forgiven misses, per-perfect multipliers, chord bonuses, tip doublers, extra Uber tickets.
 
 ## Mobile
 
-Fully touch-playable: tap menus, drag the map, and play with a row of large pads laid out
-per instrument directly under the note receptor. Portrait phones rotate the game to fill
-the long edge; `SCREEN: TURN` on the title overrides that.
+Fully touch-playable: tap pins, drag the map, and play on large pads laid out under the note
+receptor. Portrait phones rotate to fill the long edge.
 
 ## Code
 
 ```
-js/core     util, fonts (5x7 and 3x5 bitmap), effects (particles, shake, wind), WebAudio synth
-js/art      Pix buffer with auto-shading and outlines, procedural bug generator, UI kit,
-            props, vehicles, trees, building facades, skylines, map blocks, landmarks
-js/data     instruments, charms, vouchers, consumables, venues, boss modifiers, story, events
-js/sim      songs and charts, rhythm engine with QTE, applause x mult scoring, crowd, map generator
-js/scenes   title and cutscenes, stadium concert, city map, street gigs, shop/event/rest/night/band
-js/game.js  loop, input (keyboard, mouse, multi-touch), run state, save/load
-build.js    bundles dist/bug-busker-orchestra.html and dist/artifact.html
+js/core     util, bitmap fonts, particles/shake/wind, WebAudio synth
+js/art      shaded pixel buffer, bug generator, UI kit, props, buildings, instrument views
+js/data     instruments, abilities, venues, the San Francisco map, public-domain tunes
+js/sim      chart generation from melody, rhythm engine, scoring, crowd
+js/scenes   title and select, concert/backstage/flight, city, gig and draft, shops and night
+js/game.js  loop, input, run state, save/load
 ```

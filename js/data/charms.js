@@ -65,3 +65,19 @@ const CONSUMABLES = {
   jazzChart: { name: 'Jazz Chart', price: 12, icon: 'sheet', desc: 'Next song is JAZZ.', target: 'run', use: (r) => { r.buffs.genre = 'jazz'; return 'Next song swings.'; } },
 };
 const CONSUMABLE_KEYS = Object.keys(CONSUMABLES);
+
+// ---- Drafted abilities (offered after every set). Chart-affecting mods live here.
+Object.assign(CHARMS, {
+  goldRush:    { name: 'Gold Rush', rarity: 'uncommon', price: 40, icon: 'star', desc: 'Twice as many gold STAR notes.', mods: { starRate: 0.18 } },
+  bombSquad:   { name: 'Bomb Squad', rarity: 'uncommon', price: 38, icon: 'fire', desc: 'Double bombs. Each dodged bomb: +0.2 Mult.', mods: { bombMult: 2, dodgeMult: 0.2 } },
+  shield:      { name: 'Soundproof Case', rarity: 'uncommon', price: 40, icon: 'case', desc: 'The first 3 misses of a set are forgiven.', mods: { safetyNet: 3 } },
+  virtuoso:    { name: 'Virtuoso', rarity: 'rare', price: 60, icon: 'star', desc: 'Every PERFECT adds +0.05 Mult. No cap.', onHit: (S, n, j) => { if (j === 'perfect') S.multAdd += 0.05; } },
+  sustain:     { name: 'Sustain Pedal', rarity: 'common', price: 24, icon: 'sheet', desc: 'Hold notes score double.', onHit: (S, n, j, info) => { if (info.tail && j !== 'miss') S.addApplause(info.applause); } },
+  chordist:    { name: 'Chord Theory', rarity: 'common', price: 24, icon: 'sheet', desc: 'Chords and big notes +25 applause.', onHit: (S, n, j) => { if (j !== 'miss' && (n.chord || n.type === 'big')) S.addApplause(25); } },
+  opener:      { name: 'Strong Opener', rarity: 'common', price: 22, icon: 'note', desc: 'The first 20 notes score triple.', onHit: (S, n, j, info) => { S._cnt = (S._cnt || 0) + 1; if (S._cnt <= 20 && j !== 'miss') S.addApplause(info.applause * 2); } },
+  closer:      { name: 'Big Finish', rarity: 'uncommon', price: 36, icon: 'encore', desc: 'x2 Mult if your final combo beats 40.', onSetEnd: (S) => { if (S.combo >= 40) S.timesMult(2, 'Big Finish'); } },
+  tipsy:       { name: 'Happy Hour', rarity: 'common', price: 22, icon: 'coin', desc: 'Tips from the hat are worth double.', mods: { tipMult: 2 } },
+  gigEconomy:  { name: 'Gig Economy', rarity: 'uncommon', price: 34, icon: 'phone', desc: '+1 Uber ticket every morning.', mods: { tickets: 1 } },
+  earworm:     { name: 'Earworm', rarity: 'rare', price: 55, icon: 'note', desc: 'x1.5 Mult when you play the same tune twice in a row.', onSetEnd: (S) => { if (S.run && S.run.lastTune === S.info.tune) S.timesMult(1.5, 'Earworm'); } },
+  busStop:     { name: 'Muni Pass', rarity: 'common', price: 26, icon: 'phone', desc: 'Travel costs 1 ticket less on long hops.', mods: { cheapTravel: true } },
+});

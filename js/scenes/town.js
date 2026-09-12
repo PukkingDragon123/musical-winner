@@ -49,7 +49,7 @@ class ShopScene {
     if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + n) % Math.max(1, n); Audio.ui('move'); }
     else if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % Math.max(1, n); Audio.ui('move'); }
     else if (['Enter', 'Space'].includes(code)) { const s = this.items[this.sel]; if (s) this.buy(s); }
-    else if (code === 'KeyR') this.reroll(); else if (code === 'Escape' || code === 'KeyL') Game.afterNode();
+    else if (code === 'KeyR') this.reroll(); else if (code === 'Escape' || code === 'KeyL') Game.setScene(new CityScene());
   }
   click(x, y) {
     for (const b of this.buttons) if (b.hit(x, y)) { b.onTap(); return; }
@@ -86,7 +86,7 @@ class ShopScene {
     const s = items[this.sel];
     if (s) { drawText(ctx, this.cardLabel(s).toUpperCase(), inner.x + 8, inner.y + 6, '#7a4a10'); drawWrapped(ctx, this.cardDesc(s), inner.x + 8, inner.y + 18, 96, UI.ink, 9); const why = this.canBuy(s); if (why) drawText(ctx, why, inner.x + 8, inner.y + inner.h - 24, '#b02a2a', { font: 'small' }); }
     drawText(ctx, this.msg, inner.x + 8, inner.y + inner.h - 12, UI.inkSoft, { font: 'small' });
-    this.buttons = [new Btn(inner.x + inner.w - 250, inner.y + inner.h - 26, 76, 20, 'BUY', () => { const it = items[this.sel]; if (it) this.buy(it); }), new Btn(inner.x + inner.w - 168, inner.y + inner.h - 26, 90, 20, 'REROLL ' + fmtMoney(this.rerollPrice()), () => this.reroll(), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }), new Btn(inner.x + inner.w - 72, inner.y + inner.h - 26, 66, 20, 'LEAVE', () => Game.afterNode(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14' })];
+    this.buttons = [new Btn(inner.x + inner.w - 250, inner.y + inner.h - 26, 76, 20, 'BUY', () => { const it = items[this.sel]; if (it) this.buy(it); }), new Btn(inner.x + inner.w - 168, inner.y + inner.h - 26, 90, 20, 'REROLL ' + fmtMoney(this.rerollPrice()), () => this.reroll(), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }), new Btn(inner.x + inner.w - 72, inner.y + inner.h - 26, 66, 20, 'LEAVE', () => Game.setScene(new CityScene()), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14' })];
     for (const b of this.buttons) b.draw(ctx);
     drawParty(ctx, 60, 296, this.t);
     Game.drawHud(ctx);
@@ -99,7 +99,7 @@ class EventScene {
     if (!pool.length) { r.seenEvents = r.seenEvents.filter(id => EVENTS.find(e => e.id === id && e.once)); pool = EVENTS.filter(e => !r.seenEvents.includes(e.id) && (!e.req || e.req(r))); }
     if (!pool.length) pool = EVENTS.filter(e => !e.once);
     this.ev = r.rng.pick(pool); r.seenEvents.push(this.ev.id); this.log = []; this.done = false; this.t = 0;
-    this.menu = new Menu(this.ev.choices.map(c => ({ label: c.label, disabled: c.req ? !c.req(r) : false, onSelect: () => { c.apply(r, (s) => this.log.push(s)); this.done = true; r.save(); this.menu = new Menu([{ label: 'CONTINUE', onSelect: () => Game.afterNode() }]); } })));
+    this.menu = new Menu(this.ev.choices.map(c => ({ label: c.label, disabled: c.req ? !c.req(r) : false, onSelect: () => { c.apply(r, (s) => this.log.push(s)); this.done = true; r.save(); this.menu = new Menu([{ label: 'CONTINUE', onSelect: () => Game.setScene(new CityScene()) }]); } })));
   }
   update(dt) { this.t += dt; }
   key(code) { this.menu.key(code); } click(x, y) { this.menu.click(x, y); } hover(x, y) { this.menu.hover(x, y); }
@@ -120,12 +120,12 @@ class RestScene {
   constructor(node) {
     const r = Game.run; this.t = 0; this.log = null;
     this.menu = new Menu([
-      { label: 'Nap in the sun: +45 stamina for everyone', icon: 'rest', onSelect: () => { r.members.forEach(m => m.stamina = Math.min(100, m.stamina + 45)); this.finish('Everyone dozes off in the grass. Stamina restored.'); } },
-      { label: 'Jam session: +1 skill to your least skilled bug (-10 stamina all)', icon: 'metronome', onSelect: () => { const m = r.members.slice().sort((a, b) => a.skill - b.skill)[0]; m.skill = Math.min(10, m.skill + 1); r.members.forEach(x => x.stamina = Math.max(0, x.stamina - 10)); Audio.ui('levelup'); this.finish(m.name + ' finally nails that tricky part. Skill +1!'); } },
-      { label: 'Repair instruments: +1 quality on a random instrument (or +$8)', icon: 'case', onSelect: () => { const c = r.members.filter(m => m.quality < 3); if (c.length) { const m = r.rng.pick(c); m.quality++; this.finish(m.name + '\'s ' + INSTRUMENTS[m.instrument].name + ' has never sounded better. Quality +1!'); } else { r.money += 8; this.finish('Nothing to fix, so you polish everything and find $8 in a case pocket.'); } } },
+      { label: 'Nap: +45 stamina for all', icon: 'rest', onSelect: () => { r.members.forEach(m => m.stamina = Math.min(100, m.stamina + 45)); this.finish('EVERYONE IS RESTED'); } },
+      { label: 'Call an Uber: +2 tickets', icon: 'phone', onSelect: () => { r.tickets += 2; this.finish('+2 UBER TICKETS'); } },
+      { label: 'Jam: +1 skill to your weakest', icon: 'metronome', onSelect: () => { const m = r.members.slice().sort((a, b) => a.skill - b.skill)[0]; m.skill = Math.min(10, m.skill + 1); r.members.forEach(x => x.stamina = Math.max(0, x.stamina - 10)); Audio.ui('levelup'); this.finish(m.name.toUpperCase() + ' LEVELLED UP'); } },
     ]);
   }
-  finish(msg) { this.log = msg; Audio.ui('select'); Game.run.save(); this.menu = new Menu([{ label: 'CONTINUE', onSelect: () => Game.afterNode() }]); }
+  finish(msg) { this.log = msg; Audio.ui('select'); Game.run.save(); this.menu = new Menu([{ label: 'CONTINUE', onSelect: () => Game.setScene(new CityScene()) }]); }
   update(dt) { this.t += dt; } key(code) { this.menu.key(code); } click(x, y) { this.menu.click(x, y); } hover(x, y) { this.menu.hover(x, y); }
   draw(ctx) {
     const [c1, c2] = skyColors(0.35); vgrad(ctx, 0, 0, W, H, c1, c2); circle(ctx, 520, 60, 16, '#fff0a0'); ctx.drawImage(skylineCanvas(8, W, 60, { color: '#8a90a8', lit: '#fff', density: 0.05 }), 0, 170);
@@ -144,7 +144,7 @@ class TreasureScene {
     const r = Game.run; this.t = 0; const picks = []; for (let i = 0; i < 3; i++) { const k = r.randomCharm(picks); if (k) picks.push(k); } this.picks = picks; this.sel = 0;
     this.items = picks.map(k => ({ label: CHARMS[k].name, key: k })); this.items.push({ label: 'Take $30 instead', cash: 30 });
   }
-  choose(i) { const r = Game.run; const it = this.items[i]; if (it.key) { if (!r.addCharm(it.key)) { Audio.ui('error'); this.msg = 'No free charm slot!'; return; } Audio.ui('fanfare'); } else { r.money += it.cash; Audio.ui('cash'); } r.save(); Game.afterNode(); }
+  choose(i) { const r = Game.run; const it = this.items[i]; if (it.key) { if (!r.addCharm(it.key)) { Audio.ui('error'); this.msg = 'No free charm slot!'; return; } Audio.ui('fanfare'); } else { r.money += it.cash; Audio.ui('cash'); } r.save(); Game.setScene(new CityScene()); }
   update(dt) { this.t += dt; }
   key(code) { if (code === 'ArrowLeft' || code === 'ArrowUp') { this.sel = (this.sel + this.items.length - 1) % this.items.length; Audio.ui('move'); } else if (code === 'ArrowRight' || code === 'ArrowDown') { this.sel = (this.sel + 1) % this.items.length; Audio.ui('move'); } else if (['Enter', 'Space'].includes(code)) this.choose(this.sel); }
   click(x, y) { this.cards && this.cards.forEach((c, i) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === i) this.choose(i); else this.sel = i; } }); }
@@ -180,9 +180,9 @@ class NightScene {
     const r = Game.run; this.phase = 'morning'; const leaving = r.members.filter(m => m.hunger >= 2);
     for (const m of leaving) { if (m.leader) { this.gameOver = 'You collapsed from hunger on a Mission sidewalk. The orchestra disbands before it began.'; continue; } r.members.splice(r.members.indexOf(m), 1); this.log.push(m.name + ' the ' + m.spec.species + ' left at dawn to find food elsewhere.'); }
     if (!this.gameOver && r.members.some(m => m.hunger === 1)) this.log.push('Hungry bugs play with shaky hands (smaller timing windows).');
-    r.day++; r.nightPending = false; r.dayBannerPending = true;
+    r.day++; r.nightPending = false; r.newDay();
     if (!this.gameOver) this.log.push('A new day. ' + DAY_NAMES[Math.min(4, r.day)] + ' awaits.'); r.save();
-    this.menu = new Menu([{ label: this.gameOver ? '...' : 'CONTINUE TO THE MAP', onSelect: () => { if (this.gameOver) Game.setScene(new GameOverScene(this.gameOver)); else Game.setScene(new MapScene()); } }]);
+    this.menu = new Menu([{ label: this.gameOver ? '...' : 'CONTINUE TO THE MAP', onSelect: () => { if (this.gameOver) Game.setScene(new GameOverScene(this.gameOver)); else Game.setScene(new CityScene()); } }]);
   }
   update(dt) { this.t += dt; this.fx.update(dt); if (this.phase === 'dinner' && Math.random() < dt * 6) this.fx.add({ x: 320 + (Math.random() - 0.5) * 8, y: 300, vx: (Math.random() - 0.5) * 10, vy: -40 - Math.random() * 30, life: 0.7, kind: 'fire', size: 3, gravity: -20 }); }
   key(code) { this.menu.key(code); } click(x, y) { this.menu.click(x, y); } hover(x, y) { this.menu.hover(x, y); }
@@ -212,11 +212,11 @@ class BandScene {
     r.charms.forEach(k => items.push({ label: 'Sell ' + CHARMS[k].name, right: '+' + fmtMoney(Math.floor(CHARMS[k].price / 2)), icon: CHARMS[k].icon, onSelect: () => { r.money += Math.floor(CHARMS[k].price / 2); r.removeCharm(k); Audio.ui('cash'); this.msg = 'Sold ' + CHARMS[k].name + '.'; this.buildMenu(); } }));
     if (r.members.length > 1 && !m.leader) items.push({ label: 'Part ways with ' + m.name, icon: 'skull', onSelect: () => { r.members.splice(this.sel, 1); this.sel = 0; this.msg = 'Farewell.'; this.buildMenu(); } });
     items.push({ label: 'Sound: ' + (Game.muted ? 'OFF' : 'ON'), icon: 'metronome', onSelect: () => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); this.buildMenu(); } });
-    items.push({ label: 'Back to map', icon: 'arrowL', onSelect: () => { r.save(); Game.setScene(new MapScene()); } });
+    items.push({ label: 'Back to map', icon: 'arrowL', onSelect: () => { r.save(); Game.setScene(new CityScene()); } });
     this.menu = new Menu(items);
   }
   update(dt) { this.t += dt; }
-  key(code) { const r = Game.run; if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + r.members.length) % r.members.length; this.buildMenu(); Audio.ui('move'); return; } if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % r.members.length; this.buildMenu(); Audio.ui('move'); return; } if (code === 'Escape' || code === 'Tab') { r.save(); Game.setScene(new MapScene()); return; } this.menu.key(code); }
+  key(code) { const r = Game.run; if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + r.members.length) % r.members.length; this.buildMenu(); Audio.ui('move'); return; } if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % r.members.length; this.buildMenu(); Audio.ui('move'); return; } if (code === 'Escape' || code === 'Tab') { r.save(); Game.setScene(new CityScene()); return; } this.menu.key(code); }
   click(x, y) { Game.run.members.forEach((m, i) => { if (x >= 16 + i * 100 && x < 16 + i * 100 + 96 && y >= 30 && y < 120) { this.sel = i; this.buildMenu(); Audio.ui('move'); } }); this.menu.click(x, y); }
   hover(x, y) { this.menu.hover(x, y); this.hoverCharm = -1; Game.run.charms.forEach((k, i) => { if (x >= 20 + i * 30 && x < 46 + i * 30 && y >= 138 && y < 164) this.hoverCharm = i; }); }
   draw(ctx) {
@@ -251,9 +251,35 @@ class GameOverScene {
   draw(ctx) { const r = Game.run; drawTownBackdrop(ctx, this.t, 'night', 3); ctx.globalAlpha = 0.6; rect(ctx, 0, 0, W, H, '#100c14'); ctx.globalAlpha = 1; if (r) drawBugAt(ctx, r.members[0].spec, W / 2, 300, { pose: 'idle', instrument: 'guitar' }); uiRibbon(ctx, W / 2, 40, 'THE SHOW IS OVER', { scale: 2 }); const inner = uiPanel(ctx, 120, 80, W - 240, 160); drawWrapped(ctx, this.reason, inner.x + 10, inner.y + 8, 62, UI.ink, 9); if (r) { drawText(ctx, 'Days survived: ' + (r.day + 1) + '   Gigs: ' + r.stats.gigs, inner.x + 10, inner.y + 50, UI.inkSoft, { font: 'small' }); drawText(ctx, 'Total earned: ' + fmtMoney(r.stats.earned) + '   Best payout: ' + fmtMoney(r.stats.bestPayout) + '   Best combo: ' + r.stats.bestCombo, inner.x + 10, inner.y + 58, UI.inkSoft, { font: 'small' }); } this.btn.draw(ctx); }
 }
 class VictoryScene {
-  constructor() { this.t = 0; const r = Game.run; RunState.clearSave(); Audio.ui('fanfare'); r.day = 5; this.fx = new Particles(); this.btn = new Btn(W / 2 - 60, 226, 120, 22, 'PLAY AGAIN', () => { Game.run = null; Game.setScene(new TitleScene()); }); this.cut = new CutsceneScene(STORY.finale, { bg: (ctx) => this.drawBg(ctx), onDone: () => { this.showEnd = true; } }); }
-  update(dt) { this.t += dt; this.fx.update(dt); if (!this.showEnd) this.cut.update(dt); if (Math.random() < dt * 20) this.fx.add({ x: Math.random() * W, y: -5, vx: (Math.random() - 0.5) * 30, vy: 30 + Math.random() * 40, life: 6, color: ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff'][Math.floor(Math.random() * 5)], kind: 'confetti', gravity: 10 }); }
-  key(code) { if (!this.showEnd) { this.cut.key(code); return; } if (['Enter', 'Space'].includes(code)) this.btn.onTap(); } click(x, y) { if (!this.showEnd) { this.cut.click(); return; } if (this.btn.hit(x, y) || !Game.touch) this.btn.onTap(); }
-  drawBg(ctx) { const r = Game.run; const [c1, c2] = skyColors(0.6); vgrad(ctx, 0, 0, W, H, c1, c2); ctx.drawImage(landmarkCanvas('bridge'), -40, 60, 460, 160); ctx.drawImage(landmarkCanvas('bridge'), 420, 60, 460, 160); rect(ctx, 0, 220, W, 140, '#5a5a6a'); rect(ctx, 0, 220, W, 4, '#c8432a'); r.members.forEach((m, i) => { const x = W / 2 - (r.members.length - 1) * 20 + i * 40; drawShadow(ctx, x, 300, 20); drawBugAt(ctx, m.spec, x, 300 + Math.round(Math.sin(this.t * 6 + i) * 2), { pose: 'cheer', instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null }); }); drawBugAt(ctx, HERO_PRESETS.monarch, 560, 300, { pose: 'idle', instrument: 'mic', flip: true }); this.fx.draw(ctx); }
-  draw(ctx) { if (!this.showEnd) { this.cut.draw(ctx); return; } const r = Game.run; this.drawBg(ctx); uiRibbon(ctx, W / 2, 20, 'ENCORE!', { scale: 3, color: '#d9a520' }); const inner = uiPanel(ctx, 140, 70, W - 280, 190); drawText(ctx, 'Your orchestra headlined the Golden Gate.', inner.x + inner.w / 2, inner.y + 8, UI.ink, { align: 'center' }); drawText(ctx, 'San Francisco hums your tunes. Monarch is not amused.', inner.x + inner.w / 2, inner.y + 18, UI.inkSoft, { align: 'center', font: 'small' }); drawText(ctx, 'FINAL SCORE', inner.x + inner.w / 2, inner.y + 40, '#7a4a10', { align: 'center', font: 'small' }); drawText(ctx, fmtMoney(r.money), inner.x + inner.w / 2, inner.y + 50, '#2a7a3a', { align: 'center', scale: 3 }); drawText(ctx, 'Earned ' + fmtMoney(r.stats.earned) + '  -  Gigs ' + r.stats.gigs + '  -  Best payout ' + fmtMoney(r.stats.bestPayout), inner.x + inner.w / 2, inner.y + 84, UI.ink, { align: 'center', font: 'small' }); drawText(ctx, 'Best combo ' + r.stats.bestCombo + '  -  Perfects ' + r.stats.perfects + '  -  Band of ' + r.members.length + '  -  ' + r.charms.length + ' charms', inner.x + inner.w / 2, inner.y + 94, UI.ink, { align: 'center', font: 'small' }); this.btn.y = inner.y + inner.h - 32; this.btn.draw(ctx); }
+  constructor() { this.t = 0; const r = Game.run; RunState.clearSave(); Audio.ui('fanfare'); Audio.roar(3, 0.6); this.fx = new Particles(); this.btn = new Btn(W / 2 - 70, 300, 140, 22, 'PLAY AGAIN', () => { Game.run = null; Game.setScene(new TitleScene()); }); }
+  update(dt) { this.t += dt; this.fx.update(dt); if (Math.random() < dt * 26) this.fx.add({ x: Math.random() * W, y: -5, vx: (Math.random() - 0.5) * 34, vy: 34 + Math.random() * 44, life: 6, color: ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff'][Math.floor(Math.random() * 5)], kind: 'confetti', gravity: 10 }); }
+  key(code) { if (['Enter', 'Space'].includes(code)) this.btn.onTap(); }
+  click(x, y) { if (this.btn.hit(x, y) || !Game.touch) this.btn.onTap(); }
+  draw(ctx) {
+    const r = Game.run; const [c1, c2] = skyColors(0.6); vgrad(ctx, 0, 0, W, H, c1, c2);
+    ctx.drawImage(landmarkCanvas('bridge'), -40, 50, 460, 160); ctx.drawImage(landmarkCanvas('bridge'), 420, 50, 460, 160);
+    rect(ctx, 0, 210, W, 150, '#5a5a6a'); rect(ctx, 0, 210, W, 4, '#c8432a');
+    r.members.forEach((m, i) => { const x = W / 2 - (r.members.length - 1) * 22 + i * 44; drawShadow(ctx, x, 290, 22); drawBugAt(ctx, m.spec, x, 290 + Math.round(Math.sin(this.t * 6 + i) * 2), { pose: 'cheer', instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.3 }); });
+    drawBugAt(ctx, HERO_PRESETS.monarch, 580, 290, { pose: 'idle', instrument: 'mic', flip: true });
+    this.fx.draw(ctx);
+    uiRibbon(ctx, W / 2, 16, 'ENCORE!', { scale: 4, color: '#d9a520' });
+    const inner = uiPanel(ctx, 150, 70, W - 300, 120);
+    ctx.drawImage(icon('coin'), inner.x + 14, inner.y + 22, 14, 13); drawText(ctx, fmtMoney(r.money), inner.x + 34, inner.y + 14, '#2a7a3a', { scale: 3 });
+    drawText(ctx, 'EARNED ' + fmtMoney(r.stats.earned) + '   GIGS ' + r.stats.gigs, inner.x + 14, inner.y + 48, UI.ink, { font: 'small' });
+    drawText(ctx, 'BEST COMBO ' + r.stats.bestCombo + '   BAND OF ' + r.members.length, inner.x + 14, inner.y + 58, UI.ink, { font: 'small' });
+    this.btn.draw(ctx);
+  }
+}
+function drawNightCity(ctx, t, opts = {}) {
+  const [c1, c2] = skyColors(opts.sky != null ? opts.sky : 0.92); vgrad(ctx, 0, 0, W, H, c1, c2);
+  const r = makeRng(7); for (let i = 0; i < 90; i++) { const x = r.int(0, W), y = r.int(0, 150); if (Math.sin(t * 2 + i) > 0.3) px(ctx, x, y, i % 3 ? '#8a86b0' : '#fff'); }
+  circle(ctx, 520, 50, 14, '#f4f0d8'); circle(ctx, 526, 46, 13, c1);
+  ctx.drawImage(landmarkCanvas('bridge'), 0, 110, 320, 112); ctx.drawImage(landmarkCanvas('bridge'), 320, 110, 320, 112);
+  ctx.drawImage(skylineCanvas(11, W, 80, { color: '#1e1a3a', lit: '#ffe6a0', tall: true, density: 0.3 }), 0, 150);
+  ctx.drawImage(landmarkCanvas('transamerica'), 440, 160); ctx.drawImage(landmarkCanvas('coit'), 380, 190);
+  ctx.globalAlpha = 0.28; for (let i = 0; i < 8; i++) { const fx = ((t * 10 + i * 110) % (W + 160)) - 80; rect(ctx, fx, 200 + (i % 3) * 8, 90, 10, '#c8c8e0'); } ctx.globalAlpha = 1;
+  rect(ctx, 0, 230, W, 130, '#2a2438'); rect(ctx, 0, 230, W, 3, '#4a4468'); for (let x = 0; x < W; x += 28) rect(ctx, x, 233, 1, 40, '#22202f');
+  rect(ctx, 0, 272, W, 88, '#1a1826'); for (let x = 0; x < W; x += 34) rect(ctx, x, 312, 18, 2, '#5a5040');
+  ctx.drawImage(propCanvas('lamp'), 60, 184); ctx.drawImage(propCanvas('lamp'), 560, 184);
+  ctx.globalAlpha = 0.12; circle(ctx, 66, 200, 40, '#ffe680'); circle(ctx, 566, 200, 40, '#ffe680'); ctx.globalAlpha = 1;
 }
