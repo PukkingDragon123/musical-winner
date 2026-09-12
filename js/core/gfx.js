@@ -69,3 +69,95 @@ function skyColors(t) {
   for (let i = 0; i < stops.length - 1; i++) { const [a, ca] = stops[i], [b, cb] = stops[i + 1]; if (t >= a && t <= b) { const k = (t - a) / (b - a); return [mixColor(ca[0], cb[0], k), mixColor(ca[1], cb[1], k)]; } }
   return stops[stops.length - 1][1];
 }
+
+// ---------- Scene transitions ----------
+// kinds: 'iris', 'curtain', 'slideL', 'slideR', 'fade', 'vinyl', 'bars'
+class Transition {
+  constructor() { this.t = 0; this.dur = 0; this.kind = 'fade'; this.phase = 'idle'; this.mid = null; this.label = null; }
+  get active() { return this.phase !== 'idle'; }
+  start(kind, mid, opts = {}) { this.kind = kind || 'fade'; this.dur = opts.dur || 0.42; this.t = 0; this.phase = 'out'; this.mid = mid; this.label = opts.label || null; this.color = opts.color || '#0a0814'; }
+  update(dt) {
+    if (this.phase === 'idle') return;
+    this.t += dt;
+    if (this.phase === 'out' && this.t >= this.dur) { this.t = 0; this.phase = 'in'; if (this.mid) { const f = this.mid; this.mid = null; f(); } }
+    else if (this.phase === 'in' && this.t >= this.dur) { this.phase = 'idle'; this.t = 0; }
+  }
+  draw(ctx) {
+    if (this.phase === 'idle') return;
+    const k = clamp(this.t / this.dur, 0, 1), cover = this.phase === 'out' ? k : 1 - k;
+    const c = this.color;
+    switch (this.kind) {
+      case 'iris': {
+        const maxR = Math.hypot(W, H) / 2 + 10, r = maxR * (1 - easeInOut(cover));
+        ctx.fillStyle = c; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, Math.max(0, r), 0, Math.PI * 2, true); ctx.fill();
+        ringPx(ctx, W / 2, H / 2, Math.max(0, r), '#ffd24a'); break;
+      }
+      case 'curtain': {
+        const h = H / 2 * easeInOut(cover);
+        vgrad(ctx, 0, 0, W, h, '#6a1020', '#3a0812'); vgrad(ctx, 0, H - h, W, h, '#3a0812', '#6a1020');
+        for (let x = 0; x < W; x += 16) { ctx.globalAlpha = 0.25; rect(ctx, x, 0, 6, h, '#2a0610'); rect(ctx, x + 8, H - h, 6, h, '#2a0610'); ctx.globalAlpha = 1; }
+        rect(ctx, 0, h - 3, W, 3, '#d9a520'); rect(ctx, 0, H - h, W, 3, '#d9a520'); break;
+      }
+      case 'slideL': case 'slideR': {
+        const dir = this.kind === 'slideL' ? -1 : 1, x = dir * W * (1 - easeInOut(cover));
+        rect(ctx, x, 0, W, H, c);
+        for (let i = 0; i < 6; i++) rect(ctx, x + (dir > 0 ? -6 - i * 5 : W + i * 5), 0, 4, H, withAlpha('#ffd24a', 0.1 + i * 0.03)); break;
+      }
+      case 'vinyl': {
+        const r = Math.hypot(W, H) / 2 * easeInOut(cover), cx = W / 2, cy = H / 2;
+        circle(ctx, cx, cy, r, '#14121c');
+        for (let rr = 10; rr < r; rr += 7) ringPx(ctx, cx, cy, rr, '#1e1b28');
+        if (r > 30) { circle(ctx, cx, cy, 24, '#d9a520'); circle(ctx, cx, cy, 4, '#14121c'); }
+        break;
+      }
+      case 'bars': { const n = 10, bh = H / n; for (let i = 0; i < n; i++) { const w = W * easeInOut(clamp(cover * 1.6 - i * 0.06, 0, 1)); rect(ctx, i % 2 ? W - w : 0, i * bh, w, bh + 1, c); } break; }
+      default: { ctx.globalAlpha = cover; rect(ctx, 0, 0, W, H, c); ctx.globalAlpha = 1; }
+    }
+    if (this.label && cover > 0.55) { ctx.globalAlpha = clamp((cover - 0.55) / 0.4, 0, 1); drawText(ctx, this.label, W / 2, H / 2 - 10, '#ffd24a', { align: 'center', scale: 3, outline: '#5a2a10' }); ctx.globalAlpha = 1; }
+  }
+}
+// Cartoon helpers
+function bounceScale(t, amp = 0.18, freq = 9) { return 1 + Math.sin(t * freq) * amp * Math.exp(-t * 4); }
+function squashOnLand(t) { return t < 0.12 ? 1 - (0.12 - t) * 2.2 : 1; }
+function popIn(t, dur = 0.3) { return clamp(easeOutBack(clamp(t / dur, 0, 1)), 0, 1.3); }
+function drawDust(fx, x, y, n = 6, col = '#e8e0d0') { for (let i = 0; i < n; i++) fx.add({ x, y, vx: (Math.random() - 0.5) * 90, vy: -Math.random() * 30, life: 0.4, color: col, kind: 'smoke', size: 2, grow: 4, alpha: 0.6, gravity: 40 }); }
+
+// ---- cinematic helpers ----
+function vignette(ctx, strength = 0.45, color = '#050409') {
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.34, W / 2, H / 2, Math.max(W, H) * 0.72);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, withAlpha(color, strength));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function letterbox(ctx, h, alpha = 1) {
+  if (h <= 0) return; ctx.globalAlpha = alpha; rect(ctx, 0, 0, W, h, '#07060c'); rect(ctx, 0, H - h, W, h, '#07060c'); ctx.globalAlpha = 1;
+}
+// warm pool of light from a source, drawn additively
+function lightPool(ctx, x, y, r, color, alpha = 0.22) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, withAlpha(color, alpha)); g.addColorStop(1, withAlpha(color, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+// slow drifting motes: purely decorative, seeded so they are stable
+class Motes {
+  constructor(n = 26, seed = 5, opts = {}) {
+    const r = makeRng(seed); this.m = []; this.o = opts;
+    for (let i = 0; i < n; i++) this.m.push({ x: r.range(0, W), y: r.range(0, H), s: r.range(0.6, 2.2), vx: r.range(-7, 7), vy: r.range(-13, -3), p: r.range(0, 6.3) });
+  }
+  update(dt, t) { for (const m of this.m) { m.x += m.vx * dt; m.y += m.vy * dt; if (m.y < -6) { m.y = H + 4; m.x = Math.random() * W; } if (m.x < -6) m.x = W + 4; if (m.x > W + 6) m.x = -4; } }
+  draw(ctx, t, color = '#ffe8b0') {
+    for (const m of this.m) { ctx.globalAlpha = 0.12 + 0.16 * (0.5 + 0.5 * Math.sin(t * 1.7 + m.p)); circle(ctx, m.x, m.y, m.s, color); }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// vignette confined to a rectangle (for scenes drawn into a clipped band)
+function vignetteRect(ctx, x, y, w, h, strength = 0.4, color = '#050409') {
+  const cx = x + w / 2, cy = y + h / 2;
+  const g = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.3, cx, cy, Math.max(w, h) * 0.66);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, withAlpha(color, strength));
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+}
+// warm/cool colour grade over a rectangle
+function grade(ctx, x, y, w, h, color, alpha = 0.08, mode = 'overlay') {
+  ctx.save(); ctx.globalCompositeOperation = mode; ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fillRect(x, y, w, h); ctx.restore();
+}

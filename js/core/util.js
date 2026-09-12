@@ -1,6 +1,7 @@
 // ---------- Utilities: RNG, math, colors ----------
 'use strict';
-const W = 640, H = 360;
+const W = 960, H = 540;
+let ANIM_T = 0;              // global cartoon-animation clock, advanced by the game loop
 
 function makeRng(seed) {
   let s = seed >>> 0;

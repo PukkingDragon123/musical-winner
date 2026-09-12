@@ -103,16 +103,16 @@ const Game = {
   init() {
     this.canvas = document.getElementById('game'); this.ctx = this.canvas.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
     this.touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-    this.wind = new Wind(); this.shake = new Shake();
+    this.wind = new Wind(); this.shake = new Shake(); this.trans = new Transition();
     window.addEventListener('resize', () => this.resize()); if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => setTimeout(() => this.resize(), 120)); this.resize();
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); if (e.repeat) return; Audio.init();
       if (e.code === 'KeyM' && !(this.scene && this.scene.isPlaying && this.scene.isPlaying())) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
-      this.keys.add(e.code); if (this.scene && this.scene.key) this.scene.key(e.code, e);
+      this.keys.add(e.code); if (this.trans.active) return; if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
     const c = this.canvas; c.style.touchAction = 'none'; c.addEventListener('contextmenu', (e) => e.preventDefault());
-    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
+    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.trans.active) return; if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
     c.addEventListener('pointermove', (e) => { const p = this.toCanvas(e); this.mouse = p; if (this.pointers.has(e.pointerId)) { this.pointers.set(e.pointerId, p); if (this.scene && this.scene.pointerMove) this.scene.pointerMove(p.x, p.y, e.pointerId); } else if (e.pointerType === 'mouse' && this.scene && this.scene.hover) this.scene.hover(p.x, p.y); });
     const release = (e) => { if (!this.pointers.has(e.pointerId)) return; const p = this.toCanvas(e); this.pointers.delete(e.pointerId); if (this.scene && this.scene.pointerUp) this.scene.pointerUp(p.x, p.y, e.pointerId); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
@@ -128,12 +128,14 @@ const Game = {
     const hint = document.getElementById('hint'); if (hint) hint.style.display = (rotate || this.touch || vh - H * s < 30) ? 'none' : 'block';
   },
   setScene(s) { this.scene = s; if (s.enter) s.enter(); },
+  go(sceneFactory, kind, opts) { if (this.trans.active) return; this.trans.start(kind || 'iris', () => { const s = typeof sceneFactory === 'function' ? sceneFactory() : sceneFactory; this.setScene(s); }, opts); },
   frame(t) {
-    const dt = Math.min(0.05, (t - this.last) / 1000 || 0.016); this.last = t; this.time += dt; this.wind.update(dt); this.shake.update(dt);
+    const dt = Math.min(0.05, (t - this.last) / 1000 || 0.016); this.last = t; this.time += dt; ANIM_T += dt; this.wind.update(dt); this.shake.update(dt); this.trans.update(dt);
     if (this.scene) {
       try { this.scene.update(dt); this.ctx.save(); if (this.shake.x || this.shake.y) this.ctx.translate(this.shake.x, this.shake.y); this.scene.draw(this.ctx); this.ctx.restore(); }
       catch (e) { console.error(e); this.lastError = String(e && e.message || e); this.ctx.restore(); }
     }
+    this.trans.draw(this.ctx);
     if (this.lastError) drawText(this.ctx, 'ERR: ' + this.lastError.slice(0, 90), 2, H - 8, '#ff5a5a', { font: 'small' });
     if (this.muted) drawText(this.ctx, 'MUTED', W - 4, H - 8, '#aaa', { align: 'right', font: 'small' });
     requestAnimationFrame((tt) => this.frame(tt));
@@ -141,18 +143,17 @@ const Game = {
   // Top HUD strip in parchment style
   drawHud(ctx, opts = {}) {
     const r = this.run; if (!r) return;
-    rect(ctx, 0, 0, W, 18, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 15); rect(ctx, 0, 16, W, 1, UI.wood); rect(ctx, 0, 17, W, 1, UI.woodHi);
-    ctx.drawImage(icon('coin'), 6, 5); drawText(ctx, fmtMoney(r.money), 18, 5, '#7a4a10');
-    ctx.drawImage(icon('phone'), 78, 5); drawText(ctx, String(r.tickets), 90, 5, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
-    drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 5, UI.ink, { align: 'center' });
-    // charms mini icons
-    let cx = W - 6; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 12; uiSlotMini(ctx, cx, 3); ctx.drawImage(icon(CHARMS[ck].icon), cx + 2, 5); }
-    for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 12; uiSlotMini(ctx, cx, 3, true); }
-    drawText(ctx, r.members.length + ' BUG' + (r.members.length > 1 ? 'S' : ''), cx - 8, 5, UI.ink, { align: 'right' });
+    rect(ctx, 0, 0, W, 24, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 21); rect(ctx, 0, 22, W, 1, UI.wood); rect(ctx, 0, 23, W, 1, UI.woodHi);
+    ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
+    ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
+    drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 8, UI.ink, { align: 'center' });
+    let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 18; uiSlotMini(ctx, cx, 4, false, 16); ctx.drawImage(icon(CHARMS[ck].icon), cx + 3, 7, 10, 9); }
+    for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
+    for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }
   },
   afterNode() { this.run.save(); this.setScene(new CityScene()); },
 };
-function uiSlotMini(ctx, x, y, empty) { rect(ctx, x, y, 11, 11, UI.goldOl); rect(ctx, x + 1, y + 1, 9, 9, empty ? '#5a4a38' : UI.gold); rect(ctx, x + 2, y + 2, 7, 7, empty ? '#4a3a2a' : UI.slot); }
+function uiSlotMini(ctx, x, y, empty, s) { s = s || 11; rect(ctx, x, y, s, s, UI.goldOl); rect(ctx, x + 1, y + 1, s - 2, s - 2, empty ? '#5a4a38' : UI.gold); rect(ctx, x + 2, y + 2, s - 4, s - 4, empty ? '#4a3a2a' : UI.slot); }
 // Charm icon fallbacks: any icon name not in ICON_DEFS maps to a themed generated glyph
 (function () {
   const extra = {

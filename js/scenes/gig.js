@@ -18,9 +18,9 @@ class GigScene {
   }
   layout() {
     const t = Game.touch;
-    this.L = t ? { top: true, stageTop: 18, stageBottom: 98, groundY: 78, rows: [0, -5, -10], streetY: null, rhythmY: 100, rhythmH: 192, padY: 296, padH: 60, compact: true }
-      : { top: false, stageTop: 216, stageBottom: 360, groundY: 300, rows: [0, -6, -12], streetY: 318, streetH: 42, rhythmY: 16, rhythmH: 196, padY: 0, padH: 0 };
-    this.stageX = 150; this.hatX = this.stageX + 64;
+    this.L = t ? { top: true, stageTop: 26, stageBottom: 150, groundY: 122, rows: [0, -8, -16], streetY: null, rhythmY: 152, rhythmH: 248, padY: 404, padH: 130, compact: true }
+      : { top: false, stageTop: 316, stageBottom: 540, groundY: 452, rows: [0, -9, -18], streetY: 474, streetH: 66, rhythmY: 16, rhythmH: 296, padY: 0, padH: 0 };
+    this.stageX = 230; this.hatX = this.stageX + 100;
   }
   isPlaying() { return this.phase === 'play'; }
   buildPrepMenu() {
@@ -44,18 +44,18 @@ class GigScene {
     this.mods = mods;
     this.S = new ScoreState(r, { instrument: leader.instrument, genre: this.song.genre, tune: this.tuneKey, performers: this.performers.length, band: this.performers, venue: this.venue, mode: this.mode, bossMod: this.bossMod, mods, battle: !!(r.pendingGig && r.pendingGig.battle) });
     this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
-      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 24, this.L.groundY - 52, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.55, font: 'small' }); },
+      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
     });
     const wmul = (WEATHERS[r.weather] || WEATHERS.clear).tipMult;
-    this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 4 });
+    this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 6 });
     const start = Audio.now() + 0.6 + this.song.leadIn; this.rhythm.begin(start);
     this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); const ins = sec ? sec.instrument : null; return { drums: ins === 'drums', bass: ins === 'bass' }; });
     this.phase = 'play'; this.padKey = null; this.quakeT = 3;
-    this.pauseBtn = new Btn(6, this.L.rhythmY + 4, 24, 14, 'II', () => this.togglePause(), { color: '#3a3560', hi: '#5a5490', lo: '#2a2540', ol: '#1a1430' });
-    this.pauseButtons = [new Btn(W / 2 - 100, 150, 92, 26, 'RESUME', () => this.togglePause()), new Btn(W / 2 + 8, 150, 92, 26, 'BAIL OUT', () => this.quit(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14' })];
+    this.pauseBtn = new Btn(8, this.L.rhythmY + 6, 34, 20, 'II', () => this.togglePause(), { color: '#3a3560', hi: '#5a5490', lo: '#2a2540', ol: '#1a1430' });
+    this.pauseButtons = [new Btn(W / 2 - 150, 240, 140, 34, 'RESUME', () => this.togglePause(), { scale: 2 }), new Btn(W / 2 + 10, 240, 140, 34, 'BAIL OUT', () => this.quit(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 })];
   }
   update(dt) {
     this.t += dt; this.fx.update(dt, Game.wind.px);
@@ -93,7 +93,7 @@ class GigScene {
       this.tallyStep++;
     }
   }
-  next() { Game.setScene(new DraftScene(this)); }
+  next() { Game.go(() => new DraftScene(this), 'vinyl'); }
   key(code) {
     if (this.phase === 'prep') { this.menu.key(code); return; }
     if (this.phase === 'tally') { if (!this.tallyDone) { if (['Enter', 'Space'].includes(code)) this.tallyT = 999; return; } if (['Enter', 'Space'].includes(code)) this.next(); return; }
@@ -123,89 +123,97 @@ class GigScene {
     const perf = this.performers || Game.run.members, cur = this.rhythm ? this.rhythm.section.member : null;
     const onBeat = this.rhythm ? (this.rhythm.onBeat || this.rhythm.beatPulse > 0.78) : false;
     if (this.crowd) { this.crowd.drawCars(ctx, 0); this.crowd.drawPeds(ctx, [2]); }
-    drawBand(ctx, perf, cur, this.stageX, L.groundY + L.rows[1], this.t, onBeat, this.hatX, 0);
+    const celebrate = this.phase === 'tally';
+    drawBand(ctx, perf, cur, this.stageX, L.groundY + L.rows[1], this.t, onBeat, this.hatX, 0, celebrate);
     if (this.crowd) this.crowd.drawPigeons(ctx);
-    drawBand(ctx, perf, cur, this.stageX, L.groundY + L.rows[1], this.t, onBeat, this.hatX, 1);
+    drawBand(ctx, perf, cur, this.stageX, L.groundY + L.rows[1], this.t, onBeat, this.hatX, 1, celebrate);
     if (this.crowd) { this.crowd.drawPeds(ctx, [1, 0]); this.crowd.drawCars(ctx, 1); this.crowd.drawCoins(ctx); }
     this.fx.draw(ctx); ctx.restore();
     const wk = WEATHERS[Game.run.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
     if (this.rhythm) {
-      const hx = W - 16, hy = L.stageTop + 6, hh = Math.min(84, L.stageBottom - L.stageTop - 22);
-      rect(ctx, hx - 1, hy - 1, 10, hh + 2, '#1a1410'); const fill = hh * this.rhythm.hype / 100;
-      rect(ctx, hx, hy + hh - fill, 8, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx - 1, hy - 1, 10, hh + 2, '#888');
-      if (this.rhythm.hype > 80 && Math.random() < 0.5) this.fx.add({ x: hx + 4, y: hy + hh - fill, vx: 0, vy: -30, life: 0.4, color: '#ff9030', kind: 'fire', size: 2, gravity: 0 });
-      rect(ctx, W - 120, L.stageTop + 4, 96, 28, 'rgba(10,8,20,0.72)'); frame(ctx, W - 120, L.stageTop + 4, 96, 28, '#3a3560');
-      drawText(ctx, fmtNum(this.S.applause), W - 28, L.stageTop + 7, '#fff', { align: 'right', scale: 2 });
-      ctx.drawImage(icon('heart'), W - 116, L.stageTop + 22, 8, 7); drawText(ctx, this.crowd.watchers.length + '', W - 104, L.stageTop + 23, '#cfc9e6', { font: 'small' });
-      ctx.drawImage(icon('coin'), W - 84, L.stageTop + 21, 9, 8); drawText(ctx, fmtMoney(this.crowd.earned), W - 72, L.stageTop + 23, '#ffd24a', { font: 'small' });
+      const hx = W - 22, hy = L.stageTop + 8, hh = Math.min(130, L.stageBottom - L.stageTop - 30);
+      rect(ctx, hx - 2, hy - 2, 16, hh + 4, '#1a1410'); const fill = hh * this.rhythm.hype / 100;
+      rect(ctx, hx, hy + hh - fill, 12, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx - 2, hy - 2, 16, hh + 4, '#888');
+      if (this.rhythm.hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
+      rect(ctx, W - 186, L.stageTop + 6, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 186, L.stageTop + 6, 156, 44, '#3a3560');
+      drawText(ctx, fmtNum(this.S.applause), W - 38, L.stageTop + 10, '#fff', { align: 'right', scale: 3 });
+      ctx.drawImage(icon('heart'), W - 180, L.stageTop + 34, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 164, L.stageTop + 35, '#cfc9e6');
+      ctx.drawImage(icon('coin'), W - 128, L.stageTop + 33, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 110, L.stageTop + 35, '#ffd24a');
     }
   }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') {
       this.drawStage(ctx);
-      const rows = Game.run.members.length > 1 ? 1 : 0;
-      const PH = 116 + (this.bossMod ? 15 : 0) + this.menu.items.length * (Game.touch ? 15 : 13);
-      const PY = L.top ? 102 : Math.max(20, L.stageTop - PH - 12);
-      const inner = uiPanel(ctx, 16, PY, W - 32, Math.min(PH, L.top ? H - 106 : L.stageTop - 26), { title: this.node.name });
+      const PH = 172 + (this.bossMod ? 22 : 0) + this.menu.items.length * (Game.touch ? 22 : 20);
+      const PY = L.top ? 156 : Math.max(24, L.stageTop - PH - 16);
+      const inner = uiPanel(ctx, 24, PY, W - 48, Math.min(PH, L.top ? H - 162 : L.stageTop - 32), { title: this.node.name });
       const G = GENRES[this.song.genre];
-      drawText(ctx, this.song.name.toUpperCase(), inner.x + 8, inner.y + 5, '#7a4a10', { scale: 2 });
-      drawText(ctx, this.song.composer.toUpperCase(), inner.x + 8, inner.y + 24, UI.inkSoft, { font: 'small' });
-      rect(ctx, inner.x + 8 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 8, inner.y + 23, textWidth(G.name.toUpperCase(), { font: 'small' }) + 8, 8, G.color);
-      drawText(ctx, G.name.toUpperCase(), inner.x + 8 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 12, inner.y + 24, '#1a1410', { font: 'small' });
-      for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), inner.x + inner.w - 14 - i * 13, inner.y + 6, 11, 10);
-      ctx.drawImage(icon('coin'), inner.x + inner.w - 92, inner.y + 20, 9, 8); drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', inner.x + inner.w - 80, inner.y + 22, UI.ink, { font: 'small' });
-      ctx.drawImage(icon('heart'), inner.x + inner.w - 44, inner.y + 21, 8, 7); drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', inner.x + inner.w - 33, inner.y + 22, UI.ink, { font: 'small' });
-      let y = inner.y + 36;
-      if (this.bossMod) { const bm = BOSS_MODS[this.bossMod]; rect(ctx, inner.x + 8, y, inner.w - 16, 12, bm.color); ctx.drawImage(icon('skull'), inner.x + 11, y + 2, 8, 8); drawText(ctx, bm.name.toUpperCase() + ': ' + bm.desc, inner.x + 22, y + 3, '#1a1410', { font: 'small' }); y += 15; }
+      drawText(ctx, this.song.name.toUpperCase(), inner.x + 12, inner.y + 8, '#7a4a10', { scale: 3 });
+      drawText(ctx, this.song.composer.toUpperCase(), inner.x + 12, inner.y + 38, UI.inkSoft);
+      rect(ctx, inner.x + 12 + textWidth(this.song.composer.toUpperCase()) + 12, inner.y + 36, textWidth(G.name.toUpperCase()) + 12, 12, G.color);
+      drawText(ctx, G.name.toUpperCase(), inner.x + 12 + textWidth(this.song.composer.toUpperCase()) + 18, inner.y + 38, '#1a1410');
+      for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), inner.x + inner.w - 22 - i * 20, inner.y + 8, 16, 14);
+      ctx.drawImage(icon('coin'), inner.x + inner.w - 148, inner.y + 34, 13, 12); drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', inner.x + inner.w - 130, inner.y + 36, UI.ink);
+      ctx.drawImage(icon('heart'), inner.x + inner.w - 70, inner.y + 35, 12, 10); drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', inner.x + inner.w - 52, inner.y + 36, UI.ink);
+      let y = inner.y + 56;
+      if (this.bossMod) { const bm = BOSS_MODS[this.bossMod]; rect(ctx, inner.x + 12, y, inner.w - 24, 18, bm.color); ctx.drawImage(icon('skull'), inner.x + 16, y + 3, 13, 12); drawText(ctx, bm.name.toUpperCase() + ': ' + bm.desc, inner.x + 34, y + 5, '#1a1410'); y += 24; }
       // lineup portraits
       const r = Game.run;
-      r.members.forEach((m, i) => { const x = inner.x + 10 + i * 34; const on = this.active[i];
-        circle(ctx, x + 12, y + 14, 13, on ? '#4f8032' : '#5a5060'); ctx.save(); ctx.beginPath(); ctx.arc(x + 12, y + 14, 12, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, x + 12, y + 27, { pose: on ? 'play' : 'idle', scale: 1.1 }); ctx.restore();
-        if (!on) { ctx.globalAlpha = 0.45; circle(ctx, x + 12, y + 14, 12, '#101018'); ctx.globalAlpha = 1; }
-        uiBar(ctx, x, y + 29, 24, 4, m.stamina / 100, m.stamina > 50 ? '#6fbf4a' : '#ff5a5a');
+      r.members.forEach((m, i) => { const x = inner.x + 14 + i * 52, on = this.active[i];
+        circle(ctx, x + 18, y + 20, 19, on ? '#4f8032' : '#5a5060'); ctx.save(); ctx.beginPath(); ctx.arc(x + 18, y + 20, 18, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, x + 18, y + 42, { pose: on ? 'play' : 'idle', scale: 1.1, bounce: 0 }); ctx.restore();
+        if (!on) { ctx.globalAlpha = 0.45; circle(ctx, x + 18, y + 20, 18, '#101018'); ctx.globalAlpha = 1; }
+        uiBar(ctx, x + 2, y + 42, 32, 6, m.stamina / 100, m.stamina > 50 ? '#6fbf4a' : '#ff5a5a');
       });
-      this.menu.draw(ctx, inner.x + 10, y + 38, inner.w - 20, Game.touch ? 15 : 13, 'list');
+      this.menu.draw(ctx, inner.x + 14, y + 56, inner.w - 28, Game.touch ? 22 : 20, 'list');
       Game.drawHud(ctx); return;
     }
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
       this.drawStage(ctx);
-      const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 3;
-      rect(ctx, 0, barY, W, 3, '#241d2e'); rect(ctx, 0, barY, W * p, 3, '#ffd24a');
+      const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 4;
+      rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, W * p, 4, '#ffd24a');
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
-      const lblY = L.top ? L.stageBottom - 12 : L.stageTop + 6;
-      rect(ctx, 2, lblY - 2, textWidth(lbl, { font: 'small' }) + 8, 10, 'rgba(0,0,0,0.6)'); drawText(ctx, lbl, 6, lblY, '#fff', { font: 'small' });
+      const lblY = L.top ? L.stageBottom - 18 : L.stageTop + 8;
+      rect(ctx, 4, lblY - 3, textWidth(lbl) + 14, 15, 'rgba(0,0,0,0.62)'); drawText(ctx, lbl, 11, lblY, '#fff');
       if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
       this.pauseBtn.draw(ctx);
-      if (this.paused) { rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.75)'); uiRibbon(ctx, W / 2, 100, 'PAUSED', { scale: 2 }); for (const b of this.pauseButtons) b.draw(ctx); }
+      if (this.paused) { rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.78)'); uiRibbon(ctx, W / 2, 170, 'PAUSED', { scale: 4 }); for (const b of this.pauseButtons) b.draw(ctx); }
       return;
     }
     // tally
     this.drawStage(ctx);
-    const PY = L.top ? 102 : 22, PH = L.top ? H - 106 : L.stageTop - 28;
-    const inner = uiPanel(ctx, 34, PY, W - 68, PH, { title: 'SET COMPLETE' });
+    const PY = L.top ? 156 : 26, PH = L.top ? H - 162 : 248;
+    const inner = uiPanel(ctx, 50, PY, W - 100, PH, { title: 'SET COMPLETE' });
     const S = this.S, steps = S.steps, shown = Math.min(this.tallyStep, steps.length);
     let multAdd = 0, times = 1;
     for (let i = 0; i < shown; i++) { const st = steps[i]; if (st.kind === 'mult') multAdd += st.value; if (st.kind === 'times') times *= st.value; }
-    const vis = steps.slice(Math.max(0, shown - 8), shown); let y = inner.y + 6;
+    const vis = steps.slice(Math.max(0, shown - 9), shown); let y = inner.y + 10;
     for (const st of vis) {
       const col = st.kind === 'applause' ? '#2a5ab0' : (st.kind === 'mult' || st.kind === 'times') ? '#b02a2a' : st.kind === 'cash' ? '#2a7a3a' : UI.inkSoft;
       const val = st.kind === 'applause' ? '+' + fmtNum(st.value) : st.kind === 'mult' ? '+' + st.value : st.kind === 'times' ? 'x' + st.value : st.kind === 'cash' ? '+' + fmtMoney(st.value) : '';
-      drawText(ctx, st.label, inner.x + 8, y, UI.ink, { font: 'small' }); drawText(ctx, val, inner.x + 180, y, col, { font: 'small', align: 'right' }); y += 9;
+      drawText(ctx, st.label, inner.x + 14, y, UI.ink); drawText(ctx, val, inner.x + 300, y, col, { align: 'right' }); y += 14;
     }
-    const bx = inner.x + inner.w - 152, by = inner.y + 6;
-    rect(ctx, bx, by, 144, 28, '#2a5ab0'); frame(ctx, bx, by, 144, 28, '#1a1410'); ctx.drawImage(icon('heart'), bx + 5, by + 10, 9, 8); drawText(ctx, fmtNum(shown ? S.applause : 0), bx + 138, by + 8, '#fff', { align: 'right', scale: 2 });
+    const bx = inner.x + inner.w - 240, by = inner.y + 10;
+    rect(ctx, bx, by, 228, 44, '#2a5ab0'); frame(ctx, bx, by, 228, 44, '#1a1410'); ctx.drawImage(icon('heart'), bx + 8, by + 16, 14, 12); drawText(ctx, fmtNum(shown ? S.applause : 0), bx + 220, by + 10, '#fff', { align: 'right', scale: 3 });
     const mult = Math.round(((shown ? S.baseMult : 1) + multAdd) * times * 100) / 100;
-    rect(ctx, bx, by + 32, 144, 28, '#b02a2a'); frame(ctx, bx, by + 32, 144, 28, '#1a1410'); ctx.drawImage(icon('mult'), bx + 5, by + 40, 9, 9); drawText(ctx, 'x' + mult.toFixed(2), bx + 138, by + 34, '#fff', { align: 'right', scale: 2 });
+    rect(ctx, bx, by + 50, 228, 44, '#b02a2a'); frame(ctx, bx, by + 50, 228, 44, '#1a1410'); ctx.drawImage(icon('mult'), bx + 8, by + 66, 14, 14); drawText(ctx, 'x' + mult.toFixed(2), bx + 220, by + 50, '#fff', { align: 'right', scale: 3 });
     if (this.tallyDone) {
-      rect(ctx, bx, by + 64, 144, 30, '#2a7a3a'); frame(ctx, bx, by + 64, 144, 30, '#1a1410'); ctx.drawImage(icon('coin'), bx + 5, by + 74, 10, 9); drawText(ctx, fmtMoney(this.earned), bx + 138, by + 68, '#fff', { align: 'right', scale: 2 });
-      drawText(ctx, this.grade, bx - 34, by + 66, { S: '#d9a520', A: '#4f8032', B: '#2a5ab0', C: '#b07030', D: '#b02a2a' }[this.grade], { scale: 4, outline: '#1a1410' });
-      let yy = inner.y + inner.h - 26;
-      drawText(ctx, Math.round(this.res.acc * 100) + '%  x' + this.res.maxCombo + '  MISS ' + this.res.miss + (this.xpLines.length ? '   ' + this.xpLines.join(' ') : ''), inner.x + 8, yy, UI.inkSoft, { font: 'small' });
-      const b = new Btn(inner.x + inner.w - 120, inner.y + inner.h - 24, 112, 20, 'PICK AN ABILITY', () => this.next()); b.draw(ctx);
-    } else drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', inner.x + inner.w / 2, inner.y + inner.h - 12, UI.inkFaint, { align: 'center', font: 'small' });
+      if (Math.random() < 0.25) this.fx.add({ x: 60 + Math.random() * (W - 120), y: PY + PH, vx: (Math.random() - 0.5) * 40, vy: 40 + Math.random() * 70, life: 1.6, kind: 'star', color: '#ffd24a', size: 3, gravity: 120 });
+      rect(ctx, bx, by + 100, 228, 48, '#2a7a3a'); frame(ctx, bx, by + 100, 228, 48, '#1a1410'); ctx.drawImage(icon('coin'), bx + 8, by + 118, 15, 14); drawText(ctx, fmtMoney(this.earned), bx + 220, by + 102, '#fff', { align: 'right', scale: 3 });
+      const gcol = { S: '#d9a520', A: '#4f8032', B: '#2a5ab0', C: '#b07030', D: '#b02a2a' }[this.grade];
+      const gs = bounceScale(this.tallyT, 0.2, 10);
+      ctx.save(); ctx.translate(inner.x + 90, inner.y + 96); ctx.scale(gs, gs);
+      drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 9, outline: '#1a1410' });
+      ctx.restore();
+      drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 132, gcol, { align: 'center', scale: 3 });
+      // the performers, taking a bow
+      (this.performers || Game.run.members).slice(0, 4).forEach((m, i) => { const px2 = inner.x + 210 + i * 58; drawShadow(ctx, px2, inner.y + 168, 34, 0.18); drawBugAt(ctx, m.spec, px2, inner.y + 168, { pose: 'cheer', expr: 'happy', scale: 1.4, rate: 4.2, phase: i * 1.3, bounce: 2.2 }); });
+      let yy = inner.y + inner.h - 40;
+      drawText(ctx, Math.round(this.res.acc * 100) + '%   COMBO ' + this.res.maxCombo + '   MISS ' + this.res.miss + (this.xpLines.length ? '     ' + this.xpLines.join('  ') : ''), inner.x + 14, yy, UI.inkSoft);
+      const b = new Btn(inner.x + inner.w - 200, inner.y + inner.h - 34, 188, 28, 'PICK AN ABILITY', () => this.next(), { scale: 2 }); b.draw(ctx);
+    } else drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', inner.x + inner.w / 2, inner.y + inner.h - 20, UI.inkFaint, { align: 'center' });
     this.fx.draw(ctx); Game.drawHud(ctx);
   }
 }
@@ -224,9 +232,9 @@ class DraftScene {
       if (r.charms.length >= r.charmSlots) { this.full = k; this.sel = i; Audio.ui('error'); return; }
       r.addCharm(k); Audio.ui('fanfare');
     } else { r.money += 15; Audio.ui('cash'); }
-    this.taken = true; r.save(); setTimeout(() => Game.setScene(new CityScene()), 320);
+    this.taken = true; r.save(); setTimeout(() => Game.go(() => new CityScene(), 'iris'), 260);
   }
-  swap(slot) { const r = Game.run; r.removeCharm(r.charms[slot]); r.addCharm(this.full); this.full = null; this.taken = true; Audio.ui('fanfare'); r.save(); setTimeout(() => Game.setScene(new CityScene()), 320); }
+  swap(slot) { const r = Game.run; r.removeCharm(r.charms[slot]); r.addCharm(this.full); this.full = null; this.taken = true; Audio.ui('fanfare'); r.save(); setTimeout(() => Game.go(() => new CityScene(), 'iris'), 260); }
   update(dt) { this.t += dt; }
   key(code) {
     if (this.full != null) { const r = Game.run; if (code === 'ArrowLeft') this.sel = (this.sel + r.charms.length - 1) % r.charms.length; else if (code === 'ArrowRight') this.sel = (this.sel + 1) % r.charms.length; else if (['Enter', 'Space'].includes(code)) this.swap(this.sel); else if (code === 'Escape') this.full = null; return; }
@@ -235,34 +243,34 @@ class DraftScene {
     else if (['Enter', 'Space'].includes(code)) this.choose(this.sel);
   }
   click(x, y) {
-    if (this.full != null) { const r = Game.run; for (let i = 0; i < r.charms.length; i++) { const cx = W / 2 - r.charms.length * 18 + i * 36; if (x >= cx && x < cx + 32 && y >= 250 && y < 282) { this.swap(i); return; } } return; }
+    if (this.full != null) { const r = Game.run; for (let i = 0; i < r.charms.length; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52; if (x >= cx && x < cx + 46 && y >= 392 && y < 438) { this.swap(i); return; } } return; }
     this.cards.forEach((c, i) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === i) this.choose(i); else { this.sel = i; Audio.ui('move'); } } });
   }
   hover(x, y) { this.cards.forEach((c, i) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) this.sel = i; }); }
   draw(ctx) {
     const r = Game.run;
     vgrad(ctx, 0, 0, W, H, '#1d1330', '#0b0818');
-    for (let i = 0; i < 4; i++) { const rr = ((this.t * 70 + i * 90) % 400); ctx.globalAlpha = clamp(1 - rr / 400, 0, 1) * 0.16; ringPx(ctx, W / 2, 150, rr, '#ffd24a'); ctx.globalAlpha = 1; }
-    uiRibbon(ctx, W / 2, 14, 'PICK AN ABILITY', { scale: 2, color: '#4a6e3a' });
-    this.cards = []; const n = this.picks.length + 1, cw = 116, gap = 14, x0 = Math.round((W - (n * cw + (n - 1) * gap)) / 2);
+    for (let i = 0; i < 5; i++) { const rr = ((this.t * 90 + i * 110) % 560); ctx.globalAlpha = clamp(1 - rr / 560, 0, 1) * 0.16; ringPx(ctx, W / 2, 220, rr, '#ffd24a'); ctx.globalAlpha = 1; }
+    uiRibbon(ctx, W / 2, 24, 'PICK AN ABILITY', { scale: 4, color: '#4a6e3a' });
+    this.cards = []; const n = this.picks.length + 1, cw = 176, gap = 22, x0 = Math.round((W - (n * cw + (n - 1) * gap)) / 2);
     for (let i = 0; i < n; i++) {
       const isCash = i >= this.picks.length, k = this.picks[i], c = k ? CHARMS[k] : null;
-      const sel = i === this.sel, x = x0 + i * (cw + gap), y = 54 - (sel ? 6 : 0), ch = 168;
+      const sel = i === this.sel, x = x0 + i * (cw + gap), y = 90 - (sel ? 10 : 0), ch = 252;
       this.cards.push({ x, y, w: cw, h: ch });
-      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x + 4, y + 5, cw, ch);
-      rect(ctx, x, y, cw, ch, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 3, y + 3, cw - 6, ch - 6, UI.paper);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x + 6, y + 7, cw, ch);
+      rect(ctx, x, y, cw, ch, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 4, y + 4, cw - 8, ch - 8, UI.paper);
       const rar = isCash ? 'cash' : c.rarity, rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', cash: '#2a7a3a' }[rar];
-      rect(ctx, x + 3, y + 3, cw - 6, 12, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, y + 6, '#fff', { align: 'center', font: 'small' });
-      uiSlot(ctx, x + cw / 2 - 21, y + 22, 42);
-      const ic = icon(isCash ? 'money' : c.icon); ctx.drawImage(ic, x + cw / 2 - 15, y + 30, 30, 26);
-      drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 8, y + 72, 16, UI.ink, 9);
-      drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 8, y + 98, 22, UI.inkSoft, 8, { font: 'small' });
-      if (sel) { const k2 = Math.floor(this.t * 8) % 2; frame(ctx, x - 2 + k2, y - 2, cw + 4, ch + 4, '#fff8e8'); }
+      rect(ctx, x + 4, y + 4, cw - 8, 18, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, y + 9, '#fff', { align: 'center' });
+      uiSlot(ctx, x + cw / 2 - 32, y + 32, 64);
+      const ic = icon(isCash ? 'money' : c.icon); ctx.drawImage(ic, x + cw / 2 - 22, y + 44, 44, 39);
+      drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 12, y + 106, 15, UI.ink, 15, { scale: 2 });
+      drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 12, y + 152, 24, UI.inkSoft, 12);
+      if (sel) { const k2 = Math.floor(this.t * 8) % 2; frame(ctx, x - 3 + k2, y - 3, cw + 6, ch + 6, '#fff8e8'); frame(ctx, x - 4 + k2, y - 4, cw + 8, ch + 8, '#d9a520'); }
     }
     // current charms
-    drawText(ctx, 'YOUR ABILITIES  ' + r.charms.length + '/' + r.charmSlots, W / 2, 236, '#cfc9e6', { align: 'center', font: 'small' });
-    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 18 + i * 36, k = r.charms[i]; uiSlot(ctx, cx, 250, 32, { empty: !k, selected: this.full != null && this.sel === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), cx + 9, 258, 14, 12); }
-    if (this.full != null) { rect(ctx, 0, 292, W, 34, 'rgba(20,10,10,0.9)'); drawText(ctx, 'FULL - PICK ONE TO REPLACE', W / 2, 300, '#ff9f68', { align: 'center' }); drawText(ctx, Game.touch ? 'TAP A SLOT' : 'ARROWS + ENTER', W / 2, 312, '#cfc9e6', { align: 'center', font: 'small' }); }
-    else drawText(ctx, Game.touch ? 'TAP A CARD' : 'ARROWS + ENTER', W / 2, 300, '#8a86b0', { align: 'center', font: 'small' });
+    drawText(ctx, 'YOUR ABILITIES  ' + r.charms.length + '/' + r.charmSlots, W / 2, 372, '#cfc9e6', { align: 'center' });
+    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52, k = r.charms[i]; uiSlot(ctx, cx, 392, 46, { empty: !k, selected: this.full != null && this.sel === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), cx + 12, 404, 22, 20); }
+    if (this.full != null) { rect(ctx, 0, 452, W, 52, 'rgba(20,10,10,0.9)'); drawText(ctx, 'FULL - PICK ONE TO REPLACE', W / 2, 462, '#ff9f68', { align: 'center', scale: 2 }); drawText(ctx, Game.touch ? 'TAP A SLOT' : 'ARROWS + ENTER', W / 2, 484, '#cfc9e6', { align: 'center' }); }
+    else drawText(ctx, Game.touch ? 'TAP A CARD' : 'ARROWS + ENTER', W / 2, 462, '#8a86b0', { align: 'center' });
   }
 }

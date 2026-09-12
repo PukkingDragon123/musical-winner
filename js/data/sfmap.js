@@ -1,6 +1,7 @@
 // ---------- San Francisco: a living map you travel with Uber tickets ----------
 'use strict';
-const MAPW = 1000, MAPH = 760;
+const MAP_SCALE = 1.5;
+const MAPW = 1500, MAPH = 1140;
 const DISTRICTS = [
   { name: 'PRESIDIO', x: 150, y: 120, park: true, poly: [[60, 60], [300, 70], [310, 190], [70, 200]] },
   { name: 'THE MARINA', x: 390, y: 110, poly: [[310, 70], [520, 70], [520, 175], [310, 180]] },
@@ -118,3 +119,13 @@ const WEATHERS = {
   golden:{ name: 'GOLDEN HOUR', icon: 'sun', tint: 'rgba(255,190,120,0.22)', tipMult: 1.25, desc: 'The city glows. Tips up.' },
 };
 const WEATHER_KEYS = Object.keys(WEATHERS);
+
+// scale all coordinates to the larger canvas
+(function () {
+  const S = MAP_SCALE;
+  for (const d of DISTRICTS) { d.x *= S; d.y *= S; d.poly = d.poly.map(p => [p[0] * S, p[1] * S]); }
+  for (const w of WATER) w.poly = w.poly.map(p => [p[0] * S, p[1] * S]);
+  for (const st of STREETS) st.pts = st.pts.map(p => [p[0] * S, p[1] * S]);
+  for (const n of NODES) { n.x = Math.round(n.x * S); n.y = Math.round(n.y * S); }
+  for (const d of MAP_DETAILS) { d.x *= S; d.y *= S; }
+})();

@@ -207,11 +207,49 @@ class RhythmGame {
     rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
     if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
     vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
+    this.drawStageSurround(ctx, A);
     const g = this.game;
     if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
     ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx); ctx.restore();
     this.drawHud(ctx, A);
+  }
+  // A lit stage around the play area: truss, moving beams, speaker stacks, a front row.
+  drawStageSurround(ctx, A) {
+    if (!this._sur) {
+      const r = makeRng(hashStr('sur' + (this.song && this.song.name || '')) >>> 0);
+      const heads = []; for (let i = 0; i < 90; i++) heads.push({ x: r.range(-10, A.w + 10), row: r.int(0, 2), o: r.range(0, 6.3), lit: r.chance(0.3), col: r.pick(['#171224', '#1e1830', '#12101c', '#241c33']) });
+      this._sur = { heads, beams: [0, 1, 2, 3, 4, 5].map(i => ({ x: A.w * (0.08 + i * 0.168), o: r.range(0, 6.3), c: ['#ff5a5a', '#5bc0ff', '#ffd24a', '#c58bff', '#6be585', '#ff9f68'][i] })) };
+    }
+    const S = this._sur, t = this.now, top = A.y, bot = A.y + A.h;
+    const pulse = this.beatPulse != null ? this.beatPulse : 0;
+    // beams sweeping from the truss
+    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y, A.w, A.h); ctx.clip();
+    for (const b of S.beams) {
+      const sw = Math.sin(t * 0.9 + b.o) * A.w * 0.22, bx = A.x + b.x;
+      ctx.globalAlpha = 0.055 + pulse * 0.05;
+      ctx.fillStyle = b.c; ctx.beginPath();
+      ctx.moveTo(bx - 5, top + 14); ctx.lineTo(bx + 5, top + 14);
+      ctx.lineTo(bx + sw + 62, bot); ctx.lineTo(bx + sw - 62, bot); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // truss and lamps
+    for (let x = A.x; x < A.x + A.w; x += 24) ctx.drawImage(propCanvas('truss'), x, top + 2, 24, 14);
+    S.beams.forEach((b, i) => { const bx = A.x + b.x; ctx.drawImage(propCanvas('light', i % 5), bx - 8, top + 15, 16, 13); ctx.globalAlpha = 0.2 + pulse * 0.25; circle(ctx, bx, top + 22, 9, b.c); ctx.globalAlpha = 1; });
+    // speaker stacks hugging the edges
+    for (const sx of [A.x + 2, A.x + A.w - 32]) { ctx.drawImage(propCanvas('speaker'), sx, bot - 132, 30, 51); ctx.drawImage(propCanvas('speaker'), sx, bot - 80, 30, 51); }
+    // front row silhouettes, only outside the highway
+    for (const hd of S.heads) {
+      const hx = A.x + hd.x; const k = Math.abs(hd.x - A.w / 2) / (A.w / 2);
+      if (k < 0.34) continue;
+      const y = bot - 24 + hd.row * 9 + Math.round(Math.sin(t * 5 + hd.o) * (2 + pulse * 3));
+      circle(ctx, hx, y, 8, hd.col); rect(ctx, hx - 7, y + 5, 15, 26, hd.col);
+      // a couple of antennae so the front row reads as bugs too
+      rect(ctx, hx - 4, y - 12, 1, 6, hd.col); rect(ctx, hx + 3, y - 12, 1, 6, hd.col);
+      if (hd.lit && Math.sin(t * 2.4 + hd.o) > 0) { rect(ctx, hx + 6, y - 14, 3, 6, '#ffd24a'); ctx.globalAlpha = 0.14; circle(ctx, hx + 7, y - 13, 10, '#ffd24a'); ctx.globalAlpha = 1; }
+    }
+    vignetteRect(ctx, A.x, A.y, A.w, A.h, 0.42);
+    ctx.restore();
   }
   drawHud(ctx, A) {
     if (this.combo >= 5) {

@@ -8,11 +8,19 @@ No build step, no dependencies. Every sprite, every note and every street is gen
 
 ## The opening
 
-**Character select** in fighting-game style: eight buskers with stats, instruments and a
-starting ability. Then **RHAPSODY OF THE BUG**, a six-movement stadium set with a four-piece
-band (drums, keys, vocals and you), sweeping lights, lasers and pyro that escalate each
-movement. The final solo cannot be landed. The crowd boos and throws tomatoes, cans and a
-boot. Backstage is silent. They put you on a plane. You practise once at 30,000 feet.
+The title curtain lifts straight onto the stage. **Four bugs stand in the lights** — Merc on
+keys and vocals, Stag on lead guitar, Dot on drums, Slim on bass. A spotlight slides between
+them while you choose. The one you take is the one you play for the rest of the run.
+
+Then **A NIGHT AT THE HIVE**, a six-movement stadium set of original stadium-rock hooks:
+House Lights, Slow Burn, Low Road, Six Strings, Choir of Thousands, and the solo nobody has
+ever landed. Every non-playing beat is framed full-screen and cinematic — lights, lasers and
+pyro escalate each movement, the band cheers or slumps with your accuracy, and a lower-third
+plate names the movement instead of a wall of text.
+
+The last solo cannot be landed. The crowd boos and throws tomatoes, cans and a boot.
+Backstage is a dressing room with a bulb-lit mirror, a costume rack, gold records and one
+open door. They put you on a plane. You practise once at 30,000 feet.
 
 ## The city
 
@@ -27,11 +35,14 @@ falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
 
 ## Playing
 
-Every set is **real public-domain music** — Ode to Joy, Flight of the Bumblebee, In the Hall
-of the Mountain King, The Entertainer, Habanera, Toccata, St. Louis Blues and more. The chart
+Street sets are **real public-domain music** — Ode to Joy, Flight of the Bumblebee, In the
+Hall of the Mountain King, The Entertainer, Habanera, Toccata, St. Louis Blues and more. The
+opening concert is six original stadium-rock hooks written for it. Either way the chart
 follows the actual melody, so the notes you hit are the tune.
 
-The play area *is* your instrument. Guitar and bass are a wooden fretboard receding to a
+The play area *is* your instrument, hung inside a lit stage: a truss of coloured lamps
+overhead, beams sweeping across the lanes on the beat, speaker stacks at both edges and a
+front row of bugs bobbing with lighters up. Guitar and bass are a wooden fretboard receding to a
 vanishing point, with strings that ring and wobble when you hit them. Keyboard is a real
 keyboard whose keys depress. Drums, saxophone, trumpet and violin each draw their own body,
 keys, valves and bow.
@@ -48,6 +59,13 @@ keys, valves and bow.
 Gold stars pay triple, red bombs cost you, roll bars are mashed. Applause x Mult = cash,
 tallied Balatro-style. **After every set you draft one of three abilities** — more stars,
 forgiven misses, per-perfect multipliers, chord bonuses, tip doublers, extra Uber tickets.
+
+## Look
+
+960x540 internal, integer-scaled, every pixel drawn in code. Bugs breathe, squash and bounce
+on a shared animation clock, and switch expression with what is happening: focused mid-set,
+grinning on a high combo, shocked on a drop, sad backstage. Scenes carry vignettes, warm and
+cool colour grades, pooled light from every practical lamp, drifting motes and dust.
 
 ## Mobile
 
