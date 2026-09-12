@@ -4319,6 +4319,13 @@ class CityScene {
     const pos = this.travel ? { x: lerp(this.travel.from.x, this.travel.to.x, easeInOut(clamp(this.travel.t, 0, 1))), y: lerp(this.travel.from.y, this.travel.to.y, easeInOut(clamp(this.travel.t, 0, 1))) } : this.here;
     const ps = { x: pos.x - cam.x, y: pos.y - cam.y + 26 };
     if (this.travel) { const dir = this.travel.to.x >= this.travel.from.x ? 1 : -1; ctx.drawImage(carCanvas(3, dir), Math.round(ps.x - 16), Math.round(ps.y - 7), 33, 15); if (Math.random() < 0.4) this.fx.add({ x: ps.x - dir * 10, y: ps.y + 2, vx: -dir * 20, vy: -10, life: 0.5, kind: 'smoke', color: '#d8d8e0', size: 2, grow: 4, alpha: 0.4 }); }
+    // the rest of the band trail behind in a neat little queue
+    const dirX = this.travel ? (this.travel.to.x >= this.travel.from.x ? 1 : -1) : -1;
+    r.members.slice(1, 4).forEach((m, i) => {
+      const fx2 = ps.x - dirX * (26 + i * 16), fy2 = ps.y + 9 + Math.sin(this.t * 4.5 + i * 1.3) * 1.5;
+      drawShadow(ctx, fx2, fy2 + 1, 15, 0.2);
+      drawBugAt(ctx, m.spec, fx2, fy2, { pose: Math.floor(this.t * 5 + i) % 2 ? 'walk1' : 'walk2', flip: dirX > 0, scale: 0.58, rate: 3.4, phase: i * 1.7 });
+    });
     const bob = Math.round(Math.sin(this.t * 4) * 2);
     drawShadow(ctx, ps.x, ps.y - 4, 30 - bob * 2, 0.22);
     ctx.globalAlpha = 0.28; circle(ctx, ps.x + 2, ps.y - 31 + bob, 17, '#1a2a3a'); ctx.globalAlpha = 1;
@@ -4326,7 +4333,6 @@ class CityScene {
     ctx.save(); ctx.beginPath(); ctx.arc(ps.x, ps.y - 34 + bob, 13, 0, Math.PI * 2); ctx.clip();
     drawBugAt(ctx, r.members[0].spec, ps.x, ps.y - 18 + bob, { pose: this.travel ? 'idle' : (Math.floor(this.t * 3) % 2 ? 'idle' : 'play'), scale: 0.85 }); ctx.restore();
     ctx.fillStyle = '#2a7ad0'; ctx.beginPath(); ctx.moveTo(ps.x - 6, ps.y - 20 + bob); ctx.lineTo(ps.x + 6, ps.y - 20 + bob); ctx.lineTo(ps.x, ps.y - 9 + bob); ctx.fill();
-    r.members.slice(1, 4).forEach((m, i) => { const a = this.t * 2 + i * 1.6; const fx2 = ps.x + Math.cos(a) * (24 + i * 7), fy2 = ps.y + Math.sin(a) * 8; drawShadow(ctx, fx2, fy2 + 1, 18, 0.2); drawBugAt(ctx, m.spec, fx2, fy2, { pose: Math.sin(a * 2) > 0 ? 'walk1' : 'walk2', flip: Math.cos(a) < 0, scale: 0.6, rate: 3.2, phase: i * 2.1 }); });
     this.fx.draw(ctx);
     const wk = WEATHERS[r.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, 26, W, H - 60); }
