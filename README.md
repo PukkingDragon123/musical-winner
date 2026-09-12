@@ -1,68 +1,57 @@
 # Bug Busker Orchestra
 
-A 2D pixel-art **rhythm roguelike**. You lead a street band of bug musicians through a
-Slay-the-Spire style map of San Francisco, busk for tips at BART stations, street corners,
-Chinatown alleys and piers, and try to afford a full meal for every band member each night.
+A 2D pixel-art **rhythm roguelike**. You were MONARCH's lead guitarist until The Solo.
+Now you busk the streets of San Francisco with six dollars and a four-string guitar,
+building a bug orchestra that puts hers to shame.
 
-Runs in any modern browser with no build step: open `index.html` (or serve the folder with
-any static file server). Everything, including the music, is generated procedurally in code.
+Runs in any modern browser with no build step: open `index.html`, or run `node build.js`
+for a single-file `dist/bug-busker-orchestra.html`. Everything, including the music and
+every sprite, is generated procedurally in code.
 
-## How to play
+## The run
 
-* **Map** – Arrow keys pick a path, Enter travels. `TAB` opens the band screen, `Esc` saves and exits.
-  Nodes: Gig, Big Gig, Music Shop, `?` Event, Rest, Treasure, Open Mic, and the Finale at the Golden Gate.
-* **Gigs** are skill-based rhythm minigames. Each instrument plays differently:
+* **Opening concert.** A six-movement stadium set in the spirit of a certain rhapsody:
+  ballad, riff, opera, fanfare, band spotlight, and The Solo. Each movement teaches an
+  instrument. The Solo is unwinnable. You are fired on stage.
+* **The map.** An oblique-view San Francisco with skyscrapers, Victorians, parks, the bay,
+  landmarks, traffic and pedestrians. Slay-the-Spire paths run north: gigs, Big Gigs with
+  crowd modifiers, shops, `?` events, rests, open mics, treasure, and the Golden Gate finale.
+  Every three stops it is night and dinner costs money per bug. Starving bugs leave.
+* **Gigs.** Detailed street venues with parallax facades, passers-by, cars, wind-blown
+  leaves, fog and pigeons. Your instrument leads; bandmates take spotlights you back with
+  quick-time taps. Hype draws watchers who tip.
+* **Payout.** Every hit and every watcher adds APPLAUSE. Combos, hype and your CHARMS build
+  MULT. Cash = Applause x Mult, tallied Balatro-style at the end of each set.
+* **Builds.** 30 charms in five slots (instrument boosts, crowd synergies, band-composition
+  bonuses, genre multipliers, risky trade-offs), permanent vouchers, one-shot consumables,
+  instrument swaps, recruits with skill levels, and shop rerolls.
 
-  | Instrument | Game | Keys |
-  |---|---|---|
-  | Guitar | 4-lane falling notes (Guitar Hero), hold notes | `D F J K` |
-  | Bass | 2 fat lanes, long slides | `F J` |
-  | Keyboard | 6 lanes with chords | `S D F J K L` |
-  | Tambourine | 1 lane, humble | `Space` |
-  | Taiko Drums | Beat game: red DON / blue KA, big notes need both hands, mash rolls | `F J` don, `D K` ka |
-  | Saxophone | Hold for each phrase, release on time, manage your breath meter | `Space` |
-  | Trumpet | Press the lit valve combination together on the beat | `J K L` |
-  | Violin | Bow up / bow down on the marker, hold long bows | `↑/W`, `↓/S` |
+## Instruments
 
-* With several members the song **switches instruments every 4 bars**. Watch the SWITCH warning.
-* PERFECT hits raise **hype**; misses drop it. Hyped passers-by stop, watch and throw coins and bills
-  into the hat. Combo milestones make the whole crowd cheer and tip at once.
-* Every night dinner costs money per bug. Hungry bugs play with smaller timing windows;
-  a starving bug leaves at dawn. If **you** starve, the run is over.
-* Shops sell instruments (quality stars raise tips), relics (passive boosts) and consumables.
-  Events, rests and open mics hold surprises, skill-ups and new recruits.
-* `Esc` pauses a gig, `M` mutes. Progress autosaves after every node.
-
-## Structure
-
-```
-index.html        canvas shell
-js/util.js        RNG, math, drawing helpers
-js/font.js        3x5 bitmap font
-js/sprites.js     pixel-art bugs, instruments, props, icons
-js/audio.js       WebAudio synth voices, drums, UI sounds
-js/data.js        instruments, items, venues, events
-js/music.js       procedural songs, charts, backing band
-js/rhythm.js      rhythm engine and the five minigame styles
-js/crowd.js       passers-by, watchers, tips
-js/mapgen.js      Slay-the-Spire style map generator
-js/scenes.js      title, map, band, shop, event, rest, treasure, night, endings
-js/perform.js     performance scene (prep, play, results)
-js/game.js        game loop, input, run state, save/load
-```
+| Instrument | Minigame | Keys |
+|---|---|---|
+| Guitar / Bass / Keyboard / Tambourine | Falling lanes with holds, gold stars, bombs and roll bars | `D F J K` / `F J` / `S D F J K L` / `Space` |
+| Taiko Drums | DON and KA notes, big notes with both hands, rolls | `F J` don, `D K` ka |
+| Saxophone | Hold through phrases, release on the marker, manage breath | `Space` |
+| Trumpet | Press the lit valve combination together | `J K L` |
+| Violin | Bow up or down on the marker, hold long bows | `↑/W`, `↓/S` |
+| Bandmate spotlight | Tap the closing ring | `Space` / `F` / `J` |
 
 ## Mobile
 
-The game is fully playable by touch. Every screen is tap-driven, the map scrolls by
-dragging, and gigs get a row of large pads along the bottom of the screen, laid out per
-instrument (four lanes, DON/KA drum pads, a BLOW pad for the sax, three trumpet valves,
-two bowing pads). During a touch gig the street scene moves to a strip along the top so
-the pads sit directly under the note receptor. A portrait phone rotates the game to fill
-the long edge; `SCREEN: TURN` on the title menu overrides that either way.
+Fully touch-playable: tap menus, drag the map, and play with a row of large pads laid out
+per instrument directly under the note receptor. Portrait phones rotate the game to fill
+the long edge; `SCREEN: TURN` on the title overrides that.
 
-## Builds
+## Code
 
 ```
-node build.js           # dist/bug-busker-orchestra.html  (standalone single file)
-node build-artifact.js  # dist/artifact.html              (body-only fragment for publishing)
+js/core     util, fonts (5x7 and 3x5 bitmap), effects (particles, shake, wind), WebAudio synth
+js/art      Pix buffer with auto-shading and outlines, procedural bug generator, UI kit,
+            props, vehicles, trees, building facades, skylines, map blocks, landmarks
+js/data     instruments, charms, vouchers, consumables, venues, boss modifiers, story, events
+js/sim      songs and charts, rhythm engine with QTE, applause x mult scoring, crowd, map generator
+js/scenes   title and cutscenes, stadium concert, city map, street gigs, shop/event/rest/night/band
+js/game.js  loop, input (keyboard, mouse, multi-touch), run state, save/load
+build.js    bundles dist/bug-busker-orchestra.html and dist/artifact.html
 ```

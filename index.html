@@ -2,30 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Bug Busker Orchestra</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0b0a14; height: 100%; overflow: hidden; }
-  body { display: flex; align-items: center; justify-content: center; font-family: monospace; color: #ddd; }
-  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; background: #000; }
-  #hint { position: fixed; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6a6580; pointer-events: none; }
+  html, body { margin: 0; padding: 0; background: #07060f; height: 100%; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #cfc9e6; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; background: #000; touch-action: none; }
+  #hint { position: fixed; bottom: 5px; left: 0; right: 0; text-align: center; font-size: 11px; letter-spacing: 0.04em; color: #5a5478; pointer-events: none; }
 </style>
 </head>
 <body>
-<canvas id="game" width="480" height="270"></canvas>
+<canvas id="game" width="640" height="360"></canvas>
 <div id="hint">Click once for sound. Arrows + Enter, or mouse. On a phone: tap and use the pads.</div>
-<script src="js/util.js"></script>
+<script src="js/core/util.js"></script>
+<script src="js/core/font.js"></script>
+<script src="js/core/gfx.js"></script>
+<script src="js/core/audio.js"></script>
+<script src="js/art/pixel.js"></script>
+<script src="js/art/bugs.js"></script>
+<script src="js/art/ui.js"></script>
+<script src="js/art/props.js"></script>
+<script src="js/art/city.js"></script>
+<script src="js/data/instruments.js"></script>
+<script src="js/data/charms.js"></script>
+<script src="js/data/world.js"></script>
+<script src="js/data/events.js"></script>
+<script src="js/sim/music.js"></script>
+<script src="js/sim/scoring.js"></script>
+<script src="js/sim/rhythm.js"></script>
+<script src="js/sim/crowd.js"></script>
+<script src="js/sim/mapgen.js"></script>
 <script src="js/touch.js"></script>
-<script src="js/font.js"></script>
-<script src="js/sprites.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/data.js"></script>
-<script src="js/music.js"></script>
-<script src="js/rhythm.js"></script>
-<script src="js/crowd.js"></script>
-<script src="js/mapgen.js"></script>
-<script src="js/scenes.js"></script>
-<script src="js/perform.js"></script>
+<script src="js/scenes/menu.js"></script>
+<script src="js/scenes/concert.js"></script>
+<script src="js/scenes/map.js"></script>
+<script src="js/scenes/perform.js"></script>
+<script src="js/scenes/town.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
