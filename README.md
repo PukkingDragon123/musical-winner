@@ -105,8 +105,14 @@ eyes, chunky limbs and one strong silhouette apiece: the drummer is a moose beet
 antlers are half his height, the elder carries a staff and a medallion, the firefly's abdomen
 glows. Bugs breathe, squash and bounce on a shared animation clock, and switch expression with
 what is happening: focused mid-set, grinning on a high combo, shocked on a drop, sad backstage.
-Items are drawn at 32x32 in ornate gold slots. Scenes carry vignettes, colour grades, pooled
-light from every practical lamp, drifting motes and dust.
+Items are drawn at 32x32 in ornate gold slots. Ability cards animate: the item bobs and tips
+inside its frame over a rarity-tinted halftone backing, a shine sweeps across it, sparks orbit
+the slot and the card itself breathes and tilts, with the rarity glowing behind it. Scenes carry
+vignettes, colour grades, pooled light from every practical lamp, drifting motes and dust.
+
+Comic-book effects punctuate the whole run: jagged impact stars on combo milestones, gold
+flashes on star notes, a sour yelp when a streak breaks, speed lines behind the set grade, and
+a burst on the clipboard when a daily goal lands.
 
 ## Mobile
 

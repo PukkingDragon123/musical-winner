@@ -311,19 +311,24 @@ class GigScene {
       rect(ctx, bx, by + 100, 228, 48, '#2a7a3a'); frame(ctx, bx, by + 100, 228, 48, '#1a1410'); ctx.drawImage(icon('coin'), bx + 8, by + 118, 15, 14); drawText(ctx, fmtMoney(this.earned), bx + 220, by + 102, '#fff', { align: 'right', scale: 3 });
       const gcol = { S: '#d9a520', A: '#4f8032', B: '#2a5ab0', C: '#b07030', D: '#b02a2a' }[this.grade];
       const gs = bounceScale(this.tallyT, 0.2, 10);
+      // the grade lands like a stamp: speed lines, a halftone burst, then the letter
+      speedLines(ctx, inner.x + 90, inner.y + 60, 34, 92, 18, gcol, this.tallyT, 0.3);
       ctx.save(); ctx.translate(inner.x + 90, inner.y + 88); ctx.scale(gs, gs);
       drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 8, outline: '#1a1410' });
       ctx.restore();
+      if (this.tallyT < 0.9 && (this.grade === 'S' || this.grade === 'A'))
+        comicBurst(ctx, inner.x + 152, inner.y + 44, this.grade === 'S' ? 'PERFECT!' : 'NICE SET!', '#ffd24a', this.tallyT / 0.9, 0.8);
       drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 140, gcol, { align: 'center', scale: 3 });
       // what you played it on, so the gear ladder is visible
+      let gearW = 0;
       { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
-        const gw = textWidth(t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase()) + 16;
-        rect(ctx, inner.x + 14, inner.y + 166, gw, 14, t2.color);
+        gearW = textWidth(t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase()) + 16;
+        rect(ctx, inner.x + 14, inner.y + 166, gearW, 14, t2.color);
         drawText(ctx, t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase(), inner.x + 22, inner.y + 169, '#fdf6e2'); }
       // the performers, taking a bow
       (this.performers || Game.run.members).slice(0, 4).forEach((m, i) => { const px2 = inner.x + 210 + i * 58; drawShadow(ctx, px2, inner.y + 168, 34, 0.18); drawBugAt(ctx, m.spec, px2, inner.y + 168, { pose: 'cheer', expr: 'happy', scale: 1.4, rate: 4.2, phase: i * 1.3, bounce: 2.2 }); });
       let yy = inner.y + inner.h - 40;
-      drawText(ctx, Math.round(this.res.acc * 100) + '%   COMBO ' + this.res.maxCombo + '   MISS ' + this.res.miss + (this.xpLines.length ? '     ' + this.xpLines.join('  ') : ''), inner.x + 14, yy, UI.inkSoft);
+      drawText(ctx, Math.round(this.res.acc * 100) + '%   COMBO ' + this.res.maxCombo + '   MISS ' + this.res.miss + (this.xpLines.length ? '     ' + this.xpLines.join('  ') : ''), inner.x + 26 + gearW, yy, UI.inkSoft);
       const b = new Btn(inner.x + inner.w - 200, inner.y + inner.h - 34, 188, 28, 'PICK AN ABILITY', () => this.next(), { scale: 2 }); b.draw(ctx);
     } else drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', inner.x + inner.w / 2, inner.y + inner.h - 20, UI.inkFaint, { align: 'center' });
     this.fx.draw(ctx); Game.drawHud(ctx);
@@ -367,16 +372,35 @@ class DraftScene {
     this.cards = []; const n = this.picks.length + 1, cw = 176, gap = 22, x0 = Math.round((W - (n * cw + (n - 1) * gap)) / 2);
     for (let i = 0; i < n; i++) {
       const isCash = i >= this.picks.length, k = this.picks[i], c = k ? CHARMS[k] : null;
-      const sel = i === this.sel, x = x0 + i * (cw + gap), y = 90 - (sel ? 10 : 0), ch = 252;
+      const sel = i === this.sel, ch = 252;
+      // the card breathes; the selected one rides higher and tilts a touch
+      const bob = Math.sin(this.t * (sel ? 3 : 1.6) + i * 1.7) * (sel ? 3 : 1.4);
+      const x = x0 + i * (cw + gap), y = Math.round(90 - (sel ? 12 : 0) + bob);
       this.cards.push({ x, y, w: cw, h: ch });
+      const rar = isCash ? 'cash' : c.rarity, rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', cash: '#2a7a3a' }[rar];
+      // rarity glow behind the card, strongest on rares
+      const glow = (rar === 'rare' ? 0.5 : rar === 'uncommon' ? 0.32 : 0.22) * (sel ? 1.7 : 1) * (0.75 + 0.25 * Math.sin(this.t * 3 + i));
+      ctx.globalAlpha = glow * 0.5;
+      for (let g = 3; g >= 1; g--) frame(ctx, x - g * 3, y - g * 3, cw + g * 6, ch + g * 6, rc);
+      ctx.globalAlpha = 1;
+      if (sel) speedLines(ctx, x + cw / 2, y + ch / 2, cw * 0.62, cw * 0.95, 16, rc, this.t, 0.16);
+      ctx.save();
+      ctx.translate(x + cw / 2, y + ch / 2); ctx.rotate(Math.sin(this.t * (sel ? 1.9 : 1.1) + i * 2.1) * (sel ? 0.014 : 0.006));
+      ctx.translate(-(x + cw / 2), -(y + ch / 2));
       ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x + 6, y + 7, cw, ch);
       rect(ctx, x, y, cw, ch, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 4, y + 4, cw - 8, ch - 8, UI.paper);
-      const rar = isCash ? 'cash' : c.rarity, rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', cash: '#2a7a3a' }[rar];
+      halftone(ctx, x + 4, y + 22, cw - 8, ch - 26, rc, 6, 0.1);
       rect(ctx, x + 4, y + 4, cw - 8, 18, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, y + 9, '#fff', { align: 'center' });
-      uiItemSlot(ctx, x + cw / 2 - 34, y + 30, 68, isCash ? 'coin' : charmArt(c.icon), {});
-      drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 12, y + 106, 15, UI.ink, 15, { scale: 2 });
-      drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 12, y + 152, 24, UI.inkSoft, 12);
+      const slotX = x + cw / 2 - 44, slotY = y + 28;
+      uiItemSlot(ctx, slotX, slotY, 88, null, {});
+      drawAbilityIcon(ctx, slotX + 5, slotY + 5, 78, isCash ? 'coin' : charmArt(c.icon), this.t, { selected: sel, color: rc });
+      drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 12, y + 124, 11, UI.ink, 20, { scale: 2 });
+      drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 12, y + 168, 24, UI.inkSoft, 12);
       if (sel) { const k2 = Math.floor(this.t * 8) % 2; frame(ctx, x - 3 + k2, y - 3, cw + 6, ch + 6, '#fff8e8'); frame(ctx, x - 4 + k2, y - 4, cw + 8, ch + 8, '#d9a520'); }
+      ctx.restore();
+      // rares get a comic flash on the corner so the eye goes there
+      if (rar === 'rare' && !isCash) comicBurst(ctx, x + cw - 10, y + 30, 'RARE!', '#ffd24a', (this.t * 0.5) % 1, 0.62);
+      if (this.taken && sel) comicBurst(ctx, x + cw / 2, y + 64, isCash ? 'CASH!' : 'GOT IT!', '#fff3b0', this.t * 2, 1.15);
     }
     // current charms
     drawText(ctx, 'YOUR ABILITIES  ' + r.charms.length + '/' + r.charmSlots, W / 2, 372, '#cfc9e6', { align: 'center' });

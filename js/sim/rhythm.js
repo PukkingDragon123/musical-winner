@@ -45,6 +45,9 @@ class RhythmGame {
       else this.combo = 0;
       this.events.misses++;
       this.fx.burst(r.x, r.y, 6, { color: '#ff5a5a', speed: 40, life: 0.4, kind: 'px', gravity: 160 });
+      // a sour little comic yelp when a run of notes falls apart
+      if (this.combo === 0 && this.counts.miss % 3 === 1)
+        this.bursts.push({ x: r.x, y: r.y - 26, t: 0, text: ['OOF!', 'CLANG!', 'OW!'][this.counts.miss % 3], color: '#ff5a5a', scale: 0.7 });
     } else {
       this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
       // a comic burst every time the combo crosses a milestone
@@ -320,7 +323,9 @@ class RhythmGame {
   }
   drawLanes(ctx, A) {
     const instr = this.instrument, L = instr.lanes, kind = this.section.instrument;
-    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads });
+    // a kit needs room under the hit line for the shells and their name plates
+    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads,
+      nearY: instr.view === 'kit' ? A.y + A.h - (A.touch ? 86 : 80) : undefined });
     this.hw = hw;
     const cols = []; for (let l = 0; l < L; l++) cols.push(instr.view === 'kit' ? KIT_COLORS[l % KIT_COLORS.length] : LANE_COLORS[l % LANE_COLORS.length]);
     // lane floor glow
@@ -344,20 +349,21 @@ class RhythmGame {
       }
       for (let l = 0; l <= L; l++) { const steps = 12; for (let i = 0; i < steps; i++) { const k0 = i / steps, k1 = (i + 1) / steps; const x0 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k0), x1 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k1); line(ctx, x0, perspY(k0, hw.nearY, hw.farY), x1, perspY(k1, hw.nearY, hw.farY), 'rgba(120,110,190,0.35)'); } }
       if (kind === 'piano') drawKeyboard(ctx, hw, this, { keys: instr.keys, laneColors: cols });
-      if (instr.view === 'kit') drawDrumKit(ctx, hw, this, { colors: KIT_COLORS, padNames: instr.padNames });
     }
     // receptors
     for (let l = 0; l < L; l++) {
       const x = hw.laneCx(l), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
       this.receptors[l] = { x, y: hw.nearY };
-      if (!isString && kind !== 'piano') {
+      const isKit = instr.view === 'kit';
+      if (!isString && kind !== 'piano' && !isKit) {
         const w = hw.laneW - 8;
         rect(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? cols[l] : '#181430');
         frame(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? '#fff' : cols[l]);
       }
-      if (held) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
-      if (!A.touch && !isString && kind !== 'piano') drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
+      if (held && !isKit) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
+      if (!A.touch && !isString && kind !== 'piano' && !isKit) drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
     }
+    if (instr.view === 'kit') drawDrumKit(ctx, hw, this, { colors: KIT_COLORS, padNames: instr.padNames });
     // notes, far to near
     const vis = [];
     for (const n of this.notes) {

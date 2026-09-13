@@ -367,3 +367,64 @@ const CHARM_ART = {
   event: 'map', lock: 'key', check: 'star', rain: 'bottle', cop: 'permit', elite: 'star', boss: 'medal', shop: 'bag',
 };
 function charmArt(iconName) { return CHARM_ART[iconName] || 'star'; }
+
+// ---------- Animated ability icon ----------
+// The item lives inside the slot: it bobs, tips, catches a shine sweep and
+// throws off sparks. Selected ones get a spin-up ring and speed lines.
+function drawAbilityIcon(ctx, x, y, size, kind, t, opts = {}) {
+  const sel = !!opts.selected, rc = opts.color || '#f2cf4a';
+  const s = Math.round(size), cx = x + s / 2, cy = y + s / 2;
+  const bob = Math.sin(t * (sel ? 3.4 : 2)) * (sel ? 3 : 1.6);
+  const tip = Math.sin(t * (sel ? 2.2 : 1.4) + 1) * (sel ? 0.08 : 0.035);
+  // ---- backing: a rarity-tinted disc with a slow conic sweep
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, s, s); ctx.clip();
+  vgrad(ctx, x, y, s, s, mixColor(rc, '#2a2036', 0.45), mixColor(rc, '#141020', 0.82));
+  halftone(ctx, x, y, s, s, rc, 5, sel ? 0.26 : 0.14);
+  for (let i = 0; i < 6; i++) {
+    const a = t * (sel ? 1.1 : 0.5) + i * Math.PI / 3;
+    ctx.globalAlpha = 0.1 + (sel ? 0.07 : 0.02);
+    ctx.fillStyle = rc; ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s);
+    ctx.lineTo(cx + Math.cos(a + 0.3) * s, cy + Math.sin(a + 0.3) * s); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (sel) speedLines(ctx, cx, cy, s * 0.3, s * 0.7, 12, '#ffffff', t, 0.22);
+  // pulsing rings
+  for (let i = 0; i < 2; i++) {
+    const k = ((t * (sel ? 0.8 : 0.4) + i * 0.5) % 1);
+    ctx.globalAlpha = (1 - k) * (sel ? 0.4 : 0.2);
+    ringPx(ctx, cx, cy, Math.round(6 + k * (s * 0.46)), rc);
+    ctx.globalAlpha = 1;
+  }
+  // ---- the object itself
+  const scale = Math.max(1, Math.round((s - 8) / ITEM_PX));
+  const d = ITEM_PX * scale;
+  ctx.save();
+  ctx.translate(cx, cy + bob); ctx.rotate(tip);
+  ctx.globalAlpha = 0.35; ctx.drawImage(itemCanvas(kind), 0, 0, ITEM_PX, ITEM_PX, -d / 2 + 2, -d / 2 + 3, d, d); ctx.globalAlpha = 1;
+  ctx.drawImage(itemCanvas(kind), 0, 0, ITEM_PX, ITEM_PX, -d / 2, -d / 2, d, d);
+  ctx.restore();
+  // ---- a shine sweeping across the object
+  const sw = ((t * (sel ? 0.9 : 0.45)) % 1.8) / 1.8;
+  if (sw < 0.55) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, s, s); ctx.clip();
+    ctx.globalAlpha = 0.3 * Math.sin(sw / 0.55 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    const sx = x - s * 0.4 + sw / 0.55 * s * 1.5;
+    ctx.beginPath(); ctx.moveTo(sx, y + s); ctx.lineTo(sx + s * 0.2, y + s); ctx.lineTo(sx + s * 0.5, y); ctx.lineTo(sx + s * 0.3, y); ctx.fill();
+    ctx.globalAlpha = 1; ctx.restore();
+  }
+  ctx.restore();
+  // ---- orbiting sparks outside the slot
+  const sparks = sel ? 5 : 3;
+  for (let i = 0; i < sparks; i++) {
+    const a = t * (sel ? 1.8 : 0.9) + i * (Math.PI * 2 / sparks);
+    const rr = s * 0.52 + Math.sin(t * 3 + i) * 3;
+    const px2 = Math.round(cx + Math.cos(a) * rr), py = Math.round(cy + Math.sin(a) * rr * 0.82);
+    const sz = 1 + (i % 2);
+    ctx.globalAlpha = 0.5 + 0.45 * Math.sin(t * 5 + i * 1.3);
+    rect(ctx, px2 - sz, py, sz * 2 + 1, 1, i % 2 ? '#ffffff' : rc);
+    rect(ctx, px2, py - sz, 1, sz * 2 + 1, i % 2 ? '#ffffff' : rc);
+    ctx.globalAlpha = 1;
+  }
+}

@@ -153,88 +153,94 @@ function drawViolinBody(ctx, x, y, dir, hold, t) {
 
 // ---------- A real drum kit drawn into the play area ----------
 // Each lane's receptor IS a drum, so hitting a note means hitting that drum.
-// Each drum is a cached pixel sprite, so nothing on the kit is anti-aliased.
+// Each drum is a cached pixel sprite at its final size, so the kit is always
+// drawn 1:1 and never scales into a blurry or oversized mess.
+const KIT_SIZE = {
+  kick:   { w: 74, h: 58, headH: 18 },
+  tom:    { w: 56, h: 44, headH: 15 },
+  cymbal: { w: 78, h: 22, headH: 22 },
+};
 function drumSprite(kind, col, lit) {
-  return cached('drum|' + kind + '|' + col + '|' + lit, () => {
-    const OLD = '#1d1620';
+  return cached('drum2|' + kind + '|' + col + '|' + lit, () => {
+    const OLD = '#1d1620', S = KIT_SIZE[kind] || KIT_SIZE.tom;
+    const W2 = S.w, H2 = S.h, rx = W2 / 2 - 1, ry = S.headH / 2;
+    const P = new Pix(W2, H2);
     if (kind === 'cymbal') {
-      const P = new Pix(64, 20), m = P.mask();
-      P.mEllipse(m, 32, 9, 30, 5);
-      P.fill(m, lit ? lighten(col, 0.4) : col, { outline: OLD, shade: false });
-      P.paint(m, (x, y) => y > 10 ? darken(col, 0.26) : null);
-      P.paint(m, (x, y) => (y === 7 || y === 8) && x > 8 && x < 26 ? lighten(col, 0.34) : null);
-      for (let r = 8; r < 30; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - 32) - r) < 0.6 && y > 6 && y < 12 ? darken(col, 0.14) : null);
-      const b = P.mask(); P.mEllipse(b, 32, 8, 5, 2); P.fill(b, lighten(col, 0.22), { outline: OLD, shade: false });
-      P.set(32, 8, '#6a5a2a');
+      const m = P.mask(); P.mEllipse(m, W2 / 2, H2 / 2, rx, ry - 2);
+      P.fill(m, lit ? lighten(col, 0.35) : col, { outline: OLD, shade: false });
+      P.paint(m, (x, y) => y > H2 / 2 + 1 ? darken(col, 0.26) : null);
+      P.paint(m, (x, y) => y < H2 / 2 - 1 && x > 12 && x < W2 * 0.42 ? lighten(col, 0.3) : null);
+      for (let r = 8; r < rx; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - W2 / 2) - r) < 0.6 ? darken(col, 0.15) : null);
+      const b = P.mask(); P.mEllipse(b, W2 / 2, H2 / 2 - 1, 6, 2.4); P.fill(b, lighten(col, 0.24), { outline: OLD, shade: false });
+      P.set(Math.round(W2 / 2), Math.round(H2 / 2 - 1), '#6a5a2a');
       return P.toCanvas();
     }
-    const big = kind === 'kick';
-    const w = big ? 60 : 48, h = big ? 52 : 34;
-    const P = new Pix(w, h + 8);
-    const rx = w / 2 - 2, ey = 6, depth = h - 8;
-    // shell
+    const headY = ry + 1, depth = H2 - headY - 3;
+    // shell, with a rounded bottom
     const sh = P.mask();
-    P.mRect(sh, 2, ey, w - 4, depth);
-    P.mEllipse(sh, w / 2, ey + depth, rx, 6);
-    P.fill(sh, lit ? lighten(col, 0.2) : col, { outline: OLD, shade: false });
-    P.paint(sh, (x, y) => x < 6 ? lighten(col, 0.26) : x > w - 8 ? darken(col, 0.22) : null);
-    P.paint(sh, (x, y) => y > ey + depth - 4 ? darken(col, 0.3) : null);
-    // hoops and lugs
-    const hoop = P.mask(); P.mRect(hoop, 2, ey - 1, w - 4, 3); P.mRect(hoop, 2, ey + depth - 3, w - 4, 3);
+    P.mRect(sh, 1, headY, W2 - 2, depth);
+    P.mEllipse(sh, W2 / 2, headY + depth, rx, ry * 0.72);
+    P.fill(sh, lit ? lighten(col, 0.18) : col, { outline: OLD, shade: false });
+    P.paint(sh, (x, y) => x < 5 ? lighten(col, 0.26) : x > W2 - 7 ? darken(col, 0.22) : null);
+    P.paint(sh, (x, y) => y > headY + depth - 4 ? darken(col, 0.3) : null);
+    // hoops top and bottom, and vertical lugs between them
+    const hoop = P.mask(); P.mRect(hoop, 1, headY - 1, W2 - 2, 3); P.mRect(hoop, 1, headY + depth - 4, W2 - 2, 3);
     P.fill(hoop, '#d9c37a', { outline: OLD, shade: false });
-    for (let i = 0; i < (big ? 5 : 4); i++) { const lx = 7 + i * ((w - 14) / (big ? 4 : 3)); const lg = P.mask(); P.mRect(lg, Math.round(lx), ey + 3, 3, depth - 7); P.fill(lg, '#b9bcc8', { outline: OLD, shade: false }); }
-    // head
-    const hd = P.mask(); P.mEllipse(hd, w / 2, ey, rx, 6);
+    const lugs = kind === 'kick' ? 5 : 4;
+    for (let i = 0; i < lugs; i++) { const lx = Math.round(7 + i * ((W2 - 16) / (lugs - 1))); const lg = P.mask(); P.mRect(lg, lx, headY + 3, 3, depth - 8); P.fill(lg, '#b9bcc8', { outline: OLD, shade: false }); }
+    // head on top: this is the surface the note lands on
+    const hd = P.mask(); P.mEllipse(hd, W2 / 2, headY, rx, ry);
     P.fill(hd, lit ? '#fffbe8' : '#efe9da', { outline: OLD, shade: false });
-    P.paint(hd, (x, y) => y < ey - 1 ? '#fdf8ec' : y > ey + 2 ? '#dcd4c0' : null);
-    const rim = P.mask(); P.mEllipse(rim, w / 2, ey, rx, 6); const in2 = P.mask(); P.mEllipse(in2, w / 2, ey, rx - 3, 4.2);
+    P.paint(hd, (x, y) => y < headY - 2 ? '#fdf8ec' : y > headY + 2 ? '#dcd4c0' : null);
+    const rim = P.mask(); P.mEllipse(rim, W2 / 2, headY, rx, ry);
+    const in2 = P.mask(); P.mEllipse(in2, W2 / 2, headY, rx - 3, ry - 2);
     P.mSub(rim, in2); P.fill(rim, '#c8ccd8', { shade: false });
-    if (big) { const pd = P.mask(); P.mEllipse(pd, w / 2, ey + 1, 7, 2.4); P.fill(pd, '#2e2a36', { shade: false }); }
+    if (kind === 'kick') { const pd = P.mask(); P.mEllipse(pd, W2 / 2, headY + 1, 8, 3); P.fill(pd, '#2e2a36', { shade: false }); }
     return P.toCanvas();
   });
 }
-// A real drum kit stood at the near end of the highway.
+// A real drum kit stood at the near end of the highway. Every head sits on
+// the receptor line, so hitting the note is hitting that drum.
 function drawDrumKit(ctx, hw, R, opts) {
   const L = hw.L || 4;
   const names = (opts.padNames && opts.padNames.length === L) ? opts.padNames : ['KICK', 'TOM', 'SNARE', 'CRASH'].slice(0, L);
   const palette = opts.colors || ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];
   const cols = []; for (let i = 0; i < L; i++) cols.push(palette[Math.round(i * (palette.length - 1) / Math.max(1, L - 1))]);
-  const baseY = hw.nearY;
-  // the rug, stepped rather than smooth
-  const rugTop = baseY - 18, rugBot = baseY + 46;
+  const baseY = Math.round(hw.nearY);
+  // the rug, wide enough to hold the whole kit
+  const first = hw.pos(0, 0).x, last = hw.pos(L - 1, 0).x;
+  const rugHalf = Math.max(100, Math.round((last - first) / 2 + 62));
+  const rugTop = baseY + 8, rugBot = baseY + 58;
   for (let y = rugTop; y < rugBot; y++) {
     const k = (y - rugTop) / (rugBot - rugTop);
-    const hwid = Math.round(hw.nearW * (0.34 + k * 0.28));
-    rect(ctx, hw.cx - hwid, y, hwid * 2, 1, k > 0.9 ? '#3d1c2c' : (Math.floor(y / 6) % 2 ? '#4a2436' : '#57293f'));
+    const hwid = Math.round(rugHalf * (0.86 + k * 0.2));
+    rect(ctx, hw.cx - hwid, y, hwid * 2, 1, k > 0.9 ? '#2e1521' : (Math.floor(y / 7) % 2 ? '#3a1c2b' : '#442131'));
   }
-  rect(ctx, hw.cx - Math.round(hw.nearW * 0.6), rugBot - 4, Math.round(hw.nearW * 1.2), 3, '#7a3a56');
+  rect(ctx, hw.cx - Math.round(rugHalf * 1.06), rugBot - 3, Math.round(rugHalf * 2.12), 3, '#5e2c44');
   for (let l = 0; l < L; l++) {
-    const p = hw.pos(l, 0), cx = Math.round(p.x), w = p.w;
+    const p = hw.pos(l, 0), cx = Math.round(p.x);
     const flash = R.flashes[l] || 0, lit = flash > 0.02;
-    R.receptors[l] = { x: cx, y: baseY + 2 };
+    R.receptors[l] = { x: cx, y: baseY };
     const isCymbal = names[l] === 'CRASH' || (L > 1 && l === L - 1 && names[l] !== 'KICK');
+    const kind = isCymbal ? 'cymbal' : names[l] === 'KICK' ? 'kick' : 'tom';
+    const S = KIT_SIZE[kind], c = drumSprite(kind, cols[l], lit);
     if (isCymbal) {
-      const c = drumSprite('cymbal', cols[l], lit);
-      const sc = Math.max(1, Math.round(w * 0.9 / 64));
-      const dw = 64 * sc, dh = 20 * sc;
       const tilt = lit ? Math.round(Math.sin(R.now * 40) * 2) : 0;
-      rect(ctx, cx - 1, baseY - 6, 2, 48, '#8a8a98'); rect(ctx, cx - 1, baseY - 6, 1, 48, '#b0b0be');
-      rect(ctx, cx - 9, baseY + 40, 18, 3, '#6a6a78');
-      ctx.drawImage(c, cx - dw / 2, baseY - 12 + tilt, dw, dh);
-      if (lit) { ctx.globalAlpha = flash * 0.5; ellipsePx(ctx, cx, baseY - 4 + tilt, dw * 0.5, dh * 0.4, '#fff6c0'); ctx.globalAlpha = 1; }
+      rect(ctx, cx - 1, baseY, 2, 52, '#8a8a98'); rect(ctx, cx - 1, baseY, 1, 52, '#b0b0be');
+      rect(ctx, cx - 10, baseY + 50, 20, 3, '#6a6a78');
+      ctx.drawImage(c, cx - S.w / 2, baseY - S.h / 2 + tilt);
+      if (lit) { ctx.globalAlpha = flash * 0.5; ellipsePx(ctx, cx, baseY + tilt, S.w * 0.5, 5, '#fff6c0'); ctx.globalAlpha = 1; }
     } else {
-      const kind = names[l] === 'KICK' ? 'kick' : 'tom';
-      const c = drumSprite(kind, cols[l], lit);
-      const sc = Math.max(1, Math.round(w * 0.86 / c.width));
-      const dw = c.width * sc, dh = c.height * sc;
-      const squash = lit ? Math.round(flash * 4) : 0;
-      ctx.drawImage(c, cx - dw / 2, baseY + 8 - dh + squash, dw, dh - squash);
-      if (lit) { ctx.globalAlpha = flash * 0.7; ellipsePx(ctx, cx, baseY + 10 - dh + squash, dw * 0.44, dh * 0.12, '#fff6c0'); ctx.globalAlpha = 1; }
+      // the head is at headH/2 down the sprite; put that on the receptor line
+      const squash = lit ? Math.round(flash * 3) : 0;
+      ctx.drawImage(c, cx - S.w / 2, baseY - Math.round(S.headH / 2) + 1 + squash);
+      if (lit) { ctx.globalAlpha = flash * 0.7; ellipsePx(ctx, cx, baseY + squash, S.w * 0.44, 4, '#fff6c0'); ctx.globalAlpha = 1; }
     }
-    // name plate on a little tag
+    // name plate, clear of the shell
     const nw = textWidth(names[l], { font: 'small' }) + 8;
-    rect(ctx, cx - nw / 2, baseY + 16, nw, 9, lit ? '#5a4a20' : '#231c30');
-    rect(ctx, cx - nw / 2, baseY + 16, nw, 1, lit ? '#8a7430' : '#3a3048');
-    drawText(ctx, names[l], cx, baseY + 18, lit ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
+    const ny = baseY + (isCymbal ? 34 : S.h - Math.round(S.headH / 2) + 4);
+    rect(ctx, cx - nw / 2, ny, nw, 9, lit ? '#5a4a20' : '#231c30');
+    rect(ctx, cx - nw / 2, ny, nw, 1, lit ? '#8a7430' : '#3a3048');
+    drawText(ctx, names[l], cx, ny + 2, lit ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
   }
 }

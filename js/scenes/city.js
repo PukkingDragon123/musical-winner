@@ -187,7 +187,7 @@ class CityScene {
   hopCost(n) { const d = Math.hypot(n.x - this.here.x, n.y - this.here.y); let c = d > 165 ? 2 : 1; if (collectMods(Game.run).cheapTravel) c = Math.max(1, c - 1); return c; }
   canEnter(n) { if (n.id === 'ggb' && Game.run.day < 4) return false; return true; }
   update(dt) {
-    const r = Game.run; this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.arriveT = Math.max(0, this.arriveT - dt);
+    const r = Game.run; this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.arriveT = Math.max(0, this.arriveT - dt); this.goalPop = Math.max(0, (this.goalPop || 0) - dt);
     this.cam.x = lerp(this.cam.x, this.target.x, Math.min(1, dt * 4)); this.cam.y = lerp(this.cam.y, this.target.y, Math.min(1, dt * 4));
     for (const c of this.cars) { c.k += c.sp * dt; if (c.k > 1) { c.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; c.a = e[0]; c.b = e[1]; } }
     for (const p of this.people) { p.k += p.sp * dt; if (p.k > 1) { p.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; } }
@@ -446,7 +446,8 @@ class CityScene {
   drawGoals(ctx) {
     const r = Game.run; if (!r.goals || !r.goals.length) return;
     const w = 226, h = 30 + r.goals.length * 26, x = 10, y = 36;
-    const pop = this.goalPop ? 1 + Math.sin(this.goalPop * 12) * 0.02 : 1;
+    const pop = this.goalPop ? 1 + Math.sin(this.goalPop * 12) * 0.06 : 1;
+    if (this.goalPop > 0) speedLines(ctx, x + w / 2, y + h / 2, w * 0.55, w * 0.85, 14, '#ffd24a', this.t || 0, 0.28 * clamp(this.goalPop / 1.6, 0, 1));
     ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(pop, pop); ctx.translate(-(x + w / 2), -(y + h / 2));
     ctx.fillStyle = 'rgba(16,12,20,0.3)'; ctx.fillRect(x + 3, y + 4, w, h);
     rect(ctx, x, y, w, h, '#f2e8cc'); frame(ctx, x, y, w, h, '#7a6a48');
@@ -461,6 +462,8 @@ class CityScene {
       rect(ctx, x + 24, gy + 12, 150, 6, '#d8ccae'); rect(ctx, x + 24, gy + 12, Math.round(150 * k), 6, g.done ? '#5fbf4f' : '#c8a03a');
       frame(ctx, x + 24, gy + 12, 150, 6, '#9a8a66');
       if (g.done) ctx.drawImage(icon('check'), x + 182, gy + 9, 12, 10);
+      if (g.done && this.goalPop > 0 && GOALS[g.key].name === (this.msg || '').split('  ')[0])
+        comicBurst(ctx, x + w - 6, gy + 12, 'DONE!', '#5fbf4f', clamp(1 - this.goalPop / 1.6, 0, 1), 0.55);
       else drawText(ctx, Math.floor(GOALS[g.key].get(r)) + '/' + g.n, x + 182, gy + 11, '#8a7a58', { font: 'small' });
     });
     ctx.restore();
