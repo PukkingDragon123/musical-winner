@@ -77,7 +77,7 @@ class ConcertScene {
   startPlay() {
     const mv = this.mv; Audio.init();
     const song = songFromMovement(mv);
-    const sections = [{ instrument: this.you.instrument, startBar: 0, endBar: song.bars }];
+    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
     const diff = mv.impossible ? 7 : mv.difficulty;
     const notes = chartFromMelody(song, sections, diff, this.rng, { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6 });
     if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
@@ -390,7 +390,7 @@ class FlightScene {
     Audio.init(); Audio.setStageReverb(false);
     const tune = this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy';
     const song = songFromTune(tune, { bpm: 96 });
-    const sections = [{ instrument: this.you.instrument, startBar: 0, endBar: song.bars }];
+    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
     const notes = chartFromMelody(song, sections, 2, makeRng(7), { starRate: 0.14, bombMult: 0 });
     const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.35 });
     this.rhythm = new RhythmGame(song, sections, notes, mods, {});

@@ -135,40 +135,16 @@ const WEATHER_KEYS = Object.keys(WEATHERS);
 const TILE = 24;
 const GW = Math.floor(MAPW / TILE), GH = Math.floor(MAPH / TILE);
 let _grid = null;
-function tileGrid(mapCanvas) {
+function tileGrid() {
   if (_grid) return _grid;
-  const g = mapCanvas.getContext('2d');
-  const data = g.getImageData(0, 0, MAPW, MAPH).data;
-  const at = (x, y) => { const i = (y * MAPW + x) * 4; return [data[i], data[i + 1], data[i + 2]]; };
-  const walk = new Uint8Array(GW * GH);
-  const cost = new Uint8Array(GW * GH);
-  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
-    // sample a few points inside the tile and take the majority verdict
-    let road = 0, land = 0, blocked = 0;
-    for (const [ox, oy] of [[12, 12], [5, 5], [19, 5], [5, 19], [19, 19]]) {
-      const [r, gg, b] = at(Math.min(MAPW - 1, tx * TILE + ox), Math.min(MAPH - 1, ty * TILE + oy));
-      if (b > r + 24 && b > 170) blocked++;                      // water
-      else if (r > 245 && gg > 240 && b > 235) road++;           // white road
-      else if (r > 245 && gg > 220 && b < 215) road++;           // yellow arterial
-      else if (gg > r && gg > 150 && r < 225) land++;            // park
-      else if (r > 215 && gg > 210 && b > 195) land++;           // pale ground
-      else blocked++;                                            // buildings, bridges, ink
-    }
-    const i = ty * GW + tx;
-    walk[i] = (road + land) >= 3 ? 1 : 0;
-    cost[i] = road >= 2 ? 1 : 2;                                 // cutting across a park tires you out
+  const TM = cityTiles();
+  const walk = new Uint8Array(GW * GH), cost = new Uint8Array(GW * GH);
+  for (let i = 0; i < walk.length; i++) {
+    const k = TM.kind[i];
+    walk[i] = TILE_WALKABLE[k] ? 1 : 0;
+    cost[i] = TILE_COST[k] || 2;
   }
   _grid = { walk, cost, w: GW, h: GH };
-  // POIs must always stand on something you can reach
-  for (const n of NODES) {
-    const tx = clamp(Math.round(n.x / TILE), 0, GW - 1), ty = clamp(Math.round(n.y / TILE), 0, GH - 1);
-    n.tx = tx; n.ty = ty;
-    _grid.walk[ty * GW + tx] = 1;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = tx + dx, ny = ty + dy;
-      if (nx >= 0 && ny >= 0 && nx < GW && ny < GH) _grid.walk[ny * GW + nx] = 1;
-    }
-  }
   return _grid;
 }
 function tileWalkable(gr, tx, ty) { return tx >= 0 && ty >= 0 && tx < gr.w && ty < gr.h && !!gr.walk[ty * gr.w + tx]; }
@@ -194,3 +170,93 @@ function tileRoute(gr, ax, ay, bx, by, limit = 4000) {
   while (cur !== start) { out.push({ tx: cur % gr.w, ty: (cur / gr.w) | 0 }); cur = prev[cur]; }
   return out.reverse();
 }
+
+// ---------- The city as a logical tile map ----------
+// Every square of the city is one of these. The renderer turns them into
+// pixel tiles, and movement reads walkability straight off this array.
+const T_WATER = 0, T_LAND = 1, T_PARK = 2, T_BLDG = 3, T_ROAD = 4, T_BIGROAD = 5, T_PLAZA = 6, T_SHORE = 7;
+let _tmap = null;
+function cityTiles() {
+  if (_tmap) return _tmap;
+  const N = GW * GH, kind = new Uint8Array(N).fill(T_LAND), variant = new Uint8Array(N);
+  const rng = makeRng(8181);
+  const idx = (x, y) => y * GW + x;
+  const inb = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH;
+  const setK = (x, y, k) => { if (inb(x, y)) kind[idx(x, y)] = k; };
+  // point-in-polygon over map coordinates
+  const inPoly = (poly, px2, py) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if (((yi > py) !== (yj > py)) && px2 < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  // ---- water, then parks, then the rest is land
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const cx = (tx + 0.5) * TILE, cy = (ty + 0.5) * TILE;
+    for (const w of WATER) if (inPoly(w.poly, cx, cy)) { setK(tx, ty, T_WATER); break; }
+  }
+  for (const d of DISTRICTS) {
+    if (!d.park) continue;
+    for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+      if (kind[idx(tx, ty)] === T_WATER) continue;
+      if (inPoly(d.poly, (tx + 0.5) * TILE, (ty + 0.5) * TILE)) setK(tx, ty, T_PARK);
+    }
+  }
+  // ---- roads: rasterise every street and travel edge onto the grid
+  const stamp = (x0, y0, x1, y1, big) => {
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE * 0.4)));
+    for (let i = 0; i <= steps; i++) {
+      const k = i / steps, mx = lerp(x0, x1, k), my = lerp(y0, y1, k);
+      const tx = Math.floor(mx / TILE), ty = Math.floor(my / TILE);
+      if (!inb(tx, ty) || kind[idx(tx, ty)] === T_WATER) continue;
+      const cur = kind[idx(tx, ty)];
+      if (big || cur !== T_BIGROAD) kind[idx(tx, ty)] = big ? T_BIGROAD : T_ROAD;
+    }
+  };
+  for (const st of STREETS) for (let i = 1; i < st.pts.length; i++) stamp(st.pts[i - 1][0], st.pts[i - 1][1], st.pts[i][0], st.pts[i][1], !!st.big);
+  const G = buildGraph();
+  for (const [a, b] of EDGES) { const na = G[a], nb = G[b]; if (na && nb) stamp(na.x, na.y, nb.x, nb.y, false); }
+  // close one-tile gaps so the road network is actually connected
+  const isR = (tx, ty) => inb(tx, ty) && (kind[idx(tx, ty)] === T_ROAD || kind[idx(tx, ty)] === T_BIGROAD);
+  for (let pass = 0; pass < 2; pass++) {
+    const add = [];
+    for (let ty = 1; ty < GH - 1; ty++) for (let tx = 1; tx < GW - 1; tx++) {
+      if (isR(tx, ty) || kind[idx(tx, ty)] === T_WATER) continue;
+      if ((isR(tx - 1, ty) && isR(tx + 1, ty)) || (isR(tx, ty - 1) && isR(tx, ty + 1))) add.push(idx(tx, ty));
+    }
+    for (const i of add) kind[i] = T_ROAD;
+  }
+  // ---- blocks: whatever land is left inside a district becomes buildings
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const i = idx(tx, ty); if (kind[i] !== T_LAND) continue;
+    const cx = (tx + 0.5) * TILE, cy = (ty + 0.5) * TILE;
+    let inCity = false, dense = false;
+    for (const d of DISTRICTS) { if (d.park) continue; if (inPoly(d.poly, cx, cy)) { inCity = true; dense = /FINANCIAL|SOMA|CHINATOWN|NORTH BEACH|NOB/.test(d.name); break; } }
+    if (!inCity) { variant[i] = rng.int(0, 3); continue; }
+    kind[i] = rng.chance(dense ? 0.9 : 0.72) ? T_BLDG : T_PLAZA;
+    variant[i] = rng.int(0, 5) + (dense ? 8 : 0);
+  }
+  // ---- pins always stand on a walkable square, and get a plaza if they'd be in a wall
+  for (const n of NODES) {
+    const tx = clamp(Math.round(n.x / TILE), 0, GW - 1), ty = clamp(Math.round(n.y / TILE), 0, GH - 1);
+    n.tx = tx; n.ty = ty;
+    if (kind[idx(tx, ty)] === T_BLDG || kind[idx(tx, ty)] === T_WATER) kind[idx(tx, ty)] = T_PLAZA;
+    let touches = false;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = inb(tx + dx, ty + dy) ? kind[idx(tx + dx, ty + dy)] : T_WATER; if (k === T_ROAD || k === T_BIGROAD || k === T_PLAZA) touches = true; }
+    if (!touches) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { if (inb(tx + dx, ty + dy) && kind[idx(tx + dx, ty + dy)] !== T_WATER) { kind[idx(tx + dx, ty + dy)] = T_PLAZA; break; } }
+  }
+  // ---- shore: any water square touching land
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    if (kind[idx(tx, ty)] !== T_WATER) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (inb(tx + dx, ty + dy) && kind[idx(tx + dx, ty + dy)] !== T_WATER) { kind[idx(tx, ty)] = T_SHORE; break; }
+    }
+  }
+  for (let i = 0; i < N; i++) if (!variant[i]) variant[i] = rng.int(0, 5);
+  _tmap = { kind, variant, w: GW, h: GH };
+  return _tmap;
+}
+const TILE_WALKABLE = { 0: 0, 1: 1, 2: 1, 3: 0, 4: 1, 5: 1, 6: 1, 7: 0 };
+const TILE_COST = { 1: 2, 2: 2, 4: 1, 5: 1, 6: 1 };

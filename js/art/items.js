@@ -204,7 +204,7 @@ function buildItem(kind) {
       const lg = m(); P.mRect(lg, 12, 28, 3, 3); P.mRect(lg, 17, 28, 3, 3); P.fill(lg, '#33313c', { shade: false });
       break;
     }
-    case 'tipjar': {
+    case 'tipjar': case 'jar': {
       const g = m(); P.mRound(g, 8, 8, 16, 20, 3); P.fill(g, '#bcd6e2', { outline: IOL, shade: false });
       P.paint(g, (x, y) => x === 10 ? '#ecf6fb' : x === 21 ? '#8fadbb' : null);
       const co = m(); P.mRect(co, 10, 20, 12, 7); P.fill(co, '#e0b84a', { outline: IOL });
@@ -244,6 +244,71 @@ function buildItem(kind) {
       const c = m(); P.mEllipse(c, 16, 16, 12, 12); P.fill(c, '#e0b84a', metal('#e0b84a'));
       const in_ = m(); P.mEllipse(in_, 16, 16, 8, 8); P.fill(in_, '#c89a28', { shade: false });
       P.paint(in_, (x, y) => Math.abs(x - 16) < 1 && y > 11 && y < 21 ? '#f6d982' : null);
+      break;
+    }
+
+    // ---- ability art: one 32x32 object per charm family ----
+    case 'metronome': {
+      const b = m(); P.mPoly(b, [[10, 28], [22, 28], [19, 5], [13, 5]]); P.fill(b, '#8a4f2a', { outline: IOL });
+      const f = m(); P.mPoly(f, [[12, 26], [20, 26], [18, 9], [14, 9]]); P.fill(f, '#f2ead6', { shade: false });
+      const arm = m(); P.mLine(arm, 16, 25, 21, 7, 2); P.fill(arm, '#33313c', { outline: IOL, shade: false });
+      const wt = m(); P.mRect(wt, 19, 11, 5, 4); P.fill(wt, '#e0b84a', { outline: IOL });
+      break;
+    }
+    case 'earplugs': {
+      for (const ox of [8, 19]) { const e = m(); P.mRound(e, ox, 10, 9, 14, 4); P.fill(e, '#f2c53d', { outline: IOL });
+        P.paint(e, (x, y) => x === ox + 1 ? '#f8e08a' : null); const c2 = m(); P.mEllipse(c2, ox + 4, 13, 2.4, 2.4); P.fill(c2, '#d8a020', { shade: false }); }
+      break;
+    }
+    case 'net': {
+      const h = m(); P.mLine(h, 6, 27, 14, 14, 2); P.fill(h, '#a8763c', { outline: IOL, shade: false });
+      const r2 = m(); P.mEllipse(r2, 19, 11, 10, 9); const in3 = m(); P.mEllipse(in3, 19, 11, 8, 7); P.mSub(r2, in3);
+      P.fill(r2, '#c8ccd8', { outline: IOL });
+      P.paint(in3, (x, y) => ((x + y) % 4 === 0 || (x - y) % 4 === 0) ? '#e2e6f0' : null);
+      break;
+    }
+    case 'medal': {
+      const rb = m(); P.mPoly(rb, [[11, 2], [21, 2], [19, 13], [13, 13]]); P.fill(rb, '#c4402f', { outline: IOL });
+      P.paint(rb, (x, y) => x === 16 ? '#e8dcc0' : null);
+      const d = m(); P.mEllipse(d, 16, 21, 9, 9); P.fill(d, '#e0b84a', metal('#e0b84a'));
+      P.paint(d, (x, y) => Math.hypot(x - 16, y - 21) < 5 ? '#c89a28' : null);
+      P.set(16, 18, '#f6d982'); P.set(16, 24, '#f6d982'); P.set(13, 21, '#f6d982'); P.set(19, 21, '#f6d982');
+      break;
+    }
+    case 'permit': {
+      const b = m(); P.mRect(b, 5, 5, 22, 24); P.fill(b, '#f2ead6', { outline: IOL });
+      const st2 = m(); P.mRect(st2, 5, 5, 22, 6); P.fill(st2, '#3f7fa8', { shade: false });
+      for (let i = 0; i < 4; i++) { const l = m(); P.mRect(l, 8, 14 + i * 4, 16 - (i % 2) * 5, 2); P.fill(l, '#a89878', { shade: false }); }
+      const sl = m(); P.mEllipse(sl, 22, 24, 4, 4); P.fill(sl, '#c4402f', { outline: IOL, shade: false });
+      break;
+    }
+    case 'flyer': {
+      const b = m(); P.mRect(b, 6, 4, 20, 25); P.fill(b, '#f6ecd0', { outline: IOL });
+      const t2 = m(); P.mRect(t2, 9, 7, 14, 7); P.fill(t2, '#e8563f', { shade: false });
+      for (let i = 0; i < 4; i++) { const l = m(); P.mRect(l, 9, 17 + i * 3, 14 - i * 2, 1); P.fill(l, '#b0a488', { shade: false }); }
+      break;
+    }
+    case 'boots': {
+      for (const ox of [3, 17]) { const b = m(); P.mRect(b, ox + 3, 6, 8, 14); P.mRect(b, ox, 18, 12, 7); P.fill(b, '#5a3a24', { outline: IOL });
+        P.paint(b, (x, y) => y === 24 ? '#2a1a10' : y === 7 ? '#7a5334' : null); }
+      break;
+    }
+    case 'cape': {
+      const c2 = m(); P.mPoly(c2, [[9, 4], [23, 4], [28, 28], [4, 28]]); P.fill(c2, '#a8382f', { outline: IOL });
+      P.paint(c2, (x, y) => (x * 2 + y) % 9 === 0 ? '#7f261f' : null);
+      const col = m(); P.mRect(col, 8, 3, 16, 4); P.fill(col, '#e0b84a', { outline: IOL });
+      break;
+    }
+    case 'union': {
+      const b = m(); P.mEllipse(b, 16, 16, 12, 12); P.fill(b, '#3f5f8a', { outline: IOL });
+      const h2 = m(); P.mLine(h2, 9, 20, 16, 10, 3); P.mLine(h2, 16, 10, 23, 20, 3); P.fill(h2, '#e8dcc0', { shade: false });
+      P.paint(b, (x, y) => y === 23 ? '#2a4060' : null);
+      break;
+    }
+    case 'balloon': {
+      const b = m(); P.mEllipse(b, 16, 12, 9, 11); P.fill(b, '#e0507a', { outline: IOL });
+      P.paint(b, (x, y) => Math.hypot(x - 12, y - 8) < 3 ? '#f6a0b4' : null);
+      const st3 = m(); P.mLine(st3, 16, 23, 18, 30, 1); P.fill(st3, '#8a8a98', { shade: false });
       break;
     }
     default: {
@@ -289,3 +354,16 @@ const ITEM_FOR = {
   violin: 'violin', tambourine: 'tambourine', mic: 'mic', harmonica: 'sax', triangle: 'tambourine', keytar: 'keyboard',
 };
 function itemForInstrument(k) { return ITEM_FOR[k] || 'guitar'; }
+// Charms and abilities get proper objects, not 12px glyphs.
+const CHARM_ART = {
+  amp: 'amp', bag: 'bag', balloon: 'balloon', bar: 'bread', beret: 'poster', boots: 'boots', bread: 'bread',
+  cape: 'cape', case: 'bag', chalk: 'book', coffee: 'coffee', coin: 'coin', coupon: 'ticket', cred: 'medal',
+  dive: 'boots', drum: 'drums', earplugs: 'earplugs', encore: 'star', fire: 'lantern', flyer: 'flyer',
+  hat: 'poster', heart: 'funko', horn: 'trumpet', jacket: 'cape', jar: 'tipjar', kazoo: 'sax', medal: 'medal',
+  metronome: 'metronome', net: 'net', note: 'mic', oil: 'bottle', permit: 'permit', phone: 'ticket', pick: 'pick',
+  reed: 'sax', rosin: 'strings', sheet: 'book', shirt: 'poster', star: 'star', sticks: 'drums', strings: 'strings',
+  taco: 'burrito', tuner: 'metronome', union: 'union', violin: 'violin', openmic: 'mic', food: 'noodles',
+  gig: 'mic', skull: 'lantern', money: 'coin', mult: 'star', chips: 'coin', rest: 'coffee', treasure: 'bag',
+  event: 'map', lock: 'key', check: 'star', rain: 'bottle', cop: 'permit', elite: 'star', boss: 'medal', shop: 'bag',
+};
+function charmArt(iconName) { return CHARM_ART[iconName] || 'star'; }

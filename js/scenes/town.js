@@ -23,15 +23,18 @@ class ShopScene {
     const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
     const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
     for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
-    const ik = rng.pick(PLAYABLE.filter(k => k !== r.members[0].instrument)); const q = rng.int(1, Math.min(3, 1 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q * 0.3) * pm) });
+    // an upgrade for the instrument you already play, if there is headroom
+    const me = r.members[0], myQ = me.quality || 1;
+    if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
+    const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
     if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
     stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
     this.node.stock = stock;
   }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
-  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
-  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
+  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
+  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; if (s.kind === 'upgrade') { const t = gearTier(s.quality); return t.desc + ' Pays x' + t.pay.toFixed(2) + (t.laneCut ? '' : ', full ' + INSTRUMENTS[s.key].lanes + ' lanes') + '.'; } return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
   canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
@@ -39,8 +42,9 @@ class ShopScene {
     if (s.kind === 'charm') { r.addCharm(s.key); this.msg = 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
     else if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); this.msg = VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
     else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
+    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
     else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
-    else if (s.kind === 'recruit') { r.members.push(s.member); this.msg = s.member.name + ' joins the band!'; }
+    else if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); this.msg = s.member.name + ' joins the band!'; }
     else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
@@ -71,7 +75,7 @@ class ShopScene {
     return out;
   }
   itemArt(s) {
-    if (s.kind === 'instrument') return itemForInstrument(s.key);
+    if (s.kind === 'instrument' || s.kind === 'upgrade') return itemForInstrument(s.key);
     if (s.kind === 'rest') return 'coffee';
     if (s.kind === 'use') return ({ bread: 'bread', coffee: 'coffee', burrito: 'burrito' })[s.key] || 'bottle';
     if (s.kind === 'voucher') return 'book';
@@ -373,7 +377,7 @@ class BandScene {
       if (sel) { frame(ctx, x - 2, 42, 146, 148, UI.goldHi); frame(ctx, x - 3, 41, 148, 150, '#d9a520'); }
     });
     drawText(ctx, 'ABILITIES  ' + r.charms.length + '/' + r.charmSlots, 28, 200, '#f4efe0', { outline: '#1a1410' });
-    for (let i = 0; i < r.charmSlots; i++) { const k = r.charms[i]; uiSlot(ctx, 28 + i * 46, 214, 40, { empty: !k, selected: this.hoverCharm === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), 28 + i * 46 + 12, 226, 18, 16); }
+    for (let i = 0; i < r.charmSlots; i++) { const k = r.charms[i]; uiItemSlot(ctx, 28 + i * 46, 214, 42, k ? charmArt(CHARMS[k].icon) : null, { empty: !k, selected: this.hoverCharm === i }); }
     drawText(ctx, 'ITEMS', 360, 200, '#f4efe0', { outline: '#1a1410' }); r.consumables.forEach((k, i) => { uiSlot(ctx, 360 + i * 46, 214, 40); ctx.drawImage(icon(CONSUMABLES[k].icon), 360 + i * 46 + 12, 226, 18, 16); });
     drawText(ctx, 'VOUCHERS', 660, 200, '#f4efe0', { outline: '#1a1410' }); r.vouchers.forEach((k, i) => { uiSlot(ctx, 660 + i * 46, 214, 40); ctx.drawImage(icon(VOUCHERS[k].icon), 660 + i * 46 + 12, 226, 18, 16); });
     const inner = uiPanel(ctx, 24, 266, W - 48, H - 280);

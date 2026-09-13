@@ -11,6 +11,7 @@ class RhythmGame {
     this.song = song; this.sections = sections; this.notes = notes; this.mods = mods; this.hooks = hooks;
     this.startTime = null; this.now = -song.leadIn;
     this.counts = { perfect: 0, great: 0, good: 0, miss: 0 }; this.combo = 0; this.maxCombo = 0; this.hype = 25;
+    this.bursts = []; this.lastMilestone = 0;
     this.events = { perfects: 0, misses: 0, cheer: 0 }; this.popups = []; this.flashes = {}; this.milestoneIdx = 0;
     this.holds = {}; this.keysDown = new Set(); this.breath = 1; this.breathNote = null;
     this.valveMask = 0; this.valveEvalAt = null; this.valveGroupT = null; this.lastDon = { t: -1 };
@@ -24,7 +25,7 @@ class RhythmGame {
     this.receptors = {}; // lane -> {x,y} for effects
   }
   get section() { return this.sections[this.secIdx]; }
-  get instrument() { return this.section.qte ? INSTRUMENTS[this.section.instrument] : INSTRUMENTS[this.section.instrument]; }
+  get instrument() { return this.section.instr || INSTRUMENTS[this.section.instrument]; }
   get game() { return this.section.qte ? 'qte' : this.instrument.game; }
   get nextSection() { return this.sections[this.secIdx + 1]; }
   begin(audioTime) { this.startTime = audioTime; }
@@ -46,6 +47,14 @@ class RhythmGame {
       this.fx.burst(r.x, r.y, 6, { color: '#ff5a5a', speed: 40, life: 0.4, kind: 'px', gravity: 160 });
     } else {
       this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
+      // a comic burst every time the combo crosses a milestone
+      for (const ms of [10, 25, 50, 100, 200]) if (this.combo === ms && this.lastMilestone < ms) {
+        this.lastMilestone = ms;
+        this.bursts.push({ x: r.x, y: r.y - 40, t: 0, text: ms >= 100 ? 'UNREAL!' : ms >= 50 ? 'ON FIRE!' : ms >= 25 ? 'COOKING!' : 'NICE!', color: ms >= 50 ? '#ff5a5a' : '#ffd24a', scale: 1 + ms / 160 });
+        if (this.mods.fx) this.mods.fx.shake.hit(4 + ms / 25, 0.25);
+        if (this.hooks.onMilestone) this.hooks.onMilestone(ms);
+      }
+      if (note.star) this.bursts.push({ x: r.x, y: r.y - 30, t: 0, text: 'GOLD!', color: '#f2cf4a', scale: 0.85 });
       if (j === 'perfect') this.events.perfects++;
       const col = note.star ? '#ffd24a' : JUDGE_COLOR[j];
       this.fx.burst(r.x, r.y, j === 'perfect' ? 12 : 6, { color: [col, '#fff', lighten(col, 0.2)], speed: j === 'perfect' ? 90 : 55, life: 0.45, kind: j === 'perfect' ? 'spark' : 'px', gravity: 60, size: 2 });
@@ -72,7 +81,7 @@ class RhythmGame {
     return best;
   }
   playHit(note, j, hold) {
-    const k = this.section.instrument; const ins = INSTRUMENTS[k];
+    const k = this.section.instrument; const ins = this.section.instr || INSTRUMENTS[k];
     if (k === 'drums') {
       // each lane is a different piece of the kit, so it should sound like one
       const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
@@ -165,6 +174,8 @@ class RhythmGame {
     if (n.hit) this.playHit(n, j); else Audio.drum('clunk', 0, 0.4);
   }
   update(dt) {
+    for (const b of this.bursts) b.t += dt * 1.4;
+    this.bursts = this.bursts.filter(b => b.t < 1);
     if (this.startTime == null) return;
     this.now = Audio.now() - this.startTime; this.events = { perfects: 0, misses: 0, cheer: 0 };
     while (this.secIdx < this.sections.length - 1 && this.now >= this.sections[this.secIdx + 1].start) {
@@ -219,7 +230,9 @@ class RhythmGame {
     const g = this.game;
     if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
-    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx);
+    for (const b of this.bursts) { speedLines(ctx, b.x, b.y, 26 * b.scale, 70 * b.scale, 14, b.color, this.now, 0.35 * (1 - b.t)); comicBurst(ctx, b.x, b.y, b.text, b.color, b.t, b.scale); }
+    ctx.restore();
     this.drawHud(ctx, A);
   }
   // A lit stage around the play area: truss, moving beams, speaker stacks, a front row.
@@ -286,7 +299,7 @@ class RhythmGame {
     }
     if (this.switchWarn) {
       const ns = this.nextSection, blink = Math.floor(this.now * 6) % 2 === 0;
-      const label = ns.qte ? (ns.member ? ns.member.name.toUpperCase() : 'BAND') : INSTRUMENTS[ns.instrument].name.toUpperCase();
+      const label = ns.qte ? (ns.member ? ns.member.name.toUpperCase() : 'BAND') : (ns.instr || INSTRUMENTS[ns.instrument]).name.toUpperCase();
       rect(ctx, A.x + A.w - 120, A.y + 4, 116, 16, 'rgba(0,0,0,0.7)');
       ctx.drawImage(icon('arrowR'), A.x + A.w - 116, A.y + 8);
       drawText(ctx, label, A.x + A.w - 58, A.y + 9, blink ? '#ff9f68' : '#fff', { align: 'center', font: 'small' });

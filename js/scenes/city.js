@@ -3,49 +3,128 @@
 const MAP_C = { land: '#f3efe4', landHi: '#faf7ee', park: '#c9e6b0', parkDk: '#b2d795', water: '#a6d0ee', waterDk: '#8fc0e4',
   road: '#ffffff', roadBig: '#ffe9a8', roadEdge: '#ddd7c8', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#5d6a5d', inkSoft: '#8a927f', hill: '#eae3d0' };
 let _sfCache = null;
+// ---------- Tile sprites ----------
+// One 24x24 pixel tile per kind, cut so the whole city is drawn from squares.
+function cityTile(kind, variant, mask) {
+  return cached('ctile|' + kind + '|' + variant + '|' + mask, () => {
+    const P = new Pix(TILE, TILE), rng = makeRng(kind * 97 + variant * 31 + mask * 7 + 11);
+    const flood = (c) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) P.set(x, y, c); };
+    const speck = (c, n) => { for (let i = 0; i < n; i++) P.set(rng.int(0, TILE - 1), rng.int(0, TILE - 1), c); };
+    switch (kind) {
+      case T_WATER: {
+        flood(MAP_C.water);
+        for (let y = 2; y < TILE; y += 6) for (let x = (y * 5) % 10; x < TILE; x += 10) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); P.set(x + 2, y, MAP_C.waterDk); }
+        speck('#b6dcf4', 4);
+        break;
+      }
+      case T_SHORE: {
+        flood(MAP_C.water);
+        for (let y = 3; y < TILE; y += 7) for (let x = (y * 3) % 9; x < TILE; x += 9) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); }
+        // a pale surf edge on whichever sides face land
+        if (mask & 1) for (let x = 0; x < TILE; x++) { P.set(x, 0, '#d7ecf8'); P.set(x, 1, '#c2e2f4'); }
+        if (mask & 2) for (let y = 0; y < TILE; y++) { P.set(TILE - 1, y, '#d7ecf8'); P.set(TILE - 2, y, '#c2e2f4'); }
+        if (mask & 4) for (let x = 0; x < TILE; x++) { P.set(x, TILE - 1, '#d7ecf8'); P.set(x, TILE - 2, '#c2e2f4'); }
+        if (mask & 8) for (let y = 0; y < TILE; y++) { P.set(0, y, '#d7ecf8'); P.set(1, y, '#c2e2f4'); }
+        break;
+      }
+      case T_PARK: {
+        flood(MAP_C.park);
+        speck(MAP_C.parkDk, 26); speck('#dcf0c6', 10);
+        if (variant % 3 === 0) { const m = P.mask(); P.mEllipse(m, 11, 11, 7, 7); P.fill(m, MAP_C.parkDk, { outline: '#6f9a5a', shade: false }); P.paint(m, (x, y) => (x + y) % 5 === 0 ? '#a8d68e' : null); P.set(11, 19, '#7a5a34'); P.set(12, 19, '#7a5a34'); }
+        else if (variant % 3 === 1) { for (let i = 0; i < 5; i++) { const bx = rng.int(2, 19), by = rng.int(2, 19); P.set(bx, by, rng.pick(['#e8563f', '#f2cf4a', '#e07ab0'])); } }
+        break;
+      }
+      case T_PLAZA: {
+        flood(MAP_C.land);
+        for (let y = 0; y < TILE; y += 8) for (let x = 0; x < TILE; x++) P.set(x, y, '#e6e0cf');
+        for (let x = 0; x < TILE; x += 8) for (let y = 0; y < TILE; y++) P.set(x, y, '#e6e0cf');
+        speck('#eae4d4', 8);
+        break;
+      }
+      case T_LAND: {
+        flood(MAP_C.land); speck(MAP_C.landHi, 8); speck('#e8e2d2', 6);
+        break;
+      }
+      case T_BLDG: {
+        flood(MAP_C.land);
+        const dense = variant >= 8, v = variant % 6;
+        const w = dense ? 20 : 16 + (v % 3) * 2, h = dense ? 20 : 15 + (v % 2) * 4;
+        const x0 = Math.floor((TILE - w) / 2), y0 = Math.floor((TILE - h) / 2);
+        const roof = ['#e4dfd2', '#d8cfc0', '#e9e0c8', '#cfd2cc', '#ece4cf', '#d4cdbe', '#e0d4c4', '#dbd8cd'][(variant * 3 + v) % 8];
+        const m = P.mask(); P.mRect(m, x0, y0, w, h); P.fill(m, roof, { outline: '#c0b8a4', shade: false });
+        P.paint(m, (x, y) => y === y0 ? '#f2eee2' : y === y0 + h - 1 ? '#c8c0ac' : x === x0 + w - 1 ? '#cec6b2' : null);
+        // roof furniture so the blocks are not flat
+        if (v % 3 === 0) { const t2 = P.mask(); P.mRect(t2, x0 + 3, y0 + 3, 5, 4); P.fill(t2, '#c4bca8', { shade: false }); }
+        if (v % 4 === 1) { const t2 = P.mask(); P.mRect(t2, x0 + w - 8, y0 + h - 7, 6, 5); P.fill(t2, '#cfc7b3', { shade: false }); }
+        if (dense && v % 2 === 0) for (let i = 0; i < 3; i++) P.set(x0 + 4 + i * 5, y0 + h - 3, '#b8b0a0');
+        // drop shadow to the south-east
+        for (let x = x0 + 2; x < x0 + w + 2 && x < TILE; x++) P.set(x, Math.min(TILE - 1, y0 + h), '#d8d2c2');
+        for (let y = y0 + 2; y < y0 + h + 2 && y < TILE; y++) P.set(Math.min(TILE - 1, x0 + w), y, '#d8d2c2');
+        break;
+      }
+      case T_ROAD: case T_BIGROAD: {
+        const big = kind === T_BIGROAD;
+        flood(MAP_C.land);
+        const road = big ? MAP_C.roadBig : MAP_C.road, edge = MAP_C.roadEdge;
+        const halfW = big ? 9 : 7, c = TILE / 2;
+        const band = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, road); };
+        const casing = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, edge); };
+        const n = mask & 1, e = mask & 2, so = mask & 4, we = mask & 8;
+        // casing first, then the carriageway
+        if (n) casing(c - halfW - 1, 0, halfW * 2 + 2, c + halfW + 1);
+        if (so) casing(c - halfW - 1, c - halfW - 1, halfW * 2 + 2, TILE - c + halfW + 1);
+        if (we) casing(0, c - halfW - 1, c + halfW + 1, halfW * 2 + 2);
+        if (e) casing(c - halfW - 1, c - halfW - 1, TILE - c + halfW + 1, halfW * 2 + 2);
+        if (!mask) casing(c - halfW - 1, c - halfW - 1, halfW * 2 + 2, halfW * 2 + 2);
+        if (n) band(c - halfW, 0, halfW * 2, c + halfW);
+        if (so) band(c - halfW, c - halfW, halfW * 2, TILE - c + halfW);
+        if (we) band(0, c - halfW, c + halfW, halfW * 2);
+        if (e) band(c - halfW, c - halfW, TILE - c + halfW, halfW * 2);
+        if (!mask) band(c - halfW, c - halfW, halfW * 2, halfW * 2);
+        // centre line only on straight runs
+        const straightV = n && so && !e && !we, straightH = we && e && !n && !so;
+        if (big && straightV) for (let y = 2; y < TILE; y += 8) { P.set(c - 1, y, '#f0cf7a'); P.set(c - 1, y + 1, '#f0cf7a'); P.set(c - 1, y + 2, '#f0cf7a'); }
+        if (big && straightH) for (let x = 2; x < TILE; x += 8) { P.set(x, c - 1, '#f0cf7a'); P.set(x + 1, c - 1, '#f0cf7a'); P.set(x + 2, c - 1, '#f0cf7a'); }
+        if (!big && straightV) for (let y = 3; y < TILE; y += 9) P.set(c - 1, y, '#e6e0d0');
+        if (!big && straightH) for (let x = 3; x < TILE; x += 9) P.set(x, c - 1, '#e6e0d0');
+        // crossing stripes at junctions
+        const arms = (n ? 1 : 0) + (e ? 1 : 0) + (so ? 1 : 0) + (we ? 1 : 0);
+        if (arms >= 3) { for (let i = -halfW + 2; i < halfW - 1; i += 3) { if (n) { P.set(c + i, 2, '#e8e2d0'); P.set(c + i, 3, '#e8e2d0'); } if (so) { P.set(c + i, TILE - 3, '#e8e2d0'); P.set(c + i, TILE - 4, '#e8e2d0'); } } }
+        break;
+      }
+    }
+    return P.toCanvas();
+  });
+}
 function buildSF() {
   if (_sfCache) return _sfCache;
-  const c = makeCanvas(MAPW, MAPH), x = c.getContext('2d'); const r = makeRng(4242);
+  const TM = cityTiles();
+  const c = makeCanvas(MAPW, MAPH), x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
   x.fillStyle = MAP_C.land; x.fillRect(0, 0, MAPW, MAPH);
-  const poly = (ctx2, pts, fill) => { ctx2.fillStyle = fill; ctx2.beginPath(); ctx2.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx2.lineTo(pts[i][0], pts[i][1]); ctx2.closePath(); ctx2.fill(); };
-  for (const w of WATER) poly(x, w.poly, MAP_C.water);
-  // district grounds
-  for (const d of DISTRICTS) { if (d.park) poly(x, d.poly, MAP_C.park); else if (d.hill) poly(x, d.poly, MAP_C.hill); }
-  // building footprints
-  for (const d of DISTRICTS) {
-    if (d.park) continue;
-    const xs = d.poly.map(p => p[0]), ys = d.poly.map(p => p[1]);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    const dense = /FINANCIAL|SOMA|CHINATOWN|NORTH BEACH|NOB/.test(d.name);
-    for (let by = y0 + 8; by < y1 - 12; by += dense ? 16 : 22) for (let bx = x0 + 8; bx < x1 - 12; bx += dense ? 19 : 27) {
-      if (r.chance(dense ? 0.8 : 0.5)) { const w = r.int(9, dense ? 16 : 21), h = r.int(7, dense ? 13 : 16);
-        x.fillStyle = MAP_C.bldgEdge; x.fillRect(bx + 1, by + 1, w, h); x.fillStyle = MAP_C.bldg; x.fillRect(bx, by, w, h); }
+  const kindAt = (tx, ty) => (tx < 0 || ty < 0 || tx >= GW || ty >= GH) ? T_LAND : TM.kind[ty * GW + tx];
+  const isRoad = (k) => k === T_ROAD || k === T_BIGROAD;
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const k = TM.kind[ty * GW + tx], v = TM.variant[ty * GW + tx];
+    let mask = 0;
+    if (isRoad(k)) {
+      if (isRoad(kindAt(tx, ty - 1))) mask |= 1;
+      if (isRoad(kindAt(tx + 1, ty))) mask |= 2;
+      if (isRoad(kindAt(tx, ty + 1))) mask |= 4;
+      if (isRoad(kindAt(tx - 1, ty))) mask |= 8;
+    } else if (k === T_SHORE) {
+      if (kindAt(tx, ty - 1) !== T_WATER && kindAt(tx, ty - 1) !== T_SHORE) mask |= 1;
+      if (kindAt(tx + 1, ty) !== T_WATER && kindAt(tx + 1, ty) !== T_SHORE) mask |= 2;
+      if (kindAt(tx, ty + 1) !== T_WATER && kindAt(tx, ty + 1) !== T_SHORE) mask |= 4;
+      if (kindAt(tx - 1, ty) !== T_WATER && kindAt(tx - 1, ty) !== T_SHORE) mask |= 8;
     }
+    x.drawImage(cityTile(k, v, mask), tx * TILE, ty * TILE);
   }
-  // park detail: trees and paths
-  for (const d of DISTRICTS) { if (!d.park) continue; const xs = d.poly.map(p => p[0]), ys = d.poly.map(p => p[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    for (let i = 0; i < (x1 - x0) / 9; i++) { const tx = r.int(x0 + 6, x1 - 6), ty = r.int(y0 + 6, y1 - 6); circle(x, tx, ty, r.int(3, 6), MAP_C.parkDk); circle(x, tx - 1, ty - 2, r.int(1, 2), '#dcf0c6'); }
-    x.strokeStyle = '#e8e2cc'; x.lineWidth = 5; x.beginPath(); x.moveTo(x0 + 4, (y0 + y1) / 2); for (let px2 = x0 + 4; px2 < x1; px2 += 30) x.lineTo(px2, (y0 + y1) / 2 + Math.sin(px2 * 0.05) * 10); x.stroke();
-  }
-  // streets: casing then fill
-  const drawRoad = (st, pass) => {
-    x.lineJoin = 'round'; x.lineCap = 'round'; x.beginPath(); x.moveTo(st.pts[0][0], st.pts[0][1]);
-    for (let i = 1; i < st.pts.length; i++) x.lineTo(st.pts[i][0], st.pts[i][1]);
-    x.lineWidth = (st.big ? 16 : 10) - (pass ? 4 : 0); x.strokeStyle = pass ? (st.big ? MAP_C.roadBig : MAP_C.road) : MAP_C.roadEdge; x.stroke();
-  };
-  // graph roads (travel network) drawn as real streets too
-  const G = buildGraph();
-  for (const pass of [0, 1]) {
-    for (const [a, b] of EDGES) { const na = G[a], nb = G[b]; if (!na || !nb) continue;
-      x.lineCap = 'round'; x.beginPath(); x.moveTo(na.x, na.y); x.lineTo(nb.x, nb.y); x.lineWidth = 12 - (pass ? 4 : 0); x.strokeStyle = pass ? MAP_C.road : MAP_C.roadEdge; x.stroke(); }
-    for (const st of STREETS) drawRoad(st, pass);
-  }
-  // bridges
+  // ---- landmarks that are bigger than one tile
   x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
   x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
-  // alcatraz
   circle(x, 1350, 195, 24, '#d8d2c0'); circle(x, 1350, 195, 20, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338, 186, 24, 12);
-  // street labels
+  // ---- labels last, so they sit on top of the tiles
   x.save();
   for (const st of STREETS) {
     const i = Math.floor(st.pts.length / 2) - 1, a = st.pts[Math.max(0, i)], b = st.pts[Math.min(st.pts.length - 1, i + 1)];
@@ -54,20 +133,25 @@ function buildSF() {
     drawText(x, st.name, 0, -2, MAP_C.ink, { align: 'center', font: 'small' }); x.restore();
   }
   x.restore();
-  // district labels
-  for (const d of DISTRICTS) { const t = d.name.split('').join(' '); drawText(x, t, d.x, d.y, MAP_C.inkSoft, { align: 'center' }); }
+  for (const d of DISTRICTS) drawText(x, d.name.split('').join(' '), d.x, d.y, MAP_C.inkSoft, { align: 'center' });
   for (const w of WATER) if (w.name) { const xs = w.poly.map(p => p[0]), ys = w.poly.map(p => p[1]); drawText(x, w.name.split('').join(' '), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, '#6f9cc4', { align: 'center' }); }
   for (const d of MAP_DETAILS) if (d.kind === 'label') drawText(x, d.text, d.x, d.y, '#6f9cc4', { align: 'center' });
-  _sfCache = { canvas: c, graph: G };
+  _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
 }
 const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
   const h = 30 + big * 4, w = 24 + big * 3;
-  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y + 1, 9 + big, 3.5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - w / 2, y - h * 0.55); ctx.lineTo(x - w / 2, y - h + 4);
-  ctx.arc(x, y - h + 6, w / 2, Math.PI, 0); ctx.lineTo(x + w / 2, y - h * 0.55); ctx.closePath(); ctx.fill();
+  ellipsePx(ctx, x, y + 1, 9 + big, 3.5, 'rgba(0,0,0,0.22)');
+  // teardrop, built from a pixel disc and a stepped point
+  const hr2 = Math.round(w / 2), headY = Math.round(y - h + 6 + hr2 * 0.2);
+  circle(ctx, x, headY, hr2, col);
+  for (let i = 0; i <= Math.round(h * 0.55); i++) {
+    const k = i / Math.max(1, Math.round(h * 0.55));
+    const hwid = Math.max(1, Math.round(hr2 * (1 - k * k) * 0.98));
+    ctx.fillStyle = col; ctx.fillRect(Math.round(x) - hwid, headY + hr2 - 1 + i, hwid * 2, 1);
+  }
   ctx.strokeStyle = darken(col, 0.25); ctx.lineWidth = 1; ctx.stroke();
   circle(ctx, x, y - h + 6, w / 2 - 4, '#fff8ee');
   const ic = icon(node.icon || 'event'); ctx.drawImage(ic, Math.round(x - ic.width * 0.7), Math.round(y - h + 6 - ic.height * 0.7), Math.round(ic.width * 1.4), Math.round(ic.height * 1.4));
@@ -76,14 +160,14 @@ function drawPin(ctx, x, y, node, opts = {}) {
 class CityScene {
   constructor(arrive) {
     const r = Game.run; this.t = 0; this.sf = buildSF(); this.G = this.sf.graph;
-    this.arriveT = arrive ? 2.6 : 0; this.travel = null; this.msg = null; this.msgT = 0;
+    this.arriveT = (arrive || Game.run.today && Game.run.today.gigs === 0 && Game.run.today.tiles === 0) ? 3.4 : 0; this.travel = null; this.msg = null; this.msgT = 0;
     this.cam = { x: 0, y: 0 };
     const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 16; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
     this.people = []; for (let i = 0; i < 40; i++) { const e = rr.pick(EDGES); this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.03), col: rr.pick(NPC_PALETTES) }); }
     this.fx = new Particles(); this.sel = 0;
-    this.grid = tileGrid(this.sf.canvas);
+    this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
     const r0 = Game.run;
     if (!r0.tile || !tileWalkable(this.grid, r0.tile.tx, r0.tile.ty)) { const h = NODES.find(n => n.id === r0.pos) || NODES[0]; r0.tile = { tx: h.tx, ty: h.ty }; }
@@ -134,6 +218,8 @@ class CityScene {
       const t = this.path.shift();
       this.tile = { tx: t.tx, ty: t.ty }; r.tile = { tx: t.tx, ty: t.ty };
       r.stamina = Math.max(0, r.stamina - wk.cost);
+      r.today.tiles = (r.today.tiles || 0) + 1;
+      const gh = checkGoals(r); if (gh) this.goalDone(gh);
       this.walking = null; this.stepT = (this.stepT || 0) + 1;
       if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x - this.cam.x, this.pos.y - this.cam.y + 26 + 6, 3, '#cfc6ae');
       const n = this.nodeAtTile(t.tx, t.ty);
@@ -164,6 +250,7 @@ class CityScene {
       default: this.refresh();
     }
   }
+  goalDone(g) { this.flash(GOALS[g.key].name + '  ' + goalRewardText(g)); Audio.ui('fanfare'); this.goalPop = 1.6; }
   flash(msg) { this.msg = msg; this.msgT = 2.2; this.fx.burst(W / 2, 120, 14, { color: ['#ffd24a', '#fff'], speed: 90, life: 0.6, kind: 'star', size: 2, gravity: 120 }); }
   go(n) {
     const r = Game.run; if (this.walking || this.path.length || !n) return;
@@ -329,11 +416,54 @@ class CityScene {
     this.fx.draw(ctx);
     const wk = WEATHERS[r.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, 26, W, H - 60); }
-    vignetteRect(ctx, 0, 26, W, H - 60, 0.3, '#1a2416');
+    // How the city looks depends on how far you have climbed back. Day one
+    // is cold and washed out; by the end it has colour again.
+    const lift = clamp((r.day * 0.2) + (r.members.length - 1) * 0.1 + clamp(r.money / 220, 0, 0.3), 0, 1);
+    grade(ctx, 0, 26, W, H - 60, lift > 0.5 ? '#ffd9a0' : '#5f7ea8', lift > 0.5 ? (lift - 0.5) * 0.24 : (0.5 - lift) * 0.42);
+    if (lift < 0.45) { ctx.globalAlpha = (0.45 - lift) * 0.5; ctx.fillStyle = '#8e93a6'; ctx.fillRect(0, 26, W, H - 60); ctx.globalAlpha = 1; }
+    vignetteRect(ctx, 0, 26, W, H - 60, 0.3 + (1 - lift) * 0.2, lift > 0.5 ? '#1a2416' : '#141a26');
     ctx.restore();
     this.drawHud(ctx);
-    if (this.arriveT > 0) { ctx.globalAlpha = clamp(this.arriveT / 2.6, 0, 1); rect(ctx, 0, 180, W, 100, 'rgba(10,20,30,0.8)'); uiRibbon(ctx, W / 2, 194, 'SAN FRANCISCO', { scale: 4, color: '#c8433a' }); drawText(ctx, 'FIVE DAYS TO BUILD A BAND', W / 2, 246, '#fff', { align: 'center', scale: 2 }); ctx.globalAlpha = 1; }
+    if (this.arriveT > 0) {
+      const a = clamp(this.arriveT / 2.6, 0, 1);
+      ctx.globalAlpha = a;
+      rect(ctx, 0, 120, W, 230, 'rgba(10,14,22,0.86)');
+      rect(ctx, 0, 120, W, 2, '#c8a03a'); rect(ctx, 0, 348, W, 2, '#c8a03a');
+      halftone(ctx, 0, 120, W, 230, '#5f7ea8', 8, 0.12);
+      uiRibbon(ctx, W / 2, 134, DAY_NAMES[Math.min(4, r.day)] + '  -  DAY ' + (r.day + 1) + ' OF 5', { scale: 3, color: '#8a2a3a' });
+      drawText(ctx, 'TODAY YOU NEED TO', W / 2, 176, '#9aa6bc', { align: 'center' });
+      (r.goals || []).forEach((g, i) => {
+        const gy = 198 + i * 40;
+        ctx.drawImage(itemCanvas(charmArt(GOALS[g.key].icon)), 0, 0, 32, 32, W / 2 - 280, gy - 4, 30, 30);
+        drawText(ctx, goalText(g), W / 2 - 240, gy, '#f2e8cc', { scale: 2 });
+        drawText(ctx, goalRewardText(g), W / 2 + 280, gy + 4, '#6be585', { align: 'right' });
+      });
+      ctx.globalAlpha = 1;
+    }
     if (this.msgT > 0) { ctx.globalAlpha = clamp(this.msgT, 0, 1); const sc2 = popIn(2.2 - this.msgT, 0.25); const w = textWidth(this.msg, { scale: 2 }) + 30; ctx.save(); ctx.translate(W / 2, 130); ctx.scale(sc2, sc2); rect(ctx, -w / 2, -14, w, 28, '#1a2a1a'); frame(ctx, -w / 2, -14, w, 28, '#6be585'); drawText(ctx, this.msg, 0, -7, '#6be585', { align: 'center', scale: 2 }); ctx.restore(); ctx.globalAlpha = 1; }
+  }
+  // Today's goals, on a clipboard pinned to the corner of the map.
+  drawGoals(ctx) {
+    const r = Game.run; if (!r.goals || !r.goals.length) return;
+    const w = 226, h = 30 + r.goals.length * 26, x = 10, y = 36;
+    const pop = this.goalPop ? 1 + Math.sin(this.goalPop * 12) * 0.02 : 1;
+    ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(pop, pop); ctx.translate(-(x + w / 2), -(y + h / 2));
+    ctx.fillStyle = 'rgba(16,12,20,0.3)'; ctx.fillRect(x + 3, y + 4, w, h);
+    rect(ctx, x, y, w, h, '#f2e8cc'); frame(ctx, x, y, w, h, '#7a6a48');
+    rect(ctx, x, y, w, 20, '#3c4f3a'); rect(ctx, x + 1, y + 1, w - 2, 1, '#5f7a58');
+    drawText(ctx, "TODAY'S GOALS", x + w / 2, y + 6, '#f2e8cc', { align: 'center' });
+    rect(ctx, x + w / 2 - 12, y - 4, 24, 8, '#b9b3a2'); rect(ctx, x + w / 2 - 10, y - 3, 20, 4, '#d6d0bd');
+    r.goals.forEach((g, i) => {
+      const gy = y + 24 + i * 26, k = goalProgress(r, g);
+      ctx.drawImage(icon(GOALS[g.key].icon), x + 6, gy + 3, 13, 12);
+      drawText(ctx, goalText(g), x + 24, gy + 2, g.done ? '#4f8032' : '#4a3a26', { font: 'small' });
+      // a little progress rail, and a tick when it lands
+      rect(ctx, x + 24, gy + 12, 150, 6, '#d8ccae'); rect(ctx, x + 24, gy + 12, Math.round(150 * k), 6, g.done ? '#5fbf4f' : '#c8a03a');
+      frame(ctx, x + 24, gy + 12, 150, 6, '#9a8a66');
+      if (g.done) ctx.drawImage(icon('check'), x + 182, gy + 9, 12, 10);
+      else drawText(ctx, Math.floor(GOALS[g.key].get(r)) + '/' + g.n, x + 182, gy + 11, '#8a7a58', { font: 'small' });
+    });
+    ctx.restore();
   }
   drawHud(ctx) {
     const r = Game.run, wk = WEATHERS[r.weather] || WEATHERS.clear;
@@ -351,8 +481,9 @@ class CityScene {
     ctx.drawImage(icon(wk.icon === 'rain' ? 'rain' : wk.icon === 'fog' ? 'rain' : 'star'), 400, 7, 12, 11); drawText(ctx, wk.name, 418, 9, '#5d6a5d');
     let bx = W - 10;
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; bx -= 28; circle(ctx, bx + 12, 13, 12, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(bx + 12, 13, 11, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, bx + 12, 29, { pose: 'idle', scale: 0.65, bounce: 0 }); ctx.restore(); }
-    let cx = bx - 12; for (let i = r.charms.length - 1; i >= 0; i--) { cx -= 20; uiSlotMini(ctx, cx, 4, false, 18); ctx.drawImage(icon(CHARMS[r.charms[i]].icon), cx + 3, 7, 12, 11); }
+    let cx = bx - 12; for (let i = r.charms.length - 1; i >= 0; i--) { cx -= 20; uiSlotMini(ctx, cx, 4, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[r.charms[i]].icon)), 0, 0, 32, 32, cx + 2, 6, 14, 14); }
     rect(ctx, 0, H - 34, W, 34, 'rgba(250,247,238,0.95)'); rect(ctx, 0, H - 34, W, 2, '#c8c2b0');
+    this.drawGoals(ctx);
     const under = this.nodeAtTile(this.tile.tx, this.tile.ty) || this.nearestNode();
     if (under) {
       ctx.drawImage(icon(under.icon || 'event'), 10, H - 27, 18, 16);
@@ -408,7 +539,7 @@ class FoodScene {
     const me = Game.run.members[0];
     const tune = me.instrument === 'drums' ? 'saints' : me.instrument === 'piano' ? 'furElise' : 'camptown';
     const song = songFromTune(tune, { bpm: 104 });
-    const sections = [{ instrument: me.instrument, startBar: 0, endBar: Math.min(8, song.bars) }];
+    const sections = [{ instrument: me.instrument, instr: gearInstrument(me.instrument, me.quality), startBar: 0, endBar: Math.min(8, song.bars) }];
     const notes = chartFromMelody(song, sections, 2, makeRng(5), { starRate: 0.1, bombMult: 0 });
     const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.3 });
     this.rhythm = new RhythmGame(song, sections, notes, mods, {});
@@ -473,9 +604,9 @@ class FoodScene {
     for (let i = 0; i < 7; i++) { const lx = 70 + i * 140, sw = Math.sin(t * 0.8 + i) * 2;
       rect(ctx, lx - 1 + sw * 0.4, 0, 2, 24, '#3a1a16');
       const lc = i % 2 ? '#e8563f' : '#e8a33a';
-      ctx.fillStyle = lc; ctx.beginPath(); ctx.ellipse(lx + sw, 36, 15, 18, 0, 0, Math.PI * 2); ctx.fill();
+      ellipsePx(ctx, lx + sw, 36, 15, 18, lc);
       ctx.fillStyle = darken(lc, 0.2); for (let k = -2; k <= 2; k++) rect(ctx, lx + sw - 15, 36 + k * 7, 30, 1, darken(lc, 0.25));
-      ctx.fillStyle = '#f6d98a'; ctx.beginPath(); ctx.ellipse(lx + sw - 5, 30, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ellipsePx(ctx, lx + sw - 5, 30, 4, 5, '#f6d98a');
       rect(ctx, lx + sw - 4, 53, 8, 4, '#c8a24a');
       lightPool(ctx, lx + sw, 40, 90, lc, 0.12);
     }
@@ -630,7 +761,7 @@ class RecruitScene {
     this.node = node; this.t = 0; const r = Game.run;
     this.cand = r.makeMember(); this.price = 14 + r.day * 8 + this.cand.skill * 3;
     this.menu = new Menu([
-      { label: 'Invite to the band', right: fmtMoney(this.price), icon: 'openmic', disabled: r.money < this.price || r.members.length >= 6, onSelect: () => { r.money -= this.price; r.members.push(this.cand); Audio.ui('fanfare'); this.done(this.cand.name.toUpperCase() + ' JOINS'); } },
+      { label: 'Invite to the band', right: fmtMoney(this.price), icon: 'openmic', disabled: r.money < this.price || r.members.length >= 6, onSelect: () => { r.money -= this.price; r.members.push(this.cand); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); Audio.ui('fanfare'); this.done(this.cand.name.toUpperCase() + ' JOINS'); } },
       { label: 'Jam for free (+1 skill all)', icon: 'note', onSelect: () => { r.members.forEach(m => { m.skill = Math.min(10, m.skill + 1); m.stamina = Math.max(0, m.stamina - 10); }); Audio.ui('levelup'); this.done('EVERYONE LEVELLED UP'); } },
       { label: 'Leave', icon: 'arrowL', onSelect: () => Game.go(() => new CityScene(), 'slideR') },
     ]);
@@ -673,7 +804,7 @@ class RecruitScene {
     for (let y = 330; y < H; y += 32) { ctx.globalAlpha = 0.25; rect(ctx, 0, y, W, 1, '#33200f'); ctx.globalAlpha = 1; }
     this.tables || (this.tables = (() => { const rr = makeRng(hashStr(this.node.id) + 5); return [0, 1, 2].map(i => ({ spec: randomBugSpec(rr), spec2: randomBugSpec(rr), x: 650 + i * 110, y: 360 + i * 46, o: rr.range(0, 6) })); })());
     this.tables.forEach((tb, i) => {
-      circle(ctx, tb.x, tb.y, 30, '#8a5f36'); circle(ctx, tb.x, tb.y - 3, 30, '#a8763c');
+      ellipsePx(ctx, tb.x, tb.y, 30, 11, '#8a5f36'); ellipsePx(ctx, tb.x, tb.y - 4, 30, 11, '#a8763c');
       rect(ctx, tb.x - 3, tb.y + 6, 6, 26, '#5a3a20'); rect(ctx, tb.x - 12, tb.y + 30, 24, 4, '#5a3a20');
       ctx.drawImage(itemCanvas('coffee'), 0, 0, 32, 32, tb.x - 10, tb.y - 22, 22, 22);
       drawBugAt(ctx, tb.spec, tb.x - 40, tb.y + 4, { pose: 'idle', scale: 1.1, rate: 1.5, phase: tb.o });

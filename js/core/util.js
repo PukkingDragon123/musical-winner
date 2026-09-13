@@ -75,6 +75,30 @@ function circle(ctx, cx, cy, r, color) {
   ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
   for (let y = -r; y <= r; y++) { const w = Math.floor(Math.sqrt(r * r - y * y + 0.5)); ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1); }
 }
+// Pixel-art ellipse: scanline filled, so the edge steps instead of blurring.
+function ellipsePx(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
+  const ryi = Math.max(0, Math.round(ry));
+  for (let y = -ryi; y <= ryi; y++) {
+    const k = 1 - (y * y) / ((ry + 0.5) * (ry + 0.5));
+    if (k <= 0) continue;
+    const w = Math.floor(rx * Math.sqrt(k) + 0.5);
+    if (w >= 0) ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
+  }
+}
+// Pixel-art ellipse outline, one pixel thick.
+function ellipseRingPx(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
+  const ryi = Math.max(0, Math.round(ry)); let prev = -1;
+  for (let y = -ryi; y <= ryi; y++) {
+    const k = 1 - (y * y) / ((ry + 0.5) * (ry + 0.5));
+    const w = k <= 0 ? -1 : Math.floor(rx * Math.sqrt(k) + 0.5);
+    if (w < 0) { prev = w; continue; }
+    if (prev < 0 || y === ryi) ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
+    else { ctx.fillRect(cx - w, cy + y, Math.max(1, w - prev + 1), 1); ctx.fillRect(cx + prev, cy + y, Math.max(1, w - prev + 1), 1); }
+    prev = w;
+  }
+}
 function ringPx(ctx, cx, cy, r, color) {
   ctx.fillStyle = color; const steps = Math.max(12, Math.floor(r * 7));
   for (let i = 0; i < steps; i++) { const a = (i / steps) * Math.PI * 2; ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1); }

@@ -167,7 +167,7 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bombRate = difficulty >= 2 ? (0.015 + difficulty * 0.006) * (opts.bombMult || 1) : 0;
   for (const sec of sections) {
-    const instr = INSTRUMENTS[sec.instrument]; const secStart = song.leadIn + sec.startBar * 4 * beat, secEnd = song.leadIn + sec.endBar * 4 * beat;
+    const instr = sec.instr || INSTRUMENTS[sec.instrument]; const secStart = song.leadIn + sec.startBar * 4 * beat, secEnd = song.leadIn + sec.endBar * 4 * beat;
     if (sec.qte) { for (let bar = sec.startBar; bar < sec.endBar; bar++) { const barT = song.leadIn + bar * 4 * beat; const slots = difficulty >= 4 ? [0, 2] : [0]; for (const s of slots) if (rng.chance(0.9)) notes.push({ t: barT + s * beat, lane: 0, dur: 0, type: 'qte', midi: song.root + 12 }); } continue; }
     // walk the melody, looping it to fill the section
     let t = secStart, i = 0, lastLane = Math.floor((instr.lanes || 2) / 2), lastDir = 1, guard = 0;

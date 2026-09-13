@@ -400,9 +400,9 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
   const blink = expr === 'blink';
   if (e === 'compound') {
     const col = spec.colors.eye || '#c83030';
-    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 3), ey, 5, 6); P.fill(m, col, { outline: ol });
-      P.paint(m, (x, y) => (x + y) % 2 === 0 ? darken(col, 0.14) : null);
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 3) - 2), y - (ey - 3)) < 1.8 ? lighten(col, 0.5) : null); }
+    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 3), ey, 4.4, 5.2); P.fill(m, col, { outline: ol, shade: false });
+      P.paint(m, (x, y) => (x + y) % 2 === 0 ? darken(col, 0.12) : null);
+      P.paint(m, (x, y) => (x >= cx + s * (hr.rx - 3) - 3 && x <= cx + s * (hr.rx - 3) - 2 && y >= ey - 3 && y <= ey - 2) ? '#ffffff' : null); }
   } else if (e === 'shades') {
     const m = P.mask(); P.mRound(m, cx - hr.rx + 1, ey - 4, hr.rx * 2 - 2, 8, 2); P.fill(m, '#1c1a24', { outline: ol, shade: false });
     P.paint(m, (x, y) => y < ey - 1 && ((x - cx) % 7 === 0) ? '#5a5870' : null);
@@ -415,55 +415,58 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
   } else if (e === 'goggle') {
     // one wide visor across the face, two bright lenses behind it
     const m = P.mask(); P.mRound(m, cx - hr.rx + 1, ey - 5, hr.rx * 2 - 2, 10, 3); P.fill(m, darken(spec.colors.body, 0.35), { outline: ol });
-    for (const s of [-1, 1]) { const l = P.mask(); P.mEllipse(l, cx + s * (hr.rx - 4), ey, 3.6, 3.6); P.fill(l, spec.colors.trim || '#f0d060', { outline: ol, shade: false });
-      P.paint(l, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4) - 1.2), y - (ey - 1.2)) < 1.5 ? '#ffffff' : null); }
+    for (const s of [-1, 1]) { const l = P.mask(); P.mEllipse(l, cx + s * (hr.rx - 4), ey, 3.2, 3.2); P.fill(l, spec.colors.trim || '#f0d060', { outline: ol, shade: false });
+      P.set(Math.round(cx + s * (hr.rx - 4) - 1), Math.round(ey - 1), '#ffffff'); }
   } else if (e === 'spot') {
     // painted eye-spots, like a moth: two big rings that stare
     const ring = spec.colors.trim || '#ffd24a';
-    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 4), ey, 4.6, 4.6); P.fill(m, ring, { outline: ol, shade: false });
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4)), y - ey) < 2.4 ? '#241c20' : null);
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4) - 1), y - (ey - 1)) < 1 ? '#ffffff' : null); }
+    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 4), ey, 4, 4); P.fill(m, ring, { outline: ol, shade: false });
+      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4)), y - ey) < 2 ? '#241c20' : null);
+      P.set(Math.round(cx + s * (hr.rx - 4) - 1), Math.round(ey - 1), '#ffffff'); }
   } else {
-    // The default face. Eyes are huge on purpose: sclera, a wide dark iris,
-    // a big highlight and a small one, and a lid line that carries the mood.
+    // The default face: flat and simple, the way the reference sheet does it.
+    // A pale sclera, one solid dark pupil, one square glint. No gradients,
+    // no second highlight, no shine. The brows carry the mood.
     const big = e === 'bold' || e === 'wide', bead = e === 'bead';
-    const rw = bead ? 3.4 : big ? 5.4 : 4.4, rh = bead ? 3.4 : big ? 6.2 : 5;
+    const rw = bead ? 2.2 : big ? 4 : 3.4, rh = bead ? 2.2 : big ? 4.4 : 3.8;
     const hc = spec.colors.head || spec.colors.body;
+    const iris = spec.colors.iris || '#241c22';
+    const sclera = spec.colors.sclera || '#f6f2ea';
     for (const s of [-1, 1]) {
       const m = P.mask(); P.mEllipse(m, cx + s * ex, ey, rw, rh);
-      P.fill(m, bead ? '#241c20' : '#ffffff', { outline: ol, shade: false });
-      if (!bead) P.paint(m, (x, y) => y < ey - rh * 0.55 ? '#e4e0ee' : null);   // socket shadow at the top
+      P.fill(m, bead ? iris : sclera, { outline: ol, shade: false });
       if (bead) {
-        P.paint(m, (x, y) => Math.hypot(x - (cx + s * ex - 0.8), y - (ey - 0.8)) < 1.1 ? '#ffffff' : null);
+        P.set(Math.round(cx + s * ex - 1), Math.round(ey - 1), '#ffffff');
       } else if (blink || e === 'sleepy') {
         const lid = P.mask(); P.mRect(lid, cx + s * ex - rw - 1, ey - rh - 1, rw * 2 + 2, blink ? rh * 2 + 1 : rh + 1);
         P.fill(lid, hc, { shade: false });
         P.paint(lid, (x, y) => y === Math.round(ey + (blink ? 0 : -0.5)) ? ol : null);
       } else {
-        let px2 = cx + s * ex, py2 = ey + 0.8;
-        if (expr === 'shock') py2 = ey;
-        if (expr === 'focus') px2 += s * 0.8;
-        if (expr === 'sad') py2 = ey + 1.8;
-        const irR = expr === 'shock' ? 1.9 : 3.1;
-        const ir = P.mask(); P.mEllipse(ir, px2, py2, irR, irR + 0.3);
-        P.fill(ir, spec.colors.iris || '#2a2438', { shade: false });
-        P.paint(ir, (x, y) => Math.hypot(x - px2, y - py2) < irR * 0.55 ? darken(spec.colors.iris || '#2a2438', 0.25) : null);
-        P.paint(ir, (x, y) => Math.hypot(x - (px2 - 1.1), y - (py2 - 1.1)) < 1.5 ? '#ffffff' : null);
-        P.paint(ir, (x, y) => Math.hypot(x - (px2 + 1.2), y - (py2 + 1.3)) < 0.9 ? '#c8c4dc' : null);
-        // upper lid: a dark arc across the top of the eye
-        if (expr !== 'shock') P.paint(m, (x, y) => y < ey - rh + 1.4 ? darken(hc, 0.45) : null);
+        let px2 = cx + s * ex, py2 = ey + 0.4;
+        if (expr === 'shock') py2 = ey - 0.2;
+        if (expr === 'focus') px2 += s * 0.7;
+        if (expr === 'sad') py2 = ey + 1.2;
+        if (expr === 'angry') px2 -= s * 0.4;
+        const pr = expr === 'shock' ? 1.1 : 1.9;
+        const ir = P.mask(); P.mEllipse(ir, px2, py2, pr, pr + 0.2);
+        P.fill(ir, iris, { shade: false });
+        // one square glint, top-left, one pixel
+        P.set(Math.round(px2 - 1), Math.round(py2 - 1), '#ffffff');
+        // a heavy lid comes down for angry and focus
+        if (expr === 'angry' || expr === 'focus') { const lid = P.mask(); P.mRect(lid, cx + s * ex - rw - 1, ey - rh - 1, rw * 2 + 2, Math.round(rh * 0.8)); P.fill(lid, hc, { shade: false }); P.paint(lid, (x, y) => y === Math.round(ey - rh * 0.8) ? ol : null); }
       }
-      // brows sit above the eye and do most of the emoting
-      const bw = rw + 1;
-      let by = ey - rh - 2, tilt = 0;
-      if (expr === 'angry' || expr === 'focus') { by = ey - rh - 1; tilt = s * 1.5; }
-      if (expr === 'sad') { by = ey - rh - 2; tilt = -s * 1.5; }
-      if (expr === 'happy' || expr === 'sing') by = ey - rh - 3;
-      if (expr !== 'none' && expr !== undefined) { const m2 = P.mask(); P.mLine(m2, cx + s * ex - bw, by + tilt, cx + s * ex + bw, by - tilt, 2); P.fill(m2, darken(hc, 0.45), { shade: false }); }
+      // brows: a short flat stroke, angled by mood
+      let by = ey - rh - 3, tilt = 0, show = true;
+      if (expr === 'angry' || expr === 'focus') { by = ey - rh - 2; tilt = s * 1.5; }
+      else if (expr === 'sad') { by = ey - rh - 3; tilt = -s * 1.5; }
+      else if (expr === 'happy' || expr === 'sing') by = ey - rh - 4;
+      else if (expr === 'shock') by = ey - rh - 4;
+      else show = false;
+      if (show) { const m2 = P.mask(); P.mLine(m2, cx + s * ex - rw, by + tilt, cx + s * ex + rw, by - tilt, 2); P.fill(m2, darken(hc, 0.45), { shade: false }); }
     }
   }
   // cheeks
-  if (expr === 'happy' || expr === 'sing') for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 2.5), cy + 4, 3.2, 2); P.fill(m, '#ff9090', { shade: false }); }
+  if (expr === 'happy' || expr === 'sing') for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 2.5), cy + 3, 2.4, 1.4); P.fill(m, '#f08a8a', { shade: false }); }
   // mouth
   const my = cy + Math.max(3, hr.ry - 4);
   const mk = (pts, col) => { const m = P.mask(); P.mPoly(m, pts); P.fill(m, col, { shade: false }); };
@@ -582,6 +585,5 @@ function drawBugAt(ctx, spec, x, y, opts = {}) {
   return dy;
 }
 function drawShadow(ctx, x, y, w, alpha = 0.28) {
-  ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
-  ctx.beginPath(); ctx.ellipse(Math.round(x), Math.round(y), Math.round(w / 2), Math.max(2, Math.round(w / 7)), 0, 0, Math.PI * 2); ctx.fill();
+  ellipsePx(ctx, x, y, w / 2, Math.max(2, w / 7), 'rgba(0,0,0,' + alpha + ')');
 }

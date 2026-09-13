@@ -40,10 +40,19 @@ night falls, dinner costs money per bug, and the Golden Gate unlocks on the last
 
 ## Playing
 
-Street sets are **real public-domain music** — Ode to Joy, Flight of the Bumblebee, In the
-Hall of the Mountain King, The Entertainer, Habanera, Toccata, St. Louis Blues and more. The
-opening concert is six original stadium-rock hooks written for it. Either way the chart
-follows the actual melody, so the notes you hit are the tune.
+Street sets are **real music by real composers** — Beethoven's Ode to Joy and Fur Elise,
+Rimsky-Korsakov's Flight of the Bumblebee, Grieg's In the Hall of the Mountain King, Joplin's
+The Entertainer, Bizet's Habanera, Offenbach's Can-Can, Bach's Toccata, Mozart's Rondo alla
+Turca, Tchaikovsky's Swan Lake, W.C. Handy's St. Louis Blues, Strauss's Blue Danube and Foster's
+Camptown Races. Every one is public domain, and the composer's name is on the set. Modern songs
+are not: reproducing them would be infringement, so the opening concert is six original
+stadium-rock hooks written for the game instead. Either way the chart follows the actual melody,
+so the notes you hit are the tune.
+
+**Your gear decides the difficulty and the money.** You start on a BUSTED instrument: fewer
+lanes, a wide forgiving timing window, and a payout barely over half. Upgrading at a music shop
+gives the lanes back and raises what the crowd pays, so the game gets harder exactly as it gets
+richer. BUSTED, PAWN SHOP, WORKING, PRO, SIGNATURE.
 
 The play area *is* your instrument, hung inside a lit stage: a truss of coloured lamps
 overhead, beams sweeping across the lanes on the beat, speaker stacks at both edges and a
@@ -51,6 +60,10 @@ front row of bugs bobbing with lighters up. Guitar and bass are a wooden fretboa
 vanishing point, with strings that ring and wobble when you hit them. Keyboard is a real
 keyboard whose keys depress. Drums, saxophone, trumpet and violin each draw their own body,
 keys, valves and bow.
+
+**Every day states what it wants.** Three goals on a clipboard pinned to the map: take home a
+number, play a set count, hold a combo, land perfects, walk blocks, add a bug, upgrade an
+instrument, end the day with nobody hungry. Each pays cash or stamina the moment it lands.
 
 | Instrument | Keys |
 |---|---|
@@ -81,7 +94,13 @@ and kids bouncing beside them.
 
 ## Look
 
-960x540 internal, integer-scaled, every pixel drawn in code. The cast is built from big round
+The whole city is a tileset. Road, junction, building, park, plaza, water and shore squares are
+drawn as 24x24 pixel tiles and assembled with a neighbour mask, so junctions, centre lines,
+crossings and surf edges all fall out of the grid. Walkability is the same array the renderer
+uses, which is why the band can never walk into the bay.
+
+960x540 internal, integer-scaled, every pixel drawn in code, and nothing is anti-aliased: even
+the shadows, cymbals and map pins are scanline pixel shapes. The cast is built from big round
 eyes, chunky limbs and one strong silhouette apiece: the drummer is a moose beetle whose
 antlers are half his height, the elder carries a staff and a medallion, the firefly's abdomen
 glows. Bugs breathe, squash and bounce on a shared animation clock, and switch expression with

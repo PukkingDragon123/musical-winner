@@ -14,6 +14,7 @@ class GigScene {
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
     this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.fx = new Particles();
+    this.cam = new Camera(); this.cutIn = null;
     this.train = { x: -700, t: r.rng.range(4, 9) };
   }
   layout() {
@@ -37,7 +38,7 @@ class GigScene {
     this.performers = r.members.filter((m, i) => this.active[i]); if (!this.performers.length) this.performers = [r.members[0]];
     const leader = r.members[0], mates = this.performers.filter(m => !m.leader);
     const sections = []; let mi = 0;
-    for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
+    for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, instr: gearInstrument(leader.instrument, leader.quality), startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
     this.sections = sections;
     const mods = r.gigMods(this.performers, this.difficulty, this.bossMod); mods.fx = { shake: Game.shake };
     const notes = chartFromMelody(this.song, sections, this.difficulty, r.rng, { bombMult: (this.bossMod === 'heckler' ? 3 : 1) * (mods.bombMult || 1), starRate: mods.starRate || 0.08 });
@@ -48,6 +49,11 @@ class GigScene {
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
+      onMilestone: (ms) => {
+        this.cutIn = { t: 0, ms };
+        this.cam.hit(3); this.cam.push(1.12, 0, -14, (Math.random() - 0.5) * 0.02);
+        this.camHold = 1.1;
+      },
     });
     const wmul = (WEATHERS[r.weather] || WEATHERS.clear).tipMult;
     this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 6 });
@@ -62,6 +68,14 @@ class GigScene {
     if (this.phase === 'play') {
       if (this.paused) return;
       this.backing.update(); this.rhythm.update(dt);
+      this.cam.update(dt);
+      if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
+      // a slow drift while the set runs, so the stage is never static
+      if (this.camHold == null && this.rhythm && !this.paused) {
+        const hy = this.rhythm.hype / 100;
+        this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+      }
+      if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
       this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v);
       this.S.watcherTick(dt, this.crowd.watchers.length);
@@ -76,6 +90,8 @@ class GigScene {
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
     r.money += this.earned; r.stats.earned += this.earned; r.stats.gigs++; r.stats.bestCombo = Math.max(r.stats.bestCombo, res.maxCombo); r.stats.perfects += res.perfect; r.stats.bestPayout = Math.max(r.stats.bestPayout, this.earned);
+    r.today.earned += this.earned; r.today.gigs++; r.today.bestCombo = Math.max(r.today.bestCombo, res.maxCombo); r.today.perfects += res.perfect;
+    this.goalHit = checkGoals(r);
     r.lastTune = this.tuneKey; r.pendingGig = null; r.buffs = {};
     const st = 20 * (r.perks.stamina || 1) + (this.mods.staminaExtra || 0); this.xpLines = [];
     for (const m of this.performers) { m.stamina = Math.max(0, m.stamina - st * (m.hunger ? 1.4 : 1)); m.gigs++; const xp = 0.5 + res.acc * 1.5; m.xp += xp; let up = 0; while (m.xp >= 3 && m.skill < 10) { m.xp -= 3; m.skill++; up++; } if (up) this.xpLines.push(m.name + ' LV' + m.skill); }
@@ -205,6 +221,11 @@ class GigScene {
     rect(ctx, 16, 38, 3, 62, '#c8a03a');
     drawText(ctx, title, 28, 46, '#ffd98a', { scale: 3 });
     drawText(ctx, this.song.composer.toUpperCase(), 28, 76, '#b8aed0', { font: 'small' });
+    { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
+      const gw = textWidth(t2.short) + 12;
+      rect(ctx, 16, 104, gw, 14, t2.color); frame(ctx, 16, 104, gw, 14, '#1a1410');
+      drawText(ctx, t2.short, 22, 107, '#fdf6e2');
+      drawText(ctx, INSTRUMENTS[m0.instrument].name.toUpperCase() + '  ' + gearInstrument(m0.instrument, m0.quality).lanes + ' LANES', 22 + gw, 107, '#cfc6b0', { font: 'small' }); }
     const gx = 28 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 10;
     rect(ctx, gx, 73, textWidth(G.name.toUpperCase(), { font: 'small' }) + 10, 11, G.color);
     drawText(ctx, G.name.toUpperCase(), gx + 5, 76, '#1a1410', { font: 'small' });
@@ -230,12 +251,34 @@ class GigScene {
     this.backBtn = new Btn(16, H - 50, 96, 30, 'LEAVE', () => Game.go(() => new CityScene(), 'slideR'), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 });
     this.backBtn.draw(ctx);
   }
+  // A comic cut-in: the player, close up, at the moment the combo lands.
+  drawCutIn(ctx) {
+    const c = this.cutIn, k = clamp(c.t / 1.5, 0, 1);
+    const inK = clamp(c.t / 0.14, 0, 1), outK = clamp((c.t - 1.15) / 0.35, 0, 1);
+    const slide = (1 - easeOutBack(inK)) * 260 + outK * 260;
+    const m = Game.run.members[0];
+    const pw = 240, ph = 150, px2 = W - pw - 26 + slide, py = this.L.top ? 170 : 52;
+    comicPanel(ctx, px2, py, pw, ph, -0.045, (g, w, h) => {
+      vgrad(g, 0, 0, w, h, '#3a2a52', '#1a1424');
+      halftone(g, 0, 0, w, h, '#ffd24a', 7, 0.2);
+      speedLines(g, w * 0.5, h * 0.56, 30, 150, 18, '#ffffff', this.t, 0.3);
+      drawShadow(g, w * 0.5, h - 10, 70, 0.3);
+      drawBugAt(g, m.spec, w * 0.5, h - 6, { pose: Math.floor(this.t * 12) % 2 ? 'play' : 'play2', expr: 'focus',
+        instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 2.4, rate: 6, tilt: -0.05 });
+      rect(g, 0, h - 22, w, 22, 'rgba(20,14,28,0.8)');
+      drawText(g, c.ms + ' COMBO', w / 2, h - 17, '#ffd98a', { align: 'center', scale: 2, outline: '#1a1410' });
+    });
+    if (c.t < 0.5) comicBurst(ctx, px2 + 24, py + 16, c.ms >= 50 ? 'WOW!' : 'HOT!', '#ff5a5a', c.t * 2, 0.8);
+  }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
+      this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
       this.drawStage(ctx);
+      this.cam.done(ctx);
+      if (this.cutIn) this.drawCutIn(ctx);
       const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 4;
       rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, W * p, 4, '#ffd24a');
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
@@ -268,10 +311,15 @@ class GigScene {
       rect(ctx, bx, by + 100, 228, 48, '#2a7a3a'); frame(ctx, bx, by + 100, 228, 48, '#1a1410'); ctx.drawImage(icon('coin'), bx + 8, by + 118, 15, 14); drawText(ctx, fmtMoney(this.earned), bx + 220, by + 102, '#fff', { align: 'right', scale: 3 });
       const gcol = { S: '#d9a520', A: '#4f8032', B: '#2a5ab0', C: '#b07030', D: '#b02a2a' }[this.grade];
       const gs = bounceScale(this.tallyT, 0.2, 10);
-      ctx.save(); ctx.translate(inner.x + 90, inner.y + 96); ctx.scale(gs, gs);
-      drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 9, outline: '#1a1410' });
+      ctx.save(); ctx.translate(inner.x + 90, inner.y + 88); ctx.scale(gs, gs);
+      drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 8, outline: '#1a1410' });
       ctx.restore();
-      drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 132, gcol, { align: 'center', scale: 3 });
+      drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 140, gcol, { align: 'center', scale: 3 });
+      // what you played it on, so the gear ladder is visible
+      { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
+        const gw = textWidth(t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase()) + 16;
+        rect(ctx, inner.x + 14, inner.y + 166, gw, 14, t2.color);
+        drawText(ctx, t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase(), inner.x + 22, inner.y + 169, '#fdf6e2'); }
       // the performers, taking a bow
       (this.performers || Game.run.members).slice(0, 4).forEach((m, i) => { const px2 = inner.x + 210 + i * 58; drawShadow(ctx, px2, inner.y + 168, 34, 0.18); drawBugAt(ctx, m.spec, px2, inner.y + 168, { pose: 'cheer', expr: 'happy', scale: 1.4, rate: 4.2, phase: i * 1.3, bounce: 2.2 }); });
       let yy = inner.y + inner.h - 40;
@@ -325,15 +373,14 @@ class DraftScene {
       rect(ctx, x, y, cw, ch, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 4, y + 4, cw - 8, ch - 8, UI.paper);
       const rar = isCash ? 'cash' : c.rarity, rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', cash: '#2a7a3a' }[rar];
       rect(ctx, x + 4, y + 4, cw - 8, 18, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, y + 9, '#fff', { align: 'center' });
-      uiSlot(ctx, x + cw / 2 - 32, y + 32, 64);
-      const ic = icon(isCash ? 'money' : c.icon); ctx.drawImage(ic, x + cw / 2 - 22, y + 44, 44, 39);
+      uiItemSlot(ctx, x + cw / 2 - 34, y + 30, 68, isCash ? 'coin' : charmArt(c.icon), {});
       drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 12, y + 106, 15, UI.ink, 15, { scale: 2 });
       drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 12, y + 152, 24, UI.inkSoft, 12);
       if (sel) { const k2 = Math.floor(this.t * 8) % 2; frame(ctx, x - 3 + k2, y - 3, cw + 6, ch + 6, '#fff8e8'); frame(ctx, x - 4 + k2, y - 4, cw + 8, ch + 8, '#d9a520'); }
     }
     // current charms
     drawText(ctx, 'YOUR ABILITIES  ' + r.charms.length + '/' + r.charmSlots, W / 2, 372, '#cfc9e6', { align: 'center' });
-    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52, k = r.charms[i]; uiSlot(ctx, cx, 392, 46, { empty: !k, selected: this.full != null && this.sel === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), cx + 12, 404, 22, 20); }
+    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52, k = r.charms[i]; uiItemSlot(ctx, cx, 392, 46, k ? charmArt(CHARMS[k].icon) : null, { empty: !k, selected: this.full != null && this.sel === i }); }
     if (this.full != null) { rect(ctx, 0, 452, W, 52, 'rgba(20,10,10,0.9)'); drawText(ctx, 'FULL - PICK ONE TO REPLACE', W / 2, 462, '#ff9f68', { align: 'center', scale: 2 }); drawText(ctx, Game.touch ? 'TAP A SLOT' : 'ARROWS + ENTER', W / 2, 484, '#cfc9e6', { align: 'center' }); }
     else drawText(ctx, Game.touch ? 'TAP A CARD' : 'ARROWS + ENTER', W / 2, 462, '#8a86b0', { align: 'center' });
   }

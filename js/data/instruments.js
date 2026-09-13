@@ -36,3 +36,35 @@ const GENRES = {
 };
 const GENRE_KEYS = Object.keys(GENRES);
 const FIRST_NAMES = ['Benny', 'Rosa', 'Ziggy', 'Mabel', 'Otis', 'Dolores', 'Gus', 'Nina', 'Ferdie', 'Coco', 'Hank', 'Lulu', 'Miles', 'Etta', 'Django', 'Bix', 'Juno', 'Sal', 'Wren', 'Tito', 'Marge', 'Boris', 'Fay', 'Louie', 'Pearl', 'Chester', 'Ivy', 'Rufus', 'Dot'];
+
+// ---------- Gear tiers: the ladder you climb ----------
+// A busted instrument is genuinely easier to play and genuinely pays worse.
+// Upgrading gives back lanes and money at the same time.
+const GEAR_TIERS = [
+  null,
+  { name: 'BUSTED',    short: 'BUSTED',  pay: 0.55, window: 1.35, laneCut: 2, color: '#8a7a6a', desc: 'Held together with tape. Forgiving, and nobody tips for it.' },
+  { name: 'PAWN SHOP', short: 'PAWN',    pay: 0.8,  window: 1.15, laneCut: 1, color: '#9a8a58', desc: 'Second hand and out of tune, but it holds a note.' },
+  { name: 'WORKING',   short: 'WORKING', pay: 1.0,  window: 1.0,  laneCut: 0, color: '#5d8c56', desc: 'What a working musician actually plays.' },
+  { name: 'PRO',       short: 'PRO',     pay: 1.3,  window: 0.95, laneCut: 0, color: '#3f7fa8', desc: 'Road-ready. Crowds hear the difference.' },
+  { name: 'SIGNATURE', short: 'SIGNATURE', pay: 1.7, window: 0.9, laneCut: 0, color: '#8a3a9a', desc: 'Somebody famous had their name put on it.' },
+];
+function gearTier(q) { return GEAR_TIERS[clamp(Math.round(q || 1), 1, 5)]; }
+// The instrument you actually play, once the state of your gear is applied.
+function gearInstrument(kind, quality) {
+  const base = INSTRUMENTS[kind]; if (!base) return INSTRUMENTS.guitar;
+  const t = gearTier(quality);
+  if (!t.laneCut || !base.lanes || base.lanes <= 2) return base;
+  return cached('gear|' + kind + '|' + quality, () => {
+    const lanes = Math.max(2, base.lanes - t.laneCut);
+    // keep the outer lanes so the shape of the instrument still reads
+    const pick = [];
+    for (let i = 0; i < lanes; i++) pick.push(Math.round(i * (base.lanes - 1) / (lanes - 1)));
+    return Object.assign({}, base, {
+      lanes,
+      keys: pick.map(i => base.keys[i]),
+      keyNames: pick.map(i => base.keyNames[i]),
+      padNames: base.padNames ? pick.map(i => base.padNames[i]) : null,
+      drumFor: base.drumFor ? pick.map(i => base.drumFor[i]) : null,
+    });
+  });
+}

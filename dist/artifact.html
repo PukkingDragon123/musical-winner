@@ -86,6 +86,30 @@ function circle(ctx, cx, cy, r, color) {
   ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
   for (let y = -r; y <= r; y++) { const w = Math.floor(Math.sqrt(r * r - y * y + 0.5)); ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1); }
 }
+// Pixel-art ellipse: scanline filled, so the edge steps instead of blurring.
+function ellipsePx(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
+  const ryi = Math.max(0, Math.round(ry));
+  for (let y = -ryi; y <= ryi; y++) {
+    const k = 1 - (y * y) / ((ry + 0.5) * (ry + 0.5));
+    if (k <= 0) continue;
+    const w = Math.floor(rx * Math.sqrt(k) + 0.5);
+    if (w >= 0) ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
+  }
+}
+// Pixel-art ellipse outline, one pixel thick.
+function ellipseRingPx(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color; cx = Math.round(cx); cy = Math.round(cy);
+  const ryi = Math.max(0, Math.round(ry)); let prev = -1;
+  for (let y = -ryi; y <= ryi; y++) {
+    const k = 1 - (y * y) / ((ry + 0.5) * (ry + 0.5));
+    const w = k <= 0 ? -1 : Math.floor(rx * Math.sqrt(k) + 0.5);
+    if (w < 0) { prev = w; continue; }
+    if (prev < 0 || y === ryi) ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
+    else { ctx.fillRect(cx - w, cy + y, Math.max(1, w - prev + 1), 1); ctx.fillRect(cx + prev, cy + y, Math.max(1, w - prev + 1), 1); }
+    prev = w;
+  }
+}
 function ringPx(ctx, cx, cy, r, color) {
   ctx.fillStyle = color; const steps = Math.max(12, Math.floor(r * 7));
   for (let i = 0; i < steps; i++) { const a = (i / steps) * Math.PI * 2; ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1); }
@@ -414,6 +438,78 @@ function vignetteRect(ctx, x, y, w, h, strength = 0.4, color = '#050409') {
 // warm/cool colour grade over a rectangle
 function grade(ctx, x, y, w, h, color, alpha = 0.08, mode = 'overlay') {
   ctx.save(); ctx.globalCompositeOperation = mode; ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fillRect(x, y, w, h); ctx.restore();
+}
+
+// ---------- Camera: push in, drift and kick during a set ----------
+class Camera {
+  constructor() { this.zoom = 1; this.tz = 1; this.x = 0; this.y = 0; this.tx = 0; this.ty = 0; this.roll = 0; this.troll = 0; this.kick = 0; }
+  push(z, x, y, roll) { this.tz = z; this.tx = x || 0; this.ty = y || 0; this.troll = roll || 0; }
+  reset() { this.push(1, 0, 0, 0); }
+  hit(n) { this.kick = Math.max(this.kick, n); }
+  update(dt) {
+    const k = Math.min(1, dt * 5);
+    this.zoom += (this.tz - this.zoom) * k;
+    this.x += (this.tx - this.x) * k; this.y += (this.ty - this.y) * k;
+    this.roll += (this.troll - this.roll) * k;
+    this.kick = Math.max(0, this.kick - dt * 4);
+  }
+  // Wrap a draw in the current camera. cx/cy is what stays put on screen.
+  apply(ctx, cx, cy) {
+    const z = this.zoom * (1 + this.kick * 0.04);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(this.roll); ctx.scale(z, z); ctx.translate(-cx - this.x, -cy - this.y);
+  }
+  done(ctx) { ctx.restore(); }
+}
+// ---------- Comic effects ----------
+// A jagged impact star with a word in it.
+function comicBurst(ctx, x, y, text, color, t, scale = 1) {
+  const k = clamp(t, 0, 1), pop = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8 * 0.25;
+  const s = scale * pop, spikes = 11, r1 = 30 * s, r2 = 17 * s;
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(Math.sin(t * 3) * 0.05);
+  ctx.globalAlpha = clamp(1.3 - k * 1.3, 0, 1);
+  const path = (r, rr, col) => {
+    ctx.fillStyle = col; ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / spikes, rad = i % 2 ? rr : r;
+      const px2 = Math.round(Math.cos(a) * rad), py = Math.round(Math.sin(a) * rad);
+      if (i === 0) ctx.moveTo(px2, py); else ctx.lineTo(px2, py); }
+    ctx.closePath(); ctx.fill();
+  };
+  path(r1 + 3, r2 + 3, '#1a1410');
+  path(r1, r2, color);
+  path(r1 * 0.62, r2 * 0.62, lighten(color, 0.3));
+  drawText(ctx, text, 0, -Math.round(4 * s), '#1a1410', { align: 'center', scale: Math.max(1, Math.round(2 * s)) });
+  ctx.globalAlpha = 1; ctx.restore();
+}
+// Radiating speed lines, for the moments that need to feel fast.
+function speedLines(ctx, x, y, r0, r1, n, color, t, alpha = 0.5) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + t * 0.6, len = r1 * (0.6 + ((i * 37) % 10) / 14);
+    const x0 = x + Math.cos(a) * r0, y0 = y + Math.sin(a) * r0;
+    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len;
+    ctx.strokeStyle = color; ctx.lineWidth = 1 + (i % 3); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  ctx.lineWidth = 1; ctx.globalAlpha = 1; ctx.restore();
+}
+// A halftone dot field, the cheap trick that makes anything look like a comic.
+function halftone(ctx, x, y, w, h, color, step = 6, alpha = 0.18) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  for (let yy = y; yy < y + h; yy += step) for (let xx = x + ((yy / step) % 2 ? step / 2 : 0); xx < x + w; xx += step) {
+    const k = 1 - (yy - y) / h; const r = Math.max(0, Math.round(k * (step / 2.4)));
+    if (r > 0) ctx.fillRect(Math.round(xx), Math.round(yy), r, r);
+  }
+  ctx.globalAlpha = 1; ctx.restore();
+}
+// An angled inset panel, like a comic cut-in.
+function comicPanel(ctx, x, y, w, h, angle, draw) {
+  ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(angle); ctx.translate(-w / 2, -h / 2);
+  ctx.fillStyle = 'rgba(10,8,14,0.5)'; ctx.fillRect(6, 8, w, h);
+  rect(ctx, -3, -3, w + 6, h + 6, '#f4ecd6');
+  rect(ctx, 0, 0, w, h, '#1a1622');
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+  draw(ctx, w, h);
+  ctx.restore();
+  ctx.restore();
 }
 
 // ===== js/core/audio.js =====
@@ -1063,9 +1159,9 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
   const blink = expr === 'blink';
   if (e === 'compound') {
     const col = spec.colors.eye || '#c83030';
-    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 3), ey, 5, 6); P.fill(m, col, { outline: ol });
-      P.paint(m, (x, y) => (x + y) % 2 === 0 ? darken(col, 0.14) : null);
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 3) - 2), y - (ey - 3)) < 1.8 ? lighten(col, 0.5) : null); }
+    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 3), ey, 4.4, 5.2); P.fill(m, col, { outline: ol, shade: false });
+      P.paint(m, (x, y) => (x + y) % 2 === 0 ? darken(col, 0.12) : null);
+      P.paint(m, (x, y) => (x >= cx + s * (hr.rx - 3) - 3 && x <= cx + s * (hr.rx - 3) - 2 && y >= ey - 3 && y <= ey - 2) ? '#ffffff' : null); }
   } else if (e === 'shades') {
     const m = P.mask(); P.mRound(m, cx - hr.rx + 1, ey - 4, hr.rx * 2 - 2, 8, 2); P.fill(m, '#1c1a24', { outline: ol, shade: false });
     P.paint(m, (x, y) => y < ey - 1 && ((x - cx) % 7 === 0) ? '#5a5870' : null);
@@ -1078,55 +1174,58 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
   } else if (e === 'goggle') {
     // one wide visor across the face, two bright lenses behind it
     const m = P.mask(); P.mRound(m, cx - hr.rx + 1, ey - 5, hr.rx * 2 - 2, 10, 3); P.fill(m, darken(spec.colors.body, 0.35), { outline: ol });
-    for (const s of [-1, 1]) { const l = P.mask(); P.mEllipse(l, cx + s * (hr.rx - 4), ey, 3.6, 3.6); P.fill(l, spec.colors.trim || '#f0d060', { outline: ol, shade: false });
-      P.paint(l, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4) - 1.2), y - (ey - 1.2)) < 1.5 ? '#ffffff' : null); }
+    for (const s of [-1, 1]) { const l = P.mask(); P.mEllipse(l, cx + s * (hr.rx - 4), ey, 3.2, 3.2); P.fill(l, spec.colors.trim || '#f0d060', { outline: ol, shade: false });
+      P.set(Math.round(cx + s * (hr.rx - 4) - 1), Math.round(ey - 1), '#ffffff'); }
   } else if (e === 'spot') {
     // painted eye-spots, like a moth: two big rings that stare
     const ring = spec.colors.trim || '#ffd24a';
-    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 4), ey, 4.6, 4.6); P.fill(m, ring, { outline: ol, shade: false });
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4)), y - ey) < 2.4 ? '#241c20' : null);
-      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4) - 1), y - (ey - 1)) < 1 ? '#ffffff' : null); }
+    for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 4), ey, 4, 4); P.fill(m, ring, { outline: ol, shade: false });
+      P.paint(m, (x, y) => Math.hypot(x - (cx + s * (hr.rx - 4)), y - ey) < 2 ? '#241c20' : null);
+      P.set(Math.round(cx + s * (hr.rx - 4) - 1), Math.round(ey - 1), '#ffffff'); }
   } else {
-    // The default face. Eyes are huge on purpose: sclera, a wide dark iris,
-    // a big highlight and a small one, and a lid line that carries the mood.
+    // The default face: flat and simple, the way the reference sheet does it.
+    // A pale sclera, one solid dark pupil, one square glint. No gradients,
+    // no second highlight, no shine. The brows carry the mood.
     const big = e === 'bold' || e === 'wide', bead = e === 'bead';
-    const rw = bead ? 3.4 : big ? 5.4 : 4.4, rh = bead ? 3.4 : big ? 6.2 : 5;
+    const rw = bead ? 2.2 : big ? 4 : 3.4, rh = bead ? 2.2 : big ? 4.4 : 3.8;
     const hc = spec.colors.head || spec.colors.body;
+    const iris = spec.colors.iris || '#241c22';
+    const sclera = spec.colors.sclera || '#f6f2ea';
     for (const s of [-1, 1]) {
       const m = P.mask(); P.mEllipse(m, cx + s * ex, ey, rw, rh);
-      P.fill(m, bead ? '#241c20' : '#ffffff', { outline: ol, shade: false });
-      if (!bead) P.paint(m, (x, y) => y < ey - rh * 0.55 ? '#e4e0ee' : null);   // socket shadow at the top
+      P.fill(m, bead ? iris : sclera, { outline: ol, shade: false });
       if (bead) {
-        P.paint(m, (x, y) => Math.hypot(x - (cx + s * ex - 0.8), y - (ey - 0.8)) < 1.1 ? '#ffffff' : null);
+        P.set(Math.round(cx + s * ex - 1), Math.round(ey - 1), '#ffffff');
       } else if (blink || e === 'sleepy') {
         const lid = P.mask(); P.mRect(lid, cx + s * ex - rw - 1, ey - rh - 1, rw * 2 + 2, blink ? rh * 2 + 1 : rh + 1);
         P.fill(lid, hc, { shade: false });
         P.paint(lid, (x, y) => y === Math.round(ey + (blink ? 0 : -0.5)) ? ol : null);
       } else {
-        let px2 = cx + s * ex, py2 = ey + 0.8;
-        if (expr === 'shock') py2 = ey;
-        if (expr === 'focus') px2 += s * 0.8;
-        if (expr === 'sad') py2 = ey + 1.8;
-        const irR = expr === 'shock' ? 1.9 : 3.1;
-        const ir = P.mask(); P.mEllipse(ir, px2, py2, irR, irR + 0.3);
-        P.fill(ir, spec.colors.iris || '#2a2438', { shade: false });
-        P.paint(ir, (x, y) => Math.hypot(x - px2, y - py2) < irR * 0.55 ? darken(spec.colors.iris || '#2a2438', 0.25) : null);
-        P.paint(ir, (x, y) => Math.hypot(x - (px2 - 1.1), y - (py2 - 1.1)) < 1.5 ? '#ffffff' : null);
-        P.paint(ir, (x, y) => Math.hypot(x - (px2 + 1.2), y - (py2 + 1.3)) < 0.9 ? '#c8c4dc' : null);
-        // upper lid: a dark arc across the top of the eye
-        if (expr !== 'shock') P.paint(m, (x, y) => y < ey - rh + 1.4 ? darken(hc, 0.45) : null);
+        let px2 = cx + s * ex, py2 = ey + 0.4;
+        if (expr === 'shock') py2 = ey - 0.2;
+        if (expr === 'focus') px2 += s * 0.7;
+        if (expr === 'sad') py2 = ey + 1.2;
+        if (expr === 'angry') px2 -= s * 0.4;
+        const pr = expr === 'shock' ? 1.1 : 1.9;
+        const ir = P.mask(); P.mEllipse(ir, px2, py2, pr, pr + 0.2);
+        P.fill(ir, iris, { shade: false });
+        // one square glint, top-left, one pixel
+        P.set(Math.round(px2 - 1), Math.round(py2 - 1), '#ffffff');
+        // a heavy lid comes down for angry and focus
+        if (expr === 'angry' || expr === 'focus') { const lid = P.mask(); P.mRect(lid, cx + s * ex - rw - 1, ey - rh - 1, rw * 2 + 2, Math.round(rh * 0.8)); P.fill(lid, hc, { shade: false }); P.paint(lid, (x, y) => y === Math.round(ey - rh * 0.8) ? ol : null); }
       }
-      // brows sit above the eye and do most of the emoting
-      const bw = rw + 1;
-      let by = ey - rh - 2, tilt = 0;
-      if (expr === 'angry' || expr === 'focus') { by = ey - rh - 1; tilt = s * 1.5; }
-      if (expr === 'sad') { by = ey - rh - 2; tilt = -s * 1.5; }
-      if (expr === 'happy' || expr === 'sing') by = ey - rh - 3;
-      if (expr !== 'none' && expr !== undefined) { const m2 = P.mask(); P.mLine(m2, cx + s * ex - bw, by + tilt, cx + s * ex + bw, by - tilt, 2); P.fill(m2, darken(hc, 0.45), { shade: false }); }
+      // brows: a short flat stroke, angled by mood
+      let by = ey - rh - 3, tilt = 0, show = true;
+      if (expr === 'angry' || expr === 'focus') { by = ey - rh - 2; tilt = s * 1.5; }
+      else if (expr === 'sad') { by = ey - rh - 3; tilt = -s * 1.5; }
+      else if (expr === 'happy' || expr === 'sing') by = ey - rh - 4;
+      else if (expr === 'shock') by = ey - rh - 4;
+      else show = false;
+      if (show) { const m2 = P.mask(); P.mLine(m2, cx + s * ex - rw, by + tilt, cx + s * ex + rw, by - tilt, 2); P.fill(m2, darken(hc, 0.45), { shade: false }); }
     }
   }
   // cheeks
-  if (expr === 'happy' || expr === 'sing') for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 2.5), cy + 4, 3.2, 2); P.fill(m, '#ff9090', { shade: false }); }
+  if (expr === 'happy' || expr === 'sing') for (const s of [-1, 1]) { const m = P.mask(); P.mEllipse(m, cx + s * (hr.rx - 2.5), cy + 3, 2.4, 1.4); P.fill(m, '#f08a8a', { shade: false }); }
   // mouth
   const my = cy + Math.max(3, hr.ry - 4);
   const mk = (pts, col) => { const m = P.mask(); P.mPoly(m, pts); P.fill(m, col, { shade: false }); };
@@ -1245,8 +1344,7 @@ function drawBugAt(ctx, spec, x, y, opts = {}) {
   return dy;
 }
 function drawShadow(ctx, x, y, w, alpha = 0.28) {
-  ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
-  ctx.beginPath(); ctx.ellipse(Math.round(x), Math.round(y), Math.round(w / 2), Math.max(2, Math.round(w / 7)), 0, 0, Math.PI * 2); ctx.fill();
+  ellipsePx(ctx, x, y, w / 2, Math.max(2, w / 7), 'rgba(0,0,0,' + alpha + ')');
 }
 
 // ===== js/art/ui.js =====
@@ -1612,7 +1710,7 @@ function buildItem(kind) {
       const lg = m(); P.mRect(lg, 12, 28, 3, 3); P.mRect(lg, 17, 28, 3, 3); P.fill(lg, '#33313c', { shade: false });
       break;
     }
-    case 'tipjar': {
+    case 'tipjar': case 'jar': {
       const g = m(); P.mRound(g, 8, 8, 16, 20, 3); P.fill(g, '#bcd6e2', { outline: IOL, shade: false });
       P.paint(g, (x, y) => x === 10 ? '#ecf6fb' : x === 21 ? '#8fadbb' : null);
       const co = m(); P.mRect(co, 10, 20, 12, 7); P.fill(co, '#e0b84a', { outline: IOL });
@@ -1652,6 +1750,71 @@ function buildItem(kind) {
       const c = m(); P.mEllipse(c, 16, 16, 12, 12); P.fill(c, '#e0b84a', metal('#e0b84a'));
       const in_ = m(); P.mEllipse(in_, 16, 16, 8, 8); P.fill(in_, '#c89a28', { shade: false });
       P.paint(in_, (x, y) => Math.abs(x - 16) < 1 && y > 11 && y < 21 ? '#f6d982' : null);
+      break;
+    }
+
+    // ---- ability art: one 32x32 object per charm family ----
+    case 'metronome': {
+      const b = m(); P.mPoly(b, [[10, 28], [22, 28], [19, 5], [13, 5]]); P.fill(b, '#8a4f2a', { outline: IOL });
+      const f = m(); P.mPoly(f, [[12, 26], [20, 26], [18, 9], [14, 9]]); P.fill(f, '#f2ead6', { shade: false });
+      const arm = m(); P.mLine(arm, 16, 25, 21, 7, 2); P.fill(arm, '#33313c', { outline: IOL, shade: false });
+      const wt = m(); P.mRect(wt, 19, 11, 5, 4); P.fill(wt, '#e0b84a', { outline: IOL });
+      break;
+    }
+    case 'earplugs': {
+      for (const ox of [8, 19]) { const e = m(); P.mRound(e, ox, 10, 9, 14, 4); P.fill(e, '#f2c53d', { outline: IOL });
+        P.paint(e, (x, y) => x === ox + 1 ? '#f8e08a' : null); const c2 = m(); P.mEllipse(c2, ox + 4, 13, 2.4, 2.4); P.fill(c2, '#d8a020', { shade: false }); }
+      break;
+    }
+    case 'net': {
+      const h = m(); P.mLine(h, 6, 27, 14, 14, 2); P.fill(h, '#a8763c', { outline: IOL, shade: false });
+      const r2 = m(); P.mEllipse(r2, 19, 11, 10, 9); const in3 = m(); P.mEllipse(in3, 19, 11, 8, 7); P.mSub(r2, in3);
+      P.fill(r2, '#c8ccd8', { outline: IOL });
+      P.paint(in3, (x, y) => ((x + y) % 4 === 0 || (x - y) % 4 === 0) ? '#e2e6f0' : null);
+      break;
+    }
+    case 'medal': {
+      const rb = m(); P.mPoly(rb, [[11, 2], [21, 2], [19, 13], [13, 13]]); P.fill(rb, '#c4402f', { outline: IOL });
+      P.paint(rb, (x, y) => x === 16 ? '#e8dcc0' : null);
+      const d = m(); P.mEllipse(d, 16, 21, 9, 9); P.fill(d, '#e0b84a', metal('#e0b84a'));
+      P.paint(d, (x, y) => Math.hypot(x - 16, y - 21) < 5 ? '#c89a28' : null);
+      P.set(16, 18, '#f6d982'); P.set(16, 24, '#f6d982'); P.set(13, 21, '#f6d982'); P.set(19, 21, '#f6d982');
+      break;
+    }
+    case 'permit': {
+      const b = m(); P.mRect(b, 5, 5, 22, 24); P.fill(b, '#f2ead6', { outline: IOL });
+      const st2 = m(); P.mRect(st2, 5, 5, 22, 6); P.fill(st2, '#3f7fa8', { shade: false });
+      for (let i = 0; i < 4; i++) { const l = m(); P.mRect(l, 8, 14 + i * 4, 16 - (i % 2) * 5, 2); P.fill(l, '#a89878', { shade: false }); }
+      const sl = m(); P.mEllipse(sl, 22, 24, 4, 4); P.fill(sl, '#c4402f', { outline: IOL, shade: false });
+      break;
+    }
+    case 'flyer': {
+      const b = m(); P.mRect(b, 6, 4, 20, 25); P.fill(b, '#f6ecd0', { outline: IOL });
+      const t2 = m(); P.mRect(t2, 9, 7, 14, 7); P.fill(t2, '#e8563f', { shade: false });
+      for (let i = 0; i < 4; i++) { const l = m(); P.mRect(l, 9, 17 + i * 3, 14 - i * 2, 1); P.fill(l, '#b0a488', { shade: false }); }
+      break;
+    }
+    case 'boots': {
+      for (const ox of [3, 17]) { const b = m(); P.mRect(b, ox + 3, 6, 8, 14); P.mRect(b, ox, 18, 12, 7); P.fill(b, '#5a3a24', { outline: IOL });
+        P.paint(b, (x, y) => y === 24 ? '#2a1a10' : y === 7 ? '#7a5334' : null); }
+      break;
+    }
+    case 'cape': {
+      const c2 = m(); P.mPoly(c2, [[9, 4], [23, 4], [28, 28], [4, 28]]); P.fill(c2, '#a8382f', { outline: IOL });
+      P.paint(c2, (x, y) => (x * 2 + y) % 9 === 0 ? '#7f261f' : null);
+      const col = m(); P.mRect(col, 8, 3, 16, 4); P.fill(col, '#e0b84a', { outline: IOL });
+      break;
+    }
+    case 'union': {
+      const b = m(); P.mEllipse(b, 16, 16, 12, 12); P.fill(b, '#3f5f8a', { outline: IOL });
+      const h2 = m(); P.mLine(h2, 9, 20, 16, 10, 3); P.mLine(h2, 16, 10, 23, 20, 3); P.fill(h2, '#e8dcc0', { shade: false });
+      P.paint(b, (x, y) => y === 23 ? '#2a4060' : null);
+      break;
+    }
+    case 'balloon': {
+      const b = m(); P.mEllipse(b, 16, 12, 9, 11); P.fill(b, '#e0507a', { outline: IOL });
+      P.paint(b, (x, y) => Math.hypot(x - 12, y - 8) < 3 ? '#f6a0b4' : null);
+      const st3 = m(); P.mLine(st3, 16, 23, 18, 30, 1); P.fill(st3, '#8a8a98', { shade: false });
       break;
     }
     default: {
@@ -1697,6 +1860,19 @@ const ITEM_FOR = {
   violin: 'violin', tambourine: 'tambourine', mic: 'mic', harmonica: 'sax', triangle: 'tambourine', keytar: 'keyboard',
 };
 function itemForInstrument(k) { return ITEM_FOR[k] || 'guitar'; }
+// Charms and abilities get proper objects, not 12px glyphs.
+const CHARM_ART = {
+  amp: 'amp', bag: 'bag', balloon: 'balloon', bar: 'bread', beret: 'poster', boots: 'boots', bread: 'bread',
+  cape: 'cape', case: 'bag', chalk: 'book', coffee: 'coffee', coin: 'coin', coupon: 'ticket', cred: 'medal',
+  dive: 'boots', drum: 'drums', earplugs: 'earplugs', encore: 'star', fire: 'lantern', flyer: 'flyer',
+  hat: 'poster', heart: 'funko', horn: 'trumpet', jacket: 'cape', jar: 'tipjar', kazoo: 'sax', medal: 'medal',
+  metronome: 'metronome', net: 'net', note: 'mic', oil: 'bottle', permit: 'permit', phone: 'ticket', pick: 'pick',
+  reed: 'sax', rosin: 'strings', sheet: 'book', shirt: 'poster', star: 'star', sticks: 'drums', strings: 'strings',
+  taco: 'burrito', tuner: 'metronome', union: 'union', violin: 'violin', openmic: 'mic', food: 'noodles',
+  gig: 'mic', skull: 'lantern', money: 'coin', mult: 'star', chips: 'coin', rest: 'coffee', treasure: 'bag',
+  event: 'map', lock: 'key', check: 'star', rain: 'bottle', cop: 'permit', elite: 'star', boss: 'medal', shop: 'bag',
+};
+function charmArt(iconName) { return CHARM_ART[iconName] || 'star'; }
 
 // ===== js/art/props.js =====
 // ---------- Props: street furniture, trees, vehicles, effects ----------
@@ -1959,9 +2135,9 @@ function drawFretboard(ctx, hw, R, opts = {}) {
   // body below the nut: wood, pickups, bridge
   const bodyTop = hw.nearY + 6, col = opts.bodyColor || '#8a3a22';
   const bw = hw.nearW + 120, bh = A.y + A.h - bodyTop;
-  ctx.fillStyle = darken(col, 0.3); ctx.beginPath(); ctx.ellipse(hw.cx, bodyTop + bh * 0.5, bw / 2, bh * 1.05, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(hw.cx, bodyTop + bh * 0.5, bw / 2 - 3, bh * 1.05 - 3, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 0.3; ctx.fillStyle = lighten(col, 0.3); ctx.beginPath(); ctx.ellipse(hw.cx - bw * 0.2, bodyTop + 6, bw / 5, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  ellipsePx(ctx, hw.cx, bodyTop + bh * 0.5, bw / 2, bh * 1.05, darken(col, 0.3));
+  ellipsePx(ctx, hw.cx, bodyTop + bh * 0.5, bw / 2 - 3, bh * 1.05 - 3, col);
+  ctx.globalAlpha = 0.3; ellipsePx(ctx, hw.cx - bw * 0.2, bodyTop + 6, bw / 5, 4, lighten(col, 0.3)); ctx.globalAlpha = 1;
   const pw = hw.nearW + 26;
   for (let i = 0; i < 2; i++) { const py = bodyTop + 7 + i * 12; rect(ctx, hw.cx - pw / 2, py, pw, 7, '#2a2430'); rect(ctx, hw.cx - pw / 2, py, pw, 2, '#6a6478'); for (let s = 0; s < hw.L; s++) { const x = hw.laneCx(s); circle(ctx, x, py + 3, 2, '#d8d0b0'); } }
   rect(ctx, hw.cx - pw / 2 - 10, bodyTop + 32, pw + 20, 4, '#c8b070'); rect(ctx, hw.cx - pw / 2 - 10, bodyTop + 32, pw + 20, 1, '#f0e0a0');
@@ -2077,56 +2253,89 @@ function drawViolinBody(ctx, x, y, dir, hold, t) {
 
 // ---------- A real drum kit drawn into the play area ----------
 // Each lane's receptor IS a drum, so hitting a note means hitting that drum.
-function drawDrumKit(ctx, hw, R, opts) {
-  const L = 4, cols = opts.colors || ['#e0563f', '#e8a33a', '#c8ccd8', '#f2cf4a'];
-  const names = opts.padNames || ['KICK', 'TOM', 'SNARE', 'CRASH'];
-  const baseY = hw.nearY;
-  // the rug the kit stands on
-  ctx.fillStyle = '#4a2436'; ctx.beginPath();
-  ctx.moveTo(hw.cx - hw.nearW * 0.62, baseY + 46); ctx.lineTo(hw.cx + hw.nearW * 0.62, baseY + 46);
-  ctx.lineTo(hw.cx + hw.nearW * 0.34, baseY - 16); ctx.lineTo(hw.cx - hw.nearW * 0.34, baseY - 16); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#5e2f44'; ctx.fillRect(hw.cx - hw.nearW * 0.6, baseY + 30, hw.nearW * 1.2, 3);
-  for (let l = 0; l < L; l++) {
-    const p = hw.pos(l, 0), cx = p.x, w = p.w;
-    const flash = R.flashes[l] || 0;
-    const squash = 1 - flash * 0.35;
-    const kind = l === 3 ? 'cymbal' : l === 0 ? 'kick' : 'drum';
-    R.receptors[l] = { x: cx, y: baseY + 2 };
+// Each drum is a cached pixel sprite, so nothing on the kit is anti-aliased.
+function drumSprite(kind, col, lit) {
+  return cached('drum|' + kind + '|' + col + '|' + lit, () => {
+    const OLD = '#1d1620';
     if (kind === 'cymbal') {
-      // a brass disc on a stand, tipping when struck
-      const tilt = flash * 0.5 * Math.sin(R.now * 40);
-      ctx.save(); ctx.translate(cx, baseY - 6); ctx.rotate(tilt);
-      const rw = w * 0.52;
-      ctx.fillStyle = '#8a6a18'; ctx.beginPath(); ctx.ellipse(0, 3, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = cols[l]; ctx.beginPath(); ctx.ellipse(0, 0, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(-rw * 0.3, -1, rw * 0.3, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#a8801a'; ctx.beginPath(); ctx.ellipse(0, 0, rw * 0.2, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      rect(ctx, cx - 1, baseY - 4, 2, 46, '#8a8a98');
-      rect(ctx, cx - 8, baseY + 40, 16, 2, '#6a6a78');
-      if (flash > 0) { ctx.globalAlpha = flash; circle(ctx, cx, baseY - 6, Math.round(rw * 0.9), '#fff6c0'); ctx.globalAlpha = 1; }
-    } else {
-      const rw = w * (kind === 'kick' ? 0.54 : 0.46), rh = rw * (kind === 'kick' ? 0.92 : 0.62) * squash;
-      const top = baseY + 6 - rh;
-      // shell
-      ctx.fillStyle = darken(cols[l], 0.3); ctx.beginPath(); ctx.ellipse(cx, top + rh, rw, rh * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = cols[l]; ctx.fillRect(Math.round(cx - rw), Math.round(top), Math.round(rw * 2), Math.round(rh));
-      ctx.fillStyle = lighten(cols[l], 0.22); ctx.fillRect(Math.round(cx - rw), Math.round(top), 3, Math.round(rh));
-      ctx.fillStyle = darken(cols[l], 0.2); ctx.fillRect(Math.round(cx + rw - 3), Math.round(top), 3, Math.round(rh));
-      // lugs
-      for (let i = -1; i <= 1; i++) rect(ctx, cx + i * rw * 0.6 - 1, top + rh * 0.3, 3, rh * 0.4, '#c8ccd8');
-      // head
-      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#d9d1bd'; ctx.beginPath(); ctx.ellipse(cx, top - 1, rw * 0.74, rw * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#c8ccd8'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.stroke ? 0 : 0; ctx.fill();
-      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw - 2, rw * 0.3, 0, 0, Math.PI * 2); ctx.fill();
-      if (flash > 0) { ctx.globalAlpha = flash * 0.9; ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
-      if (kind === 'kick') { const pd = Math.round(rw * 0.32); ctx.fillStyle = '#2e2a36'; ctx.beginPath(); ctx.ellipse(cx, top + 2, pd, pd * 0.34, 0, 0, Math.PI * 2); ctx.fill(); }
+      const P = new Pix(64, 20), m = P.mask();
+      P.mEllipse(m, 32, 9, 30, 5);
+      P.fill(m, lit ? lighten(col, 0.4) : col, { outline: OLD, shade: false });
+      P.paint(m, (x, y) => y > 10 ? darken(col, 0.26) : null);
+      P.paint(m, (x, y) => (y === 7 || y === 8) && x > 8 && x < 26 ? lighten(col, 0.34) : null);
+      for (let r = 8; r < 30; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - 32) - r) < 0.6 && y > 6 && y < 12 ? darken(col, 0.14) : null);
+      const b = P.mask(); P.mEllipse(b, 32, 8, 5, 2); P.fill(b, lighten(col, 0.22), { outline: OLD, shade: false });
+      P.set(32, 8, '#6a5a2a');
+      return P.toCanvas();
     }
-    // name on a little plate that sits on the shell, where it is readable
+    const big = kind === 'kick';
+    const w = big ? 60 : 48, h = big ? 52 : 34;
+    const P = new Pix(w, h + 8);
+    const rx = w / 2 - 2, ey = 6, depth = h - 8;
+    // shell
+    const sh = P.mask();
+    P.mRect(sh, 2, ey, w - 4, depth);
+    P.mEllipse(sh, w / 2, ey + depth, rx, 6);
+    P.fill(sh, lit ? lighten(col, 0.2) : col, { outline: OLD, shade: false });
+    P.paint(sh, (x, y) => x < 6 ? lighten(col, 0.26) : x > w - 8 ? darken(col, 0.22) : null);
+    P.paint(sh, (x, y) => y > ey + depth - 4 ? darken(col, 0.3) : null);
+    // hoops and lugs
+    const hoop = P.mask(); P.mRect(hoop, 2, ey - 1, w - 4, 3); P.mRect(hoop, 2, ey + depth - 3, w - 4, 3);
+    P.fill(hoop, '#d9c37a', { outline: OLD, shade: false });
+    for (let i = 0; i < (big ? 5 : 4); i++) { const lx = 7 + i * ((w - 14) / (big ? 4 : 3)); const lg = P.mask(); P.mRect(lg, Math.round(lx), ey + 3, 3, depth - 7); P.fill(lg, '#b9bcc8', { outline: OLD, shade: false }); }
+    // head
+    const hd = P.mask(); P.mEllipse(hd, w / 2, ey, rx, 6);
+    P.fill(hd, lit ? '#fffbe8' : '#efe9da', { outline: OLD, shade: false });
+    P.paint(hd, (x, y) => y < ey - 1 ? '#fdf8ec' : y > ey + 2 ? '#dcd4c0' : null);
+    const rim = P.mask(); P.mEllipse(rim, w / 2, ey, rx, 6); const in2 = P.mask(); P.mEllipse(in2, w / 2, ey, rx - 3, 4.2);
+    P.mSub(rim, in2); P.fill(rim, '#c8ccd8', { shade: false });
+    if (big) { const pd = P.mask(); P.mEllipse(pd, w / 2, ey + 1, 7, 2.4); P.fill(pd, '#2e2a36', { shade: false }); }
+    return P.toCanvas();
+  });
+}
+// A real drum kit stood at the near end of the highway.
+function drawDrumKit(ctx, hw, R, opts) {
+  const L = hw.L || 4;
+  const names = (opts.padNames && opts.padNames.length === L) ? opts.padNames : ['KICK', 'TOM', 'SNARE', 'CRASH'].slice(0, L);
+  const palette = opts.colors || ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];
+  const cols = []; for (let i = 0; i < L; i++) cols.push(palette[Math.round(i * (palette.length - 1) / Math.max(1, L - 1))]);
+  const baseY = hw.nearY;
+  // the rug, stepped rather than smooth
+  const rugTop = baseY - 18, rugBot = baseY + 46;
+  for (let y = rugTop; y < rugBot; y++) {
+    const k = (y - rugTop) / (rugBot - rugTop);
+    const hwid = Math.round(hw.nearW * (0.34 + k * 0.28));
+    rect(ctx, hw.cx - hwid, y, hwid * 2, 1, k > 0.9 ? '#3d1c2c' : (Math.floor(y / 6) % 2 ? '#4a2436' : '#57293f'));
+  }
+  rect(ctx, hw.cx - Math.round(hw.nearW * 0.6), rugBot - 4, Math.round(hw.nearW * 1.2), 3, '#7a3a56');
+  for (let l = 0; l < L; l++) {
+    const p = hw.pos(l, 0), cx = Math.round(p.x), w = p.w;
+    const flash = R.flashes[l] || 0, lit = flash > 0.02;
+    R.receptors[l] = { x: cx, y: baseY + 2 };
+    const isCymbal = names[l] === 'CRASH' || (L > 1 && l === L - 1 && names[l] !== 'KICK');
+    if (isCymbal) {
+      const c = drumSprite('cymbal', cols[l], lit);
+      const sc = Math.max(1, Math.round(w * 0.9 / 64));
+      const dw = 64 * sc, dh = 20 * sc;
+      const tilt = lit ? Math.round(Math.sin(R.now * 40) * 2) : 0;
+      rect(ctx, cx - 1, baseY - 6, 2, 48, '#8a8a98'); rect(ctx, cx - 1, baseY - 6, 1, 48, '#b0b0be');
+      rect(ctx, cx - 9, baseY + 40, 18, 3, '#6a6a78');
+      ctx.drawImage(c, cx - dw / 2, baseY - 12 + tilt, dw, dh);
+      if (lit) { ctx.globalAlpha = flash * 0.5; ellipsePx(ctx, cx, baseY - 4 + tilt, dw * 0.5, dh * 0.4, '#fff6c0'); ctx.globalAlpha = 1; }
+    } else {
+      const kind = names[l] === 'KICK' ? 'kick' : 'tom';
+      const c = drumSprite(kind, cols[l], lit);
+      const sc = Math.max(1, Math.round(w * 0.86 / c.width));
+      const dw = c.width * sc, dh = c.height * sc;
+      const squash = lit ? Math.round(flash * 4) : 0;
+      ctx.drawImage(c, cx - dw / 2, baseY + 8 - dh + squash, dw, dh - squash);
+      if (lit) { ctx.globalAlpha = flash * 0.7; ellipsePx(ctx, cx, baseY + 10 - dh + squash, dw * 0.44, dh * 0.12, '#fff6c0'); ctx.globalAlpha = 1; }
+    }
+    // name plate on a little tag
     const nw = textWidth(names[l], { font: 'small' }) + 8;
-    rect(ctx, cx - nw / 2, baseY + 14, nw, 9, flash > 0 ? '#5a4a20' : '#231c30');
-    drawText(ctx, names[l], cx, baseY + 16, flash > 0 ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
+    rect(ctx, cx - nw / 2, baseY + 16, nw, 9, lit ? '#5a4a20' : '#231c30');
+    rect(ctx, cx - nw / 2, baseY + 16, nw, 1, lit ? '#8a7430' : '#3a3048');
+    drawText(ctx, names[l], cx, baseY + 18, lit ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
   }
 }
 
@@ -2169,6 +2378,38 @@ const GENRES = {
 };
 const GENRE_KEYS = Object.keys(GENRES);
 const FIRST_NAMES = ['Benny', 'Rosa', 'Ziggy', 'Mabel', 'Otis', 'Dolores', 'Gus', 'Nina', 'Ferdie', 'Coco', 'Hank', 'Lulu', 'Miles', 'Etta', 'Django', 'Bix', 'Juno', 'Sal', 'Wren', 'Tito', 'Marge', 'Boris', 'Fay', 'Louie', 'Pearl', 'Chester', 'Ivy', 'Rufus', 'Dot'];
+
+// ---------- Gear tiers: the ladder you climb ----------
+// A busted instrument is genuinely easier to play and genuinely pays worse.
+// Upgrading gives back lanes and money at the same time.
+const GEAR_TIERS = [
+  null,
+  { name: 'BUSTED',    short: 'BUSTED',  pay: 0.55, window: 1.35, laneCut: 2, color: '#8a7a6a', desc: 'Held together with tape. Forgiving, and nobody tips for it.' },
+  { name: 'PAWN SHOP', short: 'PAWN',    pay: 0.8,  window: 1.15, laneCut: 1, color: '#9a8a58', desc: 'Second hand and out of tune, but it holds a note.' },
+  { name: 'WORKING',   short: 'WORKING', pay: 1.0,  window: 1.0,  laneCut: 0, color: '#5d8c56', desc: 'What a working musician actually plays.' },
+  { name: 'PRO',       short: 'PRO',     pay: 1.3,  window: 0.95, laneCut: 0, color: '#3f7fa8', desc: 'Road-ready. Crowds hear the difference.' },
+  { name: 'SIGNATURE', short: 'SIGNATURE', pay: 1.7, window: 0.9, laneCut: 0, color: '#8a3a9a', desc: 'Somebody famous had their name put on it.' },
+];
+function gearTier(q) { return GEAR_TIERS[clamp(Math.round(q || 1), 1, 5)]; }
+// The instrument you actually play, once the state of your gear is applied.
+function gearInstrument(kind, quality) {
+  const base = INSTRUMENTS[kind]; if (!base) return INSTRUMENTS.guitar;
+  const t = gearTier(quality);
+  if (!t.laneCut || !base.lanes || base.lanes <= 2) return base;
+  return cached('gear|' + kind + '|' + quality, () => {
+    const lanes = Math.max(2, base.lanes - t.laneCut);
+    // keep the outer lanes so the shape of the instrument still reads
+    const pick = [];
+    for (let i = 0; i < lanes; i++) pick.push(Math.round(i * (base.lanes - 1) / (lanes - 1)));
+    return Object.assign({}, base, {
+      lanes,
+      keys: pick.map(i => base.keys[i]),
+      keyNames: pick.map(i => base.keyNames[i]),
+      padNames: base.padNames ? pick.map(i => base.padNames[i]) : null,
+      drumFor: base.drumFor ? pick.map(i => base.drumFor[i]) : null,
+    });
+  });
+}
 
 // ===== js/data/charms.js =====
 // ---------- Charms (build-defining passive items), vouchers, consumables ----------
@@ -2495,7 +2736,7 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bombRate = difficulty >= 2 ? (0.015 + difficulty * 0.006) * (opts.bombMult || 1) : 0;
   for (const sec of sections) {
-    const instr = INSTRUMENTS[sec.instrument]; const secStart = song.leadIn + sec.startBar * 4 * beat, secEnd = song.leadIn + sec.endBar * 4 * beat;
+    const instr = sec.instr || INSTRUMENTS[sec.instrument]; const secStart = song.leadIn + sec.startBar * 4 * beat, secEnd = song.leadIn + sec.endBar * 4 * beat;
     if (sec.qte) { for (let bar = sec.startBar; bar < sec.endBar; bar++) { const barT = song.leadIn + bar * 4 * beat; const slots = difficulty >= 4 ? [0, 2] : [0]; for (const s of slots) if (rng.chance(0.9)) notes.push({ t: barT + s * beat, lane: 0, dur: 0, type: 'qte', midi: song.root + 12 }); } continue; }
     // walk the melody, looping it to fill the section
     let t = secStart, i = 0, lastLane = Math.floor((instr.lanes || 2) / 2), lastDir = 1, guard = 0;
@@ -2685,40 +2926,16 @@ const WEATHER_KEYS = Object.keys(WEATHERS);
 const TILE = 24;
 const GW = Math.floor(MAPW / TILE), GH = Math.floor(MAPH / TILE);
 let _grid = null;
-function tileGrid(mapCanvas) {
+function tileGrid() {
   if (_grid) return _grid;
-  const g = mapCanvas.getContext('2d');
-  const data = g.getImageData(0, 0, MAPW, MAPH).data;
-  const at = (x, y) => { const i = (y * MAPW + x) * 4; return [data[i], data[i + 1], data[i + 2]]; };
-  const walk = new Uint8Array(GW * GH);
-  const cost = new Uint8Array(GW * GH);
-  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
-    // sample a few points inside the tile and take the majority verdict
-    let road = 0, land = 0, blocked = 0;
-    for (const [ox, oy] of [[12, 12], [5, 5], [19, 5], [5, 19], [19, 19]]) {
-      const [r, gg, b] = at(Math.min(MAPW - 1, tx * TILE + ox), Math.min(MAPH - 1, ty * TILE + oy));
-      if (b > r + 24 && b > 170) blocked++;                      // water
-      else if (r > 245 && gg > 240 && b > 235) road++;           // white road
-      else if (r > 245 && gg > 220 && b < 215) road++;           // yellow arterial
-      else if (gg > r && gg > 150 && r < 225) land++;            // park
-      else if (r > 215 && gg > 210 && b > 195) land++;           // pale ground
-      else blocked++;                                            // buildings, bridges, ink
-    }
-    const i = ty * GW + tx;
-    walk[i] = (road + land) >= 3 ? 1 : 0;
-    cost[i] = road >= 2 ? 1 : 2;                                 // cutting across a park tires you out
+  const TM = cityTiles();
+  const walk = new Uint8Array(GW * GH), cost = new Uint8Array(GW * GH);
+  for (let i = 0; i < walk.length; i++) {
+    const k = TM.kind[i];
+    walk[i] = TILE_WALKABLE[k] ? 1 : 0;
+    cost[i] = TILE_COST[k] || 2;
   }
   _grid = { walk, cost, w: GW, h: GH };
-  // POIs must always stand on something you can reach
-  for (const n of NODES) {
-    const tx = clamp(Math.round(n.x / TILE), 0, GW - 1), ty = clamp(Math.round(n.y / TILE), 0, GH - 1);
-    n.tx = tx; n.ty = ty;
-    _grid.walk[ty * GW + tx] = 1;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = tx + dx, ny = ty + dy;
-      if (nx >= 0 && ny >= 0 && nx < GW && ny < GH) _grid.walk[ny * GW + nx] = 1;
-    }
-  }
   return _grid;
 }
 function tileWalkable(gr, tx, ty) { return tx >= 0 && ty >= 0 && tx < gr.w && ty < gr.h && !!gr.walk[ty * gr.w + tx]; }
@@ -2744,6 +2961,96 @@ function tileRoute(gr, ax, ay, bx, by, limit = 4000) {
   while (cur !== start) { out.push({ tx: cur % gr.w, ty: (cur / gr.w) | 0 }); cur = prev[cur]; }
   return out.reverse();
 }
+
+// ---------- The city as a logical tile map ----------
+// Every square of the city is one of these. The renderer turns them into
+// pixel tiles, and movement reads walkability straight off this array.
+const T_WATER = 0, T_LAND = 1, T_PARK = 2, T_BLDG = 3, T_ROAD = 4, T_BIGROAD = 5, T_PLAZA = 6, T_SHORE = 7;
+let _tmap = null;
+function cityTiles() {
+  if (_tmap) return _tmap;
+  const N = GW * GH, kind = new Uint8Array(N).fill(T_LAND), variant = new Uint8Array(N);
+  const rng = makeRng(8181);
+  const idx = (x, y) => y * GW + x;
+  const inb = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH;
+  const setK = (x, y, k) => { if (inb(x, y)) kind[idx(x, y)] = k; };
+  // point-in-polygon over map coordinates
+  const inPoly = (poly, px2, py) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if (((yi > py) !== (yj > py)) && px2 < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  // ---- water, then parks, then the rest is land
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const cx = (tx + 0.5) * TILE, cy = (ty + 0.5) * TILE;
+    for (const w of WATER) if (inPoly(w.poly, cx, cy)) { setK(tx, ty, T_WATER); break; }
+  }
+  for (const d of DISTRICTS) {
+    if (!d.park) continue;
+    for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+      if (kind[idx(tx, ty)] === T_WATER) continue;
+      if (inPoly(d.poly, (tx + 0.5) * TILE, (ty + 0.5) * TILE)) setK(tx, ty, T_PARK);
+    }
+  }
+  // ---- roads: rasterise every street and travel edge onto the grid
+  const stamp = (x0, y0, x1, y1, big) => {
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE * 0.4)));
+    for (let i = 0; i <= steps; i++) {
+      const k = i / steps, mx = lerp(x0, x1, k), my = lerp(y0, y1, k);
+      const tx = Math.floor(mx / TILE), ty = Math.floor(my / TILE);
+      if (!inb(tx, ty) || kind[idx(tx, ty)] === T_WATER) continue;
+      const cur = kind[idx(tx, ty)];
+      if (big || cur !== T_BIGROAD) kind[idx(tx, ty)] = big ? T_BIGROAD : T_ROAD;
+    }
+  };
+  for (const st of STREETS) for (let i = 1; i < st.pts.length; i++) stamp(st.pts[i - 1][0], st.pts[i - 1][1], st.pts[i][0], st.pts[i][1], !!st.big);
+  const G = buildGraph();
+  for (const [a, b] of EDGES) { const na = G[a], nb = G[b]; if (na && nb) stamp(na.x, na.y, nb.x, nb.y, false); }
+  // close one-tile gaps so the road network is actually connected
+  const isR = (tx, ty) => inb(tx, ty) && (kind[idx(tx, ty)] === T_ROAD || kind[idx(tx, ty)] === T_BIGROAD);
+  for (let pass = 0; pass < 2; pass++) {
+    const add = [];
+    for (let ty = 1; ty < GH - 1; ty++) for (let tx = 1; tx < GW - 1; tx++) {
+      if (isR(tx, ty) || kind[idx(tx, ty)] === T_WATER) continue;
+      if ((isR(tx - 1, ty) && isR(tx + 1, ty)) || (isR(tx, ty - 1) && isR(tx, ty + 1))) add.push(idx(tx, ty));
+    }
+    for (const i of add) kind[i] = T_ROAD;
+  }
+  // ---- blocks: whatever land is left inside a district becomes buildings
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const i = idx(tx, ty); if (kind[i] !== T_LAND) continue;
+    const cx = (tx + 0.5) * TILE, cy = (ty + 0.5) * TILE;
+    let inCity = false, dense = false;
+    for (const d of DISTRICTS) { if (d.park) continue; if (inPoly(d.poly, cx, cy)) { inCity = true; dense = /FINANCIAL|SOMA|CHINATOWN|NORTH BEACH|NOB/.test(d.name); break; } }
+    if (!inCity) { variant[i] = rng.int(0, 3); continue; }
+    kind[i] = rng.chance(dense ? 0.9 : 0.72) ? T_BLDG : T_PLAZA;
+    variant[i] = rng.int(0, 5) + (dense ? 8 : 0);
+  }
+  // ---- pins always stand on a walkable square, and get a plaza if they'd be in a wall
+  for (const n of NODES) {
+    const tx = clamp(Math.round(n.x / TILE), 0, GW - 1), ty = clamp(Math.round(n.y / TILE), 0, GH - 1);
+    n.tx = tx; n.ty = ty;
+    if (kind[idx(tx, ty)] === T_BLDG || kind[idx(tx, ty)] === T_WATER) kind[idx(tx, ty)] = T_PLAZA;
+    let touches = false;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = inb(tx + dx, ty + dy) ? kind[idx(tx + dx, ty + dy)] : T_WATER; if (k === T_ROAD || k === T_BIGROAD || k === T_PLAZA) touches = true; }
+    if (!touches) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { if (inb(tx + dx, ty + dy) && kind[idx(tx + dx, ty + dy)] !== T_WATER) { kind[idx(tx + dx, ty + dy)] = T_PLAZA; break; } }
+  }
+  // ---- shore: any water square touching land
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    if (kind[idx(tx, ty)] !== T_WATER) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (inb(tx + dx, ty + dy) && kind[idx(tx + dx, ty + dy)] !== T_WATER) { kind[idx(tx, ty)] = T_SHORE; break; }
+    }
+  }
+  for (let i = 0; i < N; i++) if (!variant[i]) variant[i] = rng.int(0, 5);
+  _tmap = { kind, variant, w: GW, h: GH };
+  return _tmap;
+}
+const TILE_WALKABLE = { 0: 0, 1: 1, 2: 1, 3: 0, 4: 1, 5: 1, 6: 1, 7: 0 };
+const TILE_COST = { 1: 2, 2: 2, 4: 1, 5: 1, 6: 1 };
 
 // ===== js/data/events.js =====
 // ---------- Random '?' events ----------
@@ -2814,6 +3121,60 @@ const EVENTS = [
       { label: 'Sign one: "BUZZ WAS HERE"', apply: (s, log) => { s.karma++; s.buffs.crowd = 1.4; log('A passing bug laughs and takes a photo. Word spreads.'); } },
     ] },
 ];
+
+// ===== js/data/goals.js =====
+// ---------- Today's goals: the run always states what it wants ----------
+'use strict';
+// Each goal reads progress off the run and the day's tally. Meeting one pays out.
+const GOALS = {
+  earn:      { icon: 'coin',  name: 'TAKE HOME',     text: (g) => 'EARN ' + fmtMoney(g.n) + ' TODAY',        get: (r) => Math.round(r.today.earned), reward: { money: 12 } },
+  play:      { icon: 'gig',   name: 'WORK THE TOWN', text: (g) => 'PLAY ' + g.n + ' SETS',                    get: (r) => r.today.gigs,               reward: { money: 10 } },
+  combo:     { icon: 'note',  name: 'HOLD IT',       text: (g) => 'HIT A ' + g.n + ' COMBO',                  get: (r) => r.today.bestCombo,          reward: { stamina: 12 } },
+  perfect:   { icon: 'star',  name: 'CLEAN HANDS',   text: (g) => 'LAND ' + g.n + ' PERFECTS',                get: (r) => r.today.perfects,           reward: { money: 14 } },
+  walk:      { icon: 'fire',  name: 'ON FOOT',       text: (g) => 'WALK ' + g.n + ' BLOCKS',                  get: (r) => r.today.tiles,              reward: { stamina: 10 } },
+  recruit:   { icon: 'openmic', name: 'FIND A VOICE', text: () => 'ADD A BUG TO THE BAND',                    get: (r) => r.today.recruited,          n: 1, reward: { money: 18 } },
+  upgrade:   { icon: 'case',  name: 'BETTER GEAR',   text: () => 'UPGRADE AN INSTRUMENT',                     get: (r) => r.today.upgrades,           n: 1, reward: { money: 16 } },
+  feed:      { icon: 'food',  name: 'NOBODY HUNGRY', text: () => 'END THE DAY WITH EVERYONE FED',             get: (r) => r.members.every(m => m.hunger === 0) ? 1 : 0, n: 1, reward: { money: 15 } },
+};
+const GOAL_KEYS = Object.keys(GOALS);
+// Three goals a day, scaled to how far in you are. One is always a money goal.
+function rollGoals(run) {
+  const d = run.day, rng = run.rng;
+  const out = [];
+  out.push({ key: 'earn', n: [18, 30, 46, 64, 86][Math.min(4, d)] });
+  const pool = rng.shuffle(['play', 'combo', 'perfect', 'walk', 'recruit', 'upgrade', 'feed']);
+  const nums = {
+    play: [1, 2, 2, 3, 3][Math.min(4, d)],
+    combo: [14, 20, 26, 34, 42][Math.min(4, d)],
+    perfect: [18, 28, 40, 55, 70][Math.min(4, d)],
+    walk: [14, 20, 26, 32, 38][Math.min(4, d)],
+  };
+  for (const k of pool) {
+    if (out.length >= 3) break;
+    if (k === 'upgrade' && d === 0) continue;         // no shop money on day one
+    if (k === 'recruit' && d > 3) continue;           // too late to be fair
+    out.push({ key: k, n: GOALS[k].n || nums[k] || 1 });
+  }
+  return out.map(g => Object.assign({ done: false, paid: false }, g));
+}
+function goalProgress(run, g) { return clamp(GOALS[g.key].get(run) / g.n, 0, 1); }
+function goalText(g) { return GOALS[g.key].text(g); }
+// Called after anything that could move a goal along.
+function checkGoals(run) {
+  let paidAny = null;
+  for (const g of run.goals || []) {
+    if (g.done) continue;
+    if (GOALS[g.key].get(run) >= g.n) {
+      g.done = true;
+      const rw = GOALS[g.key].reward;
+      if (rw.money) run.money += rw.money;
+      if (rw.stamina) run.rest(rw.stamina);
+      paidAny = g;
+    }
+  }
+  return paidAny;
+}
+function goalRewardText(g) { const rw = GOALS[g.key].reward; return rw.money ? '+' + fmtMoney(rw.money) : '+' + rw.stamina + ' STAMINA'; }
 
 // ===== js/sim/music.js =====
 // ---------- Songs, charts, backing band, the concert suite ----------
@@ -2990,6 +3351,7 @@ class ScoreState {
     if (note.star && base) base *= 3;
     if (info.tail && base) base = Math.round(base * 0.6) + 10;
     if (note.type === 'big' && base) base += 10;
+    if (base && this.mods && this.mods.gearPay) base = Math.round(base * (0.7 + this.mods.gearPay * 0.3));
     if (note.chord && base) base += 4;
     info.applause = base;
     this.applause += base * this.sectionMult;
@@ -3037,6 +3399,7 @@ class RhythmGame {
     this.song = song; this.sections = sections; this.notes = notes; this.mods = mods; this.hooks = hooks;
     this.startTime = null; this.now = -song.leadIn;
     this.counts = { perfect: 0, great: 0, good: 0, miss: 0 }; this.combo = 0; this.maxCombo = 0; this.hype = 25;
+    this.bursts = []; this.lastMilestone = 0;
     this.events = { perfects: 0, misses: 0, cheer: 0 }; this.popups = []; this.flashes = {}; this.milestoneIdx = 0;
     this.holds = {}; this.keysDown = new Set(); this.breath = 1; this.breathNote = null;
     this.valveMask = 0; this.valveEvalAt = null; this.valveGroupT = null; this.lastDon = { t: -1 };
@@ -3050,7 +3413,7 @@ class RhythmGame {
     this.receptors = {}; // lane -> {x,y} for effects
   }
   get section() { return this.sections[this.secIdx]; }
-  get instrument() { return this.section.qte ? INSTRUMENTS[this.section.instrument] : INSTRUMENTS[this.section.instrument]; }
+  get instrument() { return this.section.instr || INSTRUMENTS[this.section.instrument]; }
   get game() { return this.section.qte ? 'qte' : this.instrument.game; }
   get nextSection() { return this.sections[this.secIdx + 1]; }
   begin(audioTime) { this.startTime = audioTime; }
@@ -3072,6 +3435,14 @@ class RhythmGame {
       this.fx.burst(r.x, r.y, 6, { color: '#ff5a5a', speed: 40, life: 0.4, kind: 'px', gravity: 160 });
     } else {
       this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
+      // a comic burst every time the combo crosses a milestone
+      for (const ms of [10, 25, 50, 100, 200]) if (this.combo === ms && this.lastMilestone < ms) {
+        this.lastMilestone = ms;
+        this.bursts.push({ x: r.x, y: r.y - 40, t: 0, text: ms >= 100 ? 'UNREAL!' : ms >= 50 ? 'ON FIRE!' : ms >= 25 ? 'COOKING!' : 'NICE!', color: ms >= 50 ? '#ff5a5a' : '#ffd24a', scale: 1 + ms / 160 });
+        if (this.mods.fx) this.mods.fx.shake.hit(4 + ms / 25, 0.25);
+        if (this.hooks.onMilestone) this.hooks.onMilestone(ms);
+      }
+      if (note.star) this.bursts.push({ x: r.x, y: r.y - 30, t: 0, text: 'GOLD!', color: '#f2cf4a', scale: 0.85 });
       if (j === 'perfect') this.events.perfects++;
       const col = note.star ? '#ffd24a' : JUDGE_COLOR[j];
       this.fx.burst(r.x, r.y, j === 'perfect' ? 12 : 6, { color: [col, '#fff', lighten(col, 0.2)], speed: j === 'perfect' ? 90 : 55, life: 0.45, kind: j === 'perfect' ? 'spark' : 'px', gravity: 60, size: 2 });
@@ -3098,7 +3469,7 @@ class RhythmGame {
     return best;
   }
   playHit(note, j, hold) {
-    const k = this.section.instrument; const ins = INSTRUMENTS[k];
+    const k = this.section.instrument; const ins = this.section.instr || INSTRUMENTS[k];
     if (k === 'drums') {
       // each lane is a different piece of the kit, so it should sound like one
       const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
@@ -3191,6 +3562,8 @@ class RhythmGame {
     if (n.hit) this.playHit(n, j); else Audio.drum('clunk', 0, 0.4);
   }
   update(dt) {
+    for (const b of this.bursts) b.t += dt * 1.4;
+    this.bursts = this.bursts.filter(b => b.t < 1);
     if (this.startTime == null) return;
     this.now = Audio.now() - this.startTime; this.events = { perfects: 0, misses: 0, cheer: 0 };
     while (this.secIdx < this.sections.length - 1 && this.now >= this.sections[this.secIdx + 1].start) {
@@ -3245,7 +3618,9 @@ class RhythmGame {
     const g = this.game;
     if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
-    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx);
+    for (const b of this.bursts) { speedLines(ctx, b.x, b.y, 26 * b.scale, 70 * b.scale, 14, b.color, this.now, 0.35 * (1 - b.t)); comicBurst(ctx, b.x, b.y, b.text, b.color, b.t, b.scale); }
+    ctx.restore();
     this.drawHud(ctx, A);
   }
   // A lit stage around the play area: truss, moving beams, speaker stacks, a front row.
@@ -3312,7 +3687,7 @@ class RhythmGame {
     }
     if (this.switchWarn) {
       const ns = this.nextSection, blink = Math.floor(this.now * 6) % 2 === 0;
-      const label = ns.qte ? (ns.member ? ns.member.name.toUpperCase() : 'BAND') : INSTRUMENTS[ns.instrument].name.toUpperCase();
+      const label = ns.qte ? (ns.member ? ns.member.name.toUpperCase() : 'BAND') : (ns.instr || INSTRUMENTS[ns.instrument]).name.toUpperCase();
       rect(ctx, A.x + A.w - 120, A.y + 4, 116, 16, 'rgba(0,0,0,0.7)');
       ctx.drawImage(icon('arrowR'), A.x + A.w - 116, A.y + 8);
       drawText(ctx, label, A.x + A.w - 58, A.y + 9, blink ? '#ff9f68' : '#fff', { align: 'center', font: 'small' });
@@ -3779,15 +4154,18 @@ class ShopScene {
     const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
     const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
     for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
-    const ik = rng.pick(PLAYABLE.filter(k => k !== r.members[0].instrument)); const q = rng.int(1, Math.min(3, 1 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q * 0.3) * pm) });
+    // an upgrade for the instrument you already play, if there is headroom
+    const me = r.members[0], myQ = me.quality || 1;
+    if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
+    const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
     if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
     stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
     this.node.stock = stock;
   }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
-  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
-  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
+  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
+  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; if (s.kind === 'upgrade') { const t = gearTier(s.quality); return t.desc + ' Pays x' + t.pay.toFixed(2) + (t.laneCut ? '' : ', full ' + INSTRUMENTS[s.key].lanes + ' lanes') + '.'; } return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
   canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
@@ -3795,8 +4173,9 @@ class ShopScene {
     if (s.kind === 'charm') { r.addCharm(s.key); this.msg = 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
     else if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); this.msg = VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
     else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
+    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
     else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
-    else if (s.kind === 'recruit') { r.members.push(s.member); this.msg = s.member.name + ' joins the band!'; }
+    else if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); this.msg = s.member.name + ' joins the band!'; }
     else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
@@ -3827,7 +4206,7 @@ class ShopScene {
     return out;
   }
   itemArt(s) {
-    if (s.kind === 'instrument') return itemForInstrument(s.key);
+    if (s.kind === 'instrument' || s.kind === 'upgrade') return itemForInstrument(s.key);
     if (s.kind === 'rest') return 'coffee';
     if (s.kind === 'use') return ({ bread: 'bread', coffee: 'coffee', burrito: 'burrito' })[s.key] || 'bottle';
     if (s.kind === 'voucher') return 'book';
@@ -4129,7 +4508,7 @@ class BandScene {
       if (sel) { frame(ctx, x - 2, 42, 146, 148, UI.goldHi); frame(ctx, x - 3, 41, 148, 150, '#d9a520'); }
     });
     drawText(ctx, 'ABILITIES  ' + r.charms.length + '/' + r.charmSlots, 28, 200, '#f4efe0', { outline: '#1a1410' });
-    for (let i = 0; i < r.charmSlots; i++) { const k = r.charms[i]; uiSlot(ctx, 28 + i * 46, 214, 40, { empty: !k, selected: this.hoverCharm === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), 28 + i * 46 + 12, 226, 18, 16); }
+    for (let i = 0; i < r.charmSlots; i++) { const k = r.charms[i]; uiItemSlot(ctx, 28 + i * 46, 214, 42, k ? charmArt(CHARMS[k].icon) : null, { empty: !k, selected: this.hoverCharm === i }); }
     drawText(ctx, 'ITEMS', 360, 200, '#f4efe0', { outline: '#1a1410' }); r.consumables.forEach((k, i) => { uiSlot(ctx, 360 + i * 46, 214, 40); ctx.drawImage(icon(CONSUMABLES[k].icon), 360 + i * 46 + 12, 226, 18, 16); });
     drawText(ctx, 'VOUCHERS', 660, 200, '#f4efe0', { outline: '#1a1410' }); r.vouchers.forEach((k, i) => { uiSlot(ctx, 660 + i * 46, 214, 40); ctx.drawImage(icon(VOUCHERS[k].icon), 660 + i * 46 + 12, 226, 18, 16); });
     const inner = uiPanel(ctx, 24, 266, W - 48, H - 280);
@@ -4323,7 +4702,7 @@ class SelectScene {
     const sx = this.memberX(this.spot);
     ctx.globalAlpha = 0.2; ctx.fillStyle = '#fff4c0';
     ctx.beginPath(); ctx.moveTo(sx - 22, 18); ctx.lineTo(sx + 22, 18); ctx.lineTo(sx + 110, floorY + 10); ctx.lineTo(sx - 110, floorY + 10); ctx.fill(); ctx.globalAlpha = 1;
-    ctx.globalAlpha = 0.16; ctx.beginPath(); ctx.ellipse(sx, floorY + 8, 105, 22, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.16; ellipsePx(ctx, sx, floorY + 8, 105, 22, '#fff4c0'); ctx.globalAlpha = 1;
     // the four on stage
     ROSTER.forEach((rr, i) => {
       const x = this.memberX(i), on = i === this.sel, spec2 = HERO_PRESETS[rr.key];
@@ -4462,7 +4841,7 @@ class ConcertScene {
   startPlay() {
     const mv = this.mv; Audio.init();
     const song = songFromMovement(mv);
-    const sections = [{ instrument: this.you.instrument, startBar: 0, endBar: song.bars }];
+    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
     const diff = mv.impossible ? 7 : mv.difficulty;
     const notes = chartFromMelody(song, sections, diff, this.rng, { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6 });
     if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
@@ -4775,7 +5154,7 @@ class FlightScene {
     Audio.init(); Audio.setStageReverb(false);
     const tune = this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy';
     const song = songFromTune(tune, { bpm: 96 });
-    const sections = [{ instrument: this.you.instrument, startBar: 0, endBar: song.bars }];
+    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
     const notes = chartFromMelody(song, sections, 2, makeRng(7), { starRate: 0.14, bombMult: 0 });
     const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.35 });
     this.rhythm = new RhythmGame(song, sections, notes, mods, {});
@@ -4978,49 +5357,128 @@ class FlightScene {
 const MAP_C = { land: '#f3efe4', landHi: '#faf7ee', park: '#c9e6b0', parkDk: '#b2d795', water: '#a6d0ee', waterDk: '#8fc0e4',
   road: '#ffffff', roadBig: '#ffe9a8', roadEdge: '#ddd7c8', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#5d6a5d', inkSoft: '#8a927f', hill: '#eae3d0' };
 let _sfCache = null;
+// ---------- Tile sprites ----------
+// One 24x24 pixel tile per kind, cut so the whole city is drawn from squares.
+function cityTile(kind, variant, mask) {
+  return cached('ctile|' + kind + '|' + variant + '|' + mask, () => {
+    const P = new Pix(TILE, TILE), rng = makeRng(kind * 97 + variant * 31 + mask * 7 + 11);
+    const flood = (c) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) P.set(x, y, c); };
+    const speck = (c, n) => { for (let i = 0; i < n; i++) P.set(rng.int(0, TILE - 1), rng.int(0, TILE - 1), c); };
+    switch (kind) {
+      case T_WATER: {
+        flood(MAP_C.water);
+        for (let y = 2; y < TILE; y += 6) for (let x = (y * 5) % 10; x < TILE; x += 10) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); P.set(x + 2, y, MAP_C.waterDk); }
+        speck('#b6dcf4', 4);
+        break;
+      }
+      case T_SHORE: {
+        flood(MAP_C.water);
+        for (let y = 3; y < TILE; y += 7) for (let x = (y * 3) % 9; x < TILE; x += 9) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); }
+        // a pale surf edge on whichever sides face land
+        if (mask & 1) for (let x = 0; x < TILE; x++) { P.set(x, 0, '#d7ecf8'); P.set(x, 1, '#c2e2f4'); }
+        if (mask & 2) for (let y = 0; y < TILE; y++) { P.set(TILE - 1, y, '#d7ecf8'); P.set(TILE - 2, y, '#c2e2f4'); }
+        if (mask & 4) for (let x = 0; x < TILE; x++) { P.set(x, TILE - 1, '#d7ecf8'); P.set(x, TILE - 2, '#c2e2f4'); }
+        if (mask & 8) for (let y = 0; y < TILE; y++) { P.set(0, y, '#d7ecf8'); P.set(1, y, '#c2e2f4'); }
+        break;
+      }
+      case T_PARK: {
+        flood(MAP_C.park);
+        speck(MAP_C.parkDk, 26); speck('#dcf0c6', 10);
+        if (variant % 3 === 0) { const m = P.mask(); P.mEllipse(m, 11, 11, 7, 7); P.fill(m, MAP_C.parkDk, { outline: '#6f9a5a', shade: false }); P.paint(m, (x, y) => (x + y) % 5 === 0 ? '#a8d68e' : null); P.set(11, 19, '#7a5a34'); P.set(12, 19, '#7a5a34'); }
+        else if (variant % 3 === 1) { for (let i = 0; i < 5; i++) { const bx = rng.int(2, 19), by = rng.int(2, 19); P.set(bx, by, rng.pick(['#e8563f', '#f2cf4a', '#e07ab0'])); } }
+        break;
+      }
+      case T_PLAZA: {
+        flood(MAP_C.land);
+        for (let y = 0; y < TILE; y += 8) for (let x = 0; x < TILE; x++) P.set(x, y, '#e6e0cf');
+        for (let x = 0; x < TILE; x += 8) for (let y = 0; y < TILE; y++) P.set(x, y, '#e6e0cf');
+        speck('#eae4d4', 8);
+        break;
+      }
+      case T_LAND: {
+        flood(MAP_C.land); speck(MAP_C.landHi, 8); speck('#e8e2d2', 6);
+        break;
+      }
+      case T_BLDG: {
+        flood(MAP_C.land);
+        const dense = variant >= 8, v = variant % 6;
+        const w = dense ? 20 : 16 + (v % 3) * 2, h = dense ? 20 : 15 + (v % 2) * 4;
+        const x0 = Math.floor((TILE - w) / 2), y0 = Math.floor((TILE - h) / 2);
+        const roof = ['#e4dfd2', '#d8cfc0', '#e9e0c8', '#cfd2cc', '#ece4cf', '#d4cdbe', '#e0d4c4', '#dbd8cd'][(variant * 3 + v) % 8];
+        const m = P.mask(); P.mRect(m, x0, y0, w, h); P.fill(m, roof, { outline: '#c0b8a4', shade: false });
+        P.paint(m, (x, y) => y === y0 ? '#f2eee2' : y === y0 + h - 1 ? '#c8c0ac' : x === x0 + w - 1 ? '#cec6b2' : null);
+        // roof furniture so the blocks are not flat
+        if (v % 3 === 0) { const t2 = P.mask(); P.mRect(t2, x0 + 3, y0 + 3, 5, 4); P.fill(t2, '#c4bca8', { shade: false }); }
+        if (v % 4 === 1) { const t2 = P.mask(); P.mRect(t2, x0 + w - 8, y0 + h - 7, 6, 5); P.fill(t2, '#cfc7b3', { shade: false }); }
+        if (dense && v % 2 === 0) for (let i = 0; i < 3; i++) P.set(x0 + 4 + i * 5, y0 + h - 3, '#b8b0a0');
+        // drop shadow to the south-east
+        for (let x = x0 + 2; x < x0 + w + 2 && x < TILE; x++) P.set(x, Math.min(TILE - 1, y0 + h), '#d8d2c2');
+        for (let y = y0 + 2; y < y0 + h + 2 && y < TILE; y++) P.set(Math.min(TILE - 1, x0 + w), y, '#d8d2c2');
+        break;
+      }
+      case T_ROAD: case T_BIGROAD: {
+        const big = kind === T_BIGROAD;
+        flood(MAP_C.land);
+        const road = big ? MAP_C.roadBig : MAP_C.road, edge = MAP_C.roadEdge;
+        const halfW = big ? 9 : 7, c = TILE / 2;
+        const band = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, road); };
+        const casing = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, edge); };
+        const n = mask & 1, e = mask & 2, so = mask & 4, we = mask & 8;
+        // casing first, then the carriageway
+        if (n) casing(c - halfW - 1, 0, halfW * 2 + 2, c + halfW + 1);
+        if (so) casing(c - halfW - 1, c - halfW - 1, halfW * 2 + 2, TILE - c + halfW + 1);
+        if (we) casing(0, c - halfW - 1, c + halfW + 1, halfW * 2 + 2);
+        if (e) casing(c - halfW - 1, c - halfW - 1, TILE - c + halfW + 1, halfW * 2 + 2);
+        if (!mask) casing(c - halfW - 1, c - halfW - 1, halfW * 2 + 2, halfW * 2 + 2);
+        if (n) band(c - halfW, 0, halfW * 2, c + halfW);
+        if (so) band(c - halfW, c - halfW, halfW * 2, TILE - c + halfW);
+        if (we) band(0, c - halfW, c + halfW, halfW * 2);
+        if (e) band(c - halfW, c - halfW, TILE - c + halfW, halfW * 2);
+        if (!mask) band(c - halfW, c - halfW, halfW * 2, halfW * 2);
+        // centre line only on straight runs
+        const straightV = n && so && !e && !we, straightH = we && e && !n && !so;
+        if (big && straightV) for (let y = 2; y < TILE; y += 8) { P.set(c - 1, y, '#f0cf7a'); P.set(c - 1, y + 1, '#f0cf7a'); P.set(c - 1, y + 2, '#f0cf7a'); }
+        if (big && straightH) for (let x = 2; x < TILE; x += 8) { P.set(x, c - 1, '#f0cf7a'); P.set(x + 1, c - 1, '#f0cf7a'); P.set(x + 2, c - 1, '#f0cf7a'); }
+        if (!big && straightV) for (let y = 3; y < TILE; y += 9) P.set(c - 1, y, '#e6e0d0');
+        if (!big && straightH) for (let x = 3; x < TILE; x += 9) P.set(x, c - 1, '#e6e0d0');
+        // crossing stripes at junctions
+        const arms = (n ? 1 : 0) + (e ? 1 : 0) + (so ? 1 : 0) + (we ? 1 : 0);
+        if (arms >= 3) { for (let i = -halfW + 2; i < halfW - 1; i += 3) { if (n) { P.set(c + i, 2, '#e8e2d0'); P.set(c + i, 3, '#e8e2d0'); } if (so) { P.set(c + i, TILE - 3, '#e8e2d0'); P.set(c + i, TILE - 4, '#e8e2d0'); } } }
+        break;
+      }
+    }
+    return P.toCanvas();
+  });
+}
 function buildSF() {
   if (_sfCache) return _sfCache;
-  const c = makeCanvas(MAPW, MAPH), x = c.getContext('2d'); const r = makeRng(4242);
+  const TM = cityTiles();
+  const c = makeCanvas(MAPW, MAPH), x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
   x.fillStyle = MAP_C.land; x.fillRect(0, 0, MAPW, MAPH);
-  const poly = (ctx2, pts, fill) => { ctx2.fillStyle = fill; ctx2.beginPath(); ctx2.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx2.lineTo(pts[i][0], pts[i][1]); ctx2.closePath(); ctx2.fill(); };
-  for (const w of WATER) poly(x, w.poly, MAP_C.water);
-  // district grounds
-  for (const d of DISTRICTS) { if (d.park) poly(x, d.poly, MAP_C.park); else if (d.hill) poly(x, d.poly, MAP_C.hill); }
-  // building footprints
-  for (const d of DISTRICTS) {
-    if (d.park) continue;
-    const xs = d.poly.map(p => p[0]), ys = d.poly.map(p => p[1]);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    const dense = /FINANCIAL|SOMA|CHINATOWN|NORTH BEACH|NOB/.test(d.name);
-    for (let by = y0 + 8; by < y1 - 12; by += dense ? 16 : 22) for (let bx = x0 + 8; bx < x1 - 12; bx += dense ? 19 : 27) {
-      if (r.chance(dense ? 0.8 : 0.5)) { const w = r.int(9, dense ? 16 : 21), h = r.int(7, dense ? 13 : 16);
-        x.fillStyle = MAP_C.bldgEdge; x.fillRect(bx + 1, by + 1, w, h); x.fillStyle = MAP_C.bldg; x.fillRect(bx, by, w, h); }
+  const kindAt = (tx, ty) => (tx < 0 || ty < 0 || tx >= GW || ty >= GH) ? T_LAND : TM.kind[ty * GW + tx];
+  const isRoad = (k) => k === T_ROAD || k === T_BIGROAD;
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    const k = TM.kind[ty * GW + tx], v = TM.variant[ty * GW + tx];
+    let mask = 0;
+    if (isRoad(k)) {
+      if (isRoad(kindAt(tx, ty - 1))) mask |= 1;
+      if (isRoad(kindAt(tx + 1, ty))) mask |= 2;
+      if (isRoad(kindAt(tx, ty + 1))) mask |= 4;
+      if (isRoad(kindAt(tx - 1, ty))) mask |= 8;
+    } else if (k === T_SHORE) {
+      if (kindAt(tx, ty - 1) !== T_WATER && kindAt(tx, ty - 1) !== T_SHORE) mask |= 1;
+      if (kindAt(tx + 1, ty) !== T_WATER && kindAt(tx + 1, ty) !== T_SHORE) mask |= 2;
+      if (kindAt(tx, ty + 1) !== T_WATER && kindAt(tx, ty + 1) !== T_SHORE) mask |= 4;
+      if (kindAt(tx - 1, ty) !== T_WATER && kindAt(tx - 1, ty) !== T_SHORE) mask |= 8;
     }
+    x.drawImage(cityTile(k, v, mask), tx * TILE, ty * TILE);
   }
-  // park detail: trees and paths
-  for (const d of DISTRICTS) { if (!d.park) continue; const xs = d.poly.map(p => p[0]), ys = d.poly.map(p => p[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    for (let i = 0; i < (x1 - x0) / 9; i++) { const tx = r.int(x0 + 6, x1 - 6), ty = r.int(y0 + 6, y1 - 6); circle(x, tx, ty, r.int(3, 6), MAP_C.parkDk); circle(x, tx - 1, ty - 2, r.int(1, 2), '#dcf0c6'); }
-    x.strokeStyle = '#e8e2cc'; x.lineWidth = 5; x.beginPath(); x.moveTo(x0 + 4, (y0 + y1) / 2); for (let px2 = x0 + 4; px2 < x1; px2 += 30) x.lineTo(px2, (y0 + y1) / 2 + Math.sin(px2 * 0.05) * 10); x.stroke();
-  }
-  // streets: casing then fill
-  const drawRoad = (st, pass) => {
-    x.lineJoin = 'round'; x.lineCap = 'round'; x.beginPath(); x.moveTo(st.pts[0][0], st.pts[0][1]);
-    for (let i = 1; i < st.pts.length; i++) x.lineTo(st.pts[i][0], st.pts[i][1]);
-    x.lineWidth = (st.big ? 16 : 10) - (pass ? 4 : 0); x.strokeStyle = pass ? (st.big ? MAP_C.roadBig : MAP_C.road) : MAP_C.roadEdge; x.stroke();
-  };
-  // graph roads (travel network) drawn as real streets too
-  const G = buildGraph();
-  for (const pass of [0, 1]) {
-    for (const [a, b] of EDGES) { const na = G[a], nb = G[b]; if (!na || !nb) continue;
-      x.lineCap = 'round'; x.beginPath(); x.moveTo(na.x, na.y); x.lineTo(nb.x, nb.y); x.lineWidth = 12 - (pass ? 4 : 0); x.strokeStyle = pass ? MAP_C.road : MAP_C.roadEdge; x.stroke(); }
-    for (const st of STREETS) drawRoad(st, pass);
-  }
-  // bridges
+  // ---- landmarks that are bigger than one tile
   x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
   x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
-  // alcatraz
   circle(x, 1350, 195, 24, '#d8d2c0'); circle(x, 1350, 195, 20, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338, 186, 24, 12);
-  // street labels
+  // ---- labels last, so they sit on top of the tiles
   x.save();
   for (const st of STREETS) {
     const i = Math.floor(st.pts.length / 2) - 1, a = st.pts[Math.max(0, i)], b = st.pts[Math.min(st.pts.length - 1, i + 1)];
@@ -5029,20 +5487,25 @@ function buildSF() {
     drawText(x, st.name, 0, -2, MAP_C.ink, { align: 'center', font: 'small' }); x.restore();
   }
   x.restore();
-  // district labels
-  for (const d of DISTRICTS) { const t = d.name.split('').join(' '); drawText(x, t, d.x, d.y, MAP_C.inkSoft, { align: 'center' }); }
+  for (const d of DISTRICTS) drawText(x, d.name.split('').join(' '), d.x, d.y, MAP_C.inkSoft, { align: 'center' });
   for (const w of WATER) if (w.name) { const xs = w.poly.map(p => p[0]), ys = w.poly.map(p => p[1]); drawText(x, w.name.split('').join(' '), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, '#6f9cc4', { align: 'center' }); }
   for (const d of MAP_DETAILS) if (d.kind === 'label') drawText(x, d.text, d.x, d.y, '#6f9cc4', { align: 'center' });
-  _sfCache = { canvas: c, graph: G };
+  _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
 }
 const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
   const h = 30 + big * 4, w = 24 + big * 3;
-  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y + 1, 9 + big, 3.5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - w / 2, y - h * 0.55); ctx.lineTo(x - w / 2, y - h + 4);
-  ctx.arc(x, y - h + 6, w / 2, Math.PI, 0); ctx.lineTo(x + w / 2, y - h * 0.55); ctx.closePath(); ctx.fill();
+  ellipsePx(ctx, x, y + 1, 9 + big, 3.5, 'rgba(0,0,0,0.22)');
+  // teardrop, built from a pixel disc and a stepped point
+  const hr2 = Math.round(w / 2), headY = Math.round(y - h + 6 + hr2 * 0.2);
+  circle(ctx, x, headY, hr2, col);
+  for (let i = 0; i <= Math.round(h * 0.55); i++) {
+    const k = i / Math.max(1, Math.round(h * 0.55));
+    const hwid = Math.max(1, Math.round(hr2 * (1 - k * k) * 0.98));
+    ctx.fillStyle = col; ctx.fillRect(Math.round(x) - hwid, headY + hr2 - 1 + i, hwid * 2, 1);
+  }
   ctx.strokeStyle = darken(col, 0.25); ctx.lineWidth = 1; ctx.stroke();
   circle(ctx, x, y - h + 6, w / 2 - 4, '#fff8ee');
   const ic = icon(node.icon || 'event'); ctx.drawImage(ic, Math.round(x - ic.width * 0.7), Math.round(y - h + 6 - ic.height * 0.7), Math.round(ic.width * 1.4), Math.round(ic.height * 1.4));
@@ -5051,14 +5514,14 @@ function drawPin(ctx, x, y, node, opts = {}) {
 class CityScene {
   constructor(arrive) {
     const r = Game.run; this.t = 0; this.sf = buildSF(); this.G = this.sf.graph;
-    this.arriveT = arrive ? 2.6 : 0; this.travel = null; this.msg = null; this.msgT = 0;
+    this.arriveT = (arrive || Game.run.today && Game.run.today.gigs === 0 && Game.run.today.tiles === 0) ? 3.4 : 0; this.travel = null; this.msg = null; this.msgT = 0;
     this.cam = { x: 0, y: 0 };
     const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 16; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
     this.people = []; for (let i = 0; i < 40; i++) { const e = rr.pick(EDGES); this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.03), col: rr.pick(NPC_PALETTES) }); }
     this.fx = new Particles(); this.sel = 0;
-    this.grid = tileGrid(this.sf.canvas);
+    this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
     const r0 = Game.run;
     if (!r0.tile || !tileWalkable(this.grid, r0.tile.tx, r0.tile.ty)) { const h = NODES.find(n => n.id === r0.pos) || NODES[0]; r0.tile = { tx: h.tx, ty: h.ty }; }
@@ -5109,6 +5572,8 @@ class CityScene {
       const t = this.path.shift();
       this.tile = { tx: t.tx, ty: t.ty }; r.tile = { tx: t.tx, ty: t.ty };
       r.stamina = Math.max(0, r.stamina - wk.cost);
+      r.today.tiles = (r.today.tiles || 0) + 1;
+      const gh = checkGoals(r); if (gh) this.goalDone(gh);
       this.walking = null; this.stepT = (this.stepT || 0) + 1;
       if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x - this.cam.x, this.pos.y - this.cam.y + 26 + 6, 3, '#cfc6ae');
       const n = this.nodeAtTile(t.tx, t.ty);
@@ -5139,6 +5604,7 @@ class CityScene {
       default: this.refresh();
     }
   }
+  goalDone(g) { this.flash(GOALS[g.key].name + '  ' + goalRewardText(g)); Audio.ui('fanfare'); this.goalPop = 1.6; }
   flash(msg) { this.msg = msg; this.msgT = 2.2; this.fx.burst(W / 2, 120, 14, { color: ['#ffd24a', '#fff'], speed: 90, life: 0.6, kind: 'star', size: 2, gravity: 120 }); }
   go(n) {
     const r = Game.run; if (this.walking || this.path.length || !n) return;
@@ -5304,11 +5770,54 @@ class CityScene {
     this.fx.draw(ctx);
     const wk = WEATHERS[r.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, 26, W, H - 60); }
-    vignetteRect(ctx, 0, 26, W, H - 60, 0.3, '#1a2416');
+    // How the city looks depends on how far you have climbed back. Day one
+    // is cold and washed out; by the end it has colour again.
+    const lift = clamp((r.day * 0.2) + (r.members.length - 1) * 0.1 + clamp(r.money / 220, 0, 0.3), 0, 1);
+    grade(ctx, 0, 26, W, H - 60, lift > 0.5 ? '#ffd9a0' : '#5f7ea8', lift > 0.5 ? (lift - 0.5) * 0.24 : (0.5 - lift) * 0.42);
+    if (lift < 0.45) { ctx.globalAlpha = (0.45 - lift) * 0.5; ctx.fillStyle = '#8e93a6'; ctx.fillRect(0, 26, W, H - 60); ctx.globalAlpha = 1; }
+    vignetteRect(ctx, 0, 26, W, H - 60, 0.3 + (1 - lift) * 0.2, lift > 0.5 ? '#1a2416' : '#141a26');
     ctx.restore();
     this.drawHud(ctx);
-    if (this.arriveT > 0) { ctx.globalAlpha = clamp(this.arriveT / 2.6, 0, 1); rect(ctx, 0, 180, W, 100, 'rgba(10,20,30,0.8)'); uiRibbon(ctx, W / 2, 194, 'SAN FRANCISCO', { scale: 4, color: '#c8433a' }); drawText(ctx, 'FIVE DAYS TO BUILD A BAND', W / 2, 246, '#fff', { align: 'center', scale: 2 }); ctx.globalAlpha = 1; }
+    if (this.arriveT > 0) {
+      const a = clamp(this.arriveT / 2.6, 0, 1);
+      ctx.globalAlpha = a;
+      rect(ctx, 0, 120, W, 230, 'rgba(10,14,22,0.86)');
+      rect(ctx, 0, 120, W, 2, '#c8a03a'); rect(ctx, 0, 348, W, 2, '#c8a03a');
+      halftone(ctx, 0, 120, W, 230, '#5f7ea8', 8, 0.12);
+      uiRibbon(ctx, W / 2, 134, DAY_NAMES[Math.min(4, r.day)] + '  -  DAY ' + (r.day + 1) + ' OF 5', { scale: 3, color: '#8a2a3a' });
+      drawText(ctx, 'TODAY YOU NEED TO', W / 2, 176, '#9aa6bc', { align: 'center' });
+      (r.goals || []).forEach((g, i) => {
+        const gy = 198 + i * 40;
+        ctx.drawImage(itemCanvas(charmArt(GOALS[g.key].icon)), 0, 0, 32, 32, W / 2 - 280, gy - 4, 30, 30);
+        drawText(ctx, goalText(g), W / 2 - 240, gy, '#f2e8cc', { scale: 2 });
+        drawText(ctx, goalRewardText(g), W / 2 + 280, gy + 4, '#6be585', { align: 'right' });
+      });
+      ctx.globalAlpha = 1;
+    }
     if (this.msgT > 0) { ctx.globalAlpha = clamp(this.msgT, 0, 1); const sc2 = popIn(2.2 - this.msgT, 0.25); const w = textWidth(this.msg, { scale: 2 }) + 30; ctx.save(); ctx.translate(W / 2, 130); ctx.scale(sc2, sc2); rect(ctx, -w / 2, -14, w, 28, '#1a2a1a'); frame(ctx, -w / 2, -14, w, 28, '#6be585'); drawText(ctx, this.msg, 0, -7, '#6be585', { align: 'center', scale: 2 }); ctx.restore(); ctx.globalAlpha = 1; }
+  }
+  // Today's goals, on a clipboard pinned to the corner of the map.
+  drawGoals(ctx) {
+    const r = Game.run; if (!r.goals || !r.goals.length) return;
+    const w = 226, h = 30 + r.goals.length * 26, x = 10, y = 36;
+    const pop = this.goalPop ? 1 + Math.sin(this.goalPop * 12) * 0.02 : 1;
+    ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(pop, pop); ctx.translate(-(x + w / 2), -(y + h / 2));
+    ctx.fillStyle = 'rgba(16,12,20,0.3)'; ctx.fillRect(x + 3, y + 4, w, h);
+    rect(ctx, x, y, w, h, '#f2e8cc'); frame(ctx, x, y, w, h, '#7a6a48');
+    rect(ctx, x, y, w, 20, '#3c4f3a'); rect(ctx, x + 1, y + 1, w - 2, 1, '#5f7a58');
+    drawText(ctx, "TODAY'S GOALS", x + w / 2, y + 6, '#f2e8cc', { align: 'center' });
+    rect(ctx, x + w / 2 - 12, y - 4, 24, 8, '#b9b3a2'); rect(ctx, x + w / 2 - 10, y - 3, 20, 4, '#d6d0bd');
+    r.goals.forEach((g, i) => {
+      const gy = y + 24 + i * 26, k = goalProgress(r, g);
+      ctx.drawImage(icon(GOALS[g.key].icon), x + 6, gy + 3, 13, 12);
+      drawText(ctx, goalText(g), x + 24, gy + 2, g.done ? '#4f8032' : '#4a3a26', { font: 'small' });
+      // a little progress rail, and a tick when it lands
+      rect(ctx, x + 24, gy + 12, 150, 6, '#d8ccae'); rect(ctx, x + 24, gy + 12, Math.round(150 * k), 6, g.done ? '#5fbf4f' : '#c8a03a');
+      frame(ctx, x + 24, gy + 12, 150, 6, '#9a8a66');
+      if (g.done) ctx.drawImage(icon('check'), x + 182, gy + 9, 12, 10);
+      else drawText(ctx, Math.floor(GOALS[g.key].get(r)) + '/' + g.n, x + 182, gy + 11, '#8a7a58', { font: 'small' });
+    });
+    ctx.restore();
   }
   drawHud(ctx) {
     const r = Game.run, wk = WEATHERS[r.weather] || WEATHERS.clear;
@@ -5326,8 +5835,9 @@ class CityScene {
     ctx.drawImage(icon(wk.icon === 'rain' ? 'rain' : wk.icon === 'fog' ? 'rain' : 'star'), 400, 7, 12, 11); drawText(ctx, wk.name, 418, 9, '#5d6a5d');
     let bx = W - 10;
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; bx -= 28; circle(ctx, bx + 12, 13, 12, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(bx + 12, 13, 11, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, bx + 12, 29, { pose: 'idle', scale: 0.65, bounce: 0 }); ctx.restore(); }
-    let cx = bx - 12; for (let i = r.charms.length - 1; i >= 0; i--) { cx -= 20; uiSlotMini(ctx, cx, 4, false, 18); ctx.drawImage(icon(CHARMS[r.charms[i]].icon), cx + 3, 7, 12, 11); }
+    let cx = bx - 12; for (let i = r.charms.length - 1; i >= 0; i--) { cx -= 20; uiSlotMini(ctx, cx, 4, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[r.charms[i]].icon)), 0, 0, 32, 32, cx + 2, 6, 14, 14); }
     rect(ctx, 0, H - 34, W, 34, 'rgba(250,247,238,0.95)'); rect(ctx, 0, H - 34, W, 2, '#c8c2b0');
+    this.drawGoals(ctx);
     const under = this.nodeAtTile(this.tile.tx, this.tile.ty) || this.nearestNode();
     if (under) {
       ctx.drawImage(icon(under.icon || 'event'), 10, H - 27, 18, 16);
@@ -5383,7 +5893,7 @@ class FoodScene {
     const me = Game.run.members[0];
     const tune = me.instrument === 'drums' ? 'saints' : me.instrument === 'piano' ? 'furElise' : 'camptown';
     const song = songFromTune(tune, { bpm: 104 });
-    const sections = [{ instrument: me.instrument, startBar: 0, endBar: Math.min(8, song.bars) }];
+    const sections = [{ instrument: me.instrument, instr: gearInstrument(me.instrument, me.quality), startBar: 0, endBar: Math.min(8, song.bars) }];
     const notes = chartFromMelody(song, sections, 2, makeRng(5), { starRate: 0.1, bombMult: 0 });
     const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.3 });
     this.rhythm = new RhythmGame(song, sections, notes, mods, {});
@@ -5448,9 +5958,9 @@ class FoodScene {
     for (let i = 0; i < 7; i++) { const lx = 70 + i * 140, sw = Math.sin(t * 0.8 + i) * 2;
       rect(ctx, lx - 1 + sw * 0.4, 0, 2, 24, '#3a1a16');
       const lc = i % 2 ? '#e8563f' : '#e8a33a';
-      ctx.fillStyle = lc; ctx.beginPath(); ctx.ellipse(lx + sw, 36, 15, 18, 0, 0, Math.PI * 2); ctx.fill();
+      ellipsePx(ctx, lx + sw, 36, 15, 18, lc);
       ctx.fillStyle = darken(lc, 0.2); for (let k = -2; k <= 2; k++) rect(ctx, lx + sw - 15, 36 + k * 7, 30, 1, darken(lc, 0.25));
-      ctx.fillStyle = '#f6d98a'; ctx.beginPath(); ctx.ellipse(lx + sw - 5, 30, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ellipsePx(ctx, lx + sw - 5, 30, 4, 5, '#f6d98a');
       rect(ctx, lx + sw - 4, 53, 8, 4, '#c8a24a');
       lightPool(ctx, lx + sw, 40, 90, lc, 0.12);
     }
@@ -5605,7 +6115,7 @@ class RecruitScene {
     this.node = node; this.t = 0; const r = Game.run;
     this.cand = r.makeMember(); this.price = 14 + r.day * 8 + this.cand.skill * 3;
     this.menu = new Menu([
-      { label: 'Invite to the band', right: fmtMoney(this.price), icon: 'openmic', disabled: r.money < this.price || r.members.length >= 6, onSelect: () => { r.money -= this.price; r.members.push(this.cand); Audio.ui('fanfare'); this.done(this.cand.name.toUpperCase() + ' JOINS'); } },
+      { label: 'Invite to the band', right: fmtMoney(this.price), icon: 'openmic', disabled: r.money < this.price || r.members.length >= 6, onSelect: () => { r.money -= this.price; r.members.push(this.cand); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); Audio.ui('fanfare'); this.done(this.cand.name.toUpperCase() + ' JOINS'); } },
       { label: 'Jam for free (+1 skill all)', icon: 'note', onSelect: () => { r.members.forEach(m => { m.skill = Math.min(10, m.skill + 1); m.stamina = Math.max(0, m.stamina - 10); }); Audio.ui('levelup'); this.done('EVERYONE LEVELLED UP'); } },
       { label: 'Leave', icon: 'arrowL', onSelect: () => Game.go(() => new CityScene(), 'slideR') },
     ]);
@@ -5648,7 +6158,7 @@ class RecruitScene {
     for (let y = 330; y < H; y += 32) { ctx.globalAlpha = 0.25; rect(ctx, 0, y, W, 1, '#33200f'); ctx.globalAlpha = 1; }
     this.tables || (this.tables = (() => { const rr = makeRng(hashStr(this.node.id) + 5); return [0, 1, 2].map(i => ({ spec: randomBugSpec(rr), spec2: randomBugSpec(rr), x: 650 + i * 110, y: 360 + i * 46, o: rr.range(0, 6) })); })());
     this.tables.forEach((tb, i) => {
-      circle(ctx, tb.x, tb.y, 30, '#8a5f36'); circle(ctx, tb.x, tb.y - 3, 30, '#a8763c');
+      ellipsePx(ctx, tb.x, tb.y, 30, 11, '#8a5f36'); ellipsePx(ctx, tb.x, tb.y - 4, 30, 11, '#a8763c');
       rect(ctx, tb.x - 3, tb.y + 6, 6, 26, '#5a3a20'); rect(ctx, tb.x - 12, tb.y + 30, 24, 4, '#5a3a20');
       ctx.drawImage(itemCanvas('coffee'), 0, 0, 32, 32, tb.x - 10, tb.y - 22, 22, 22);
       drawBugAt(ctx, tb.spec, tb.x - 40, tb.y + 4, { pose: 'idle', scale: 1.1, rate: 1.5, phase: tb.o });
@@ -5701,6 +6211,7 @@ class GigScene {
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
     this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.fx = new Particles();
+    this.cam = new Camera(); this.cutIn = null;
     this.train = { x: -700, t: r.rng.range(4, 9) };
   }
   layout() {
@@ -5724,7 +6235,7 @@ class GigScene {
     this.performers = r.members.filter((m, i) => this.active[i]); if (!this.performers.length) this.performers = [r.members[0]];
     const leader = r.members[0], mates = this.performers.filter(m => !m.leader);
     const sections = []; let mi = 0;
-    for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
+    for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, instr: gearInstrument(leader.instrument, leader.quality), startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
     this.sections = sections;
     const mods = r.gigMods(this.performers, this.difficulty, this.bossMod); mods.fx = { shake: Game.shake };
     const notes = chartFromMelody(this.song, sections, this.difficulty, r.rng, { bombMult: (this.bossMod === 'heckler' ? 3 : 1) * (mods.bombMult || 1), starRate: mods.starRate || 0.08 });
@@ -5735,6 +6246,11 @@ class GigScene {
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
+      onMilestone: (ms) => {
+        this.cutIn = { t: 0, ms };
+        this.cam.hit(3); this.cam.push(1.12, 0, -14, (Math.random() - 0.5) * 0.02);
+        this.camHold = 1.1;
+      },
     });
     const wmul = (WEATHERS[r.weather] || WEATHERS.clear).tipMult;
     this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 6 });
@@ -5749,6 +6265,14 @@ class GigScene {
     if (this.phase === 'play') {
       if (this.paused) return;
       this.backing.update(); this.rhythm.update(dt);
+      this.cam.update(dt);
+      if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
+      // a slow drift while the set runs, so the stage is never static
+      if (this.camHold == null && this.rhythm && !this.paused) {
+        const hy = this.rhythm.hype / 100;
+        this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+      }
+      if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
       this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v);
       this.S.watcherTick(dt, this.crowd.watchers.length);
@@ -5763,6 +6287,8 @@ class GigScene {
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
     r.money += this.earned; r.stats.earned += this.earned; r.stats.gigs++; r.stats.bestCombo = Math.max(r.stats.bestCombo, res.maxCombo); r.stats.perfects += res.perfect; r.stats.bestPayout = Math.max(r.stats.bestPayout, this.earned);
+    r.today.earned += this.earned; r.today.gigs++; r.today.bestCombo = Math.max(r.today.bestCombo, res.maxCombo); r.today.perfects += res.perfect;
+    this.goalHit = checkGoals(r);
     r.lastTune = this.tuneKey; r.pendingGig = null; r.buffs = {};
     const st = 20 * (r.perks.stamina || 1) + (this.mods.staminaExtra || 0); this.xpLines = [];
     for (const m of this.performers) { m.stamina = Math.max(0, m.stamina - st * (m.hunger ? 1.4 : 1)); m.gigs++; const xp = 0.5 + res.acc * 1.5; m.xp += xp; let up = 0; while (m.xp >= 3 && m.skill < 10) { m.xp -= 3; m.skill++; up++; } if (up) this.xpLines.push(m.name + ' LV' + m.skill); }
@@ -5892,6 +6418,11 @@ class GigScene {
     rect(ctx, 16, 38, 3, 62, '#c8a03a');
     drawText(ctx, title, 28, 46, '#ffd98a', { scale: 3 });
     drawText(ctx, this.song.composer.toUpperCase(), 28, 76, '#b8aed0', { font: 'small' });
+    { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
+      const gw = textWidth(t2.short) + 12;
+      rect(ctx, 16, 104, gw, 14, t2.color); frame(ctx, 16, 104, gw, 14, '#1a1410');
+      drawText(ctx, t2.short, 22, 107, '#fdf6e2');
+      drawText(ctx, INSTRUMENTS[m0.instrument].name.toUpperCase() + '  ' + gearInstrument(m0.instrument, m0.quality).lanes + ' LANES', 22 + gw, 107, '#cfc6b0', { font: 'small' }); }
     const gx = 28 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 10;
     rect(ctx, gx, 73, textWidth(G.name.toUpperCase(), { font: 'small' }) + 10, 11, G.color);
     drawText(ctx, G.name.toUpperCase(), gx + 5, 76, '#1a1410', { font: 'small' });
@@ -5917,12 +6448,34 @@ class GigScene {
     this.backBtn = new Btn(16, H - 50, 96, 30, 'LEAVE', () => Game.go(() => new CityScene(), 'slideR'), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 });
     this.backBtn.draw(ctx);
   }
+  // A comic cut-in: the player, close up, at the moment the combo lands.
+  drawCutIn(ctx) {
+    const c = this.cutIn, k = clamp(c.t / 1.5, 0, 1);
+    const inK = clamp(c.t / 0.14, 0, 1), outK = clamp((c.t - 1.15) / 0.35, 0, 1);
+    const slide = (1 - easeOutBack(inK)) * 260 + outK * 260;
+    const m = Game.run.members[0];
+    const pw = 240, ph = 150, px2 = W - pw - 26 + slide, py = this.L.top ? 170 : 52;
+    comicPanel(ctx, px2, py, pw, ph, -0.045, (g, w, h) => {
+      vgrad(g, 0, 0, w, h, '#3a2a52', '#1a1424');
+      halftone(g, 0, 0, w, h, '#ffd24a', 7, 0.2);
+      speedLines(g, w * 0.5, h * 0.56, 30, 150, 18, '#ffffff', this.t, 0.3);
+      drawShadow(g, w * 0.5, h - 10, 70, 0.3);
+      drawBugAt(g, m.spec, w * 0.5, h - 6, { pose: Math.floor(this.t * 12) % 2 ? 'play' : 'play2', expr: 'focus',
+        instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 2.4, rate: 6, tilt: -0.05 });
+      rect(g, 0, h - 22, w, 22, 'rgba(20,14,28,0.8)');
+      drawText(g, c.ms + ' COMBO', w / 2, h - 17, '#ffd98a', { align: 'center', scale: 2, outline: '#1a1410' });
+    });
+    if (c.t < 0.5) comicBurst(ctx, px2 + 24, py + 16, c.ms >= 50 ? 'WOW!' : 'HOT!', '#ff5a5a', c.t * 2, 0.8);
+  }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
+      this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
       this.drawStage(ctx);
+      this.cam.done(ctx);
+      if (this.cutIn) this.drawCutIn(ctx);
       const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 4;
       rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, W * p, 4, '#ffd24a');
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
@@ -5955,10 +6508,15 @@ class GigScene {
       rect(ctx, bx, by + 100, 228, 48, '#2a7a3a'); frame(ctx, bx, by + 100, 228, 48, '#1a1410'); ctx.drawImage(icon('coin'), bx + 8, by + 118, 15, 14); drawText(ctx, fmtMoney(this.earned), bx + 220, by + 102, '#fff', { align: 'right', scale: 3 });
       const gcol = { S: '#d9a520', A: '#4f8032', B: '#2a5ab0', C: '#b07030', D: '#b02a2a' }[this.grade];
       const gs = bounceScale(this.tallyT, 0.2, 10);
-      ctx.save(); ctx.translate(inner.x + 90, inner.y + 96); ctx.scale(gs, gs);
-      drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 9, outline: '#1a1410' });
+      ctx.save(); ctx.translate(inner.x + 90, inner.y + 88); ctx.scale(gs, gs);
+      drawText(ctx, this.grade, 0, -32, gcol, { align: 'center', scale: 8, outline: '#1a1410' });
       ctx.restore();
-      drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 132, gcol, { align: 'center', scale: 3 });
+      drawText(ctx, Math.round(this.res.acc * 100) + '%', inner.x + 90, inner.y + 140, gcol, { align: 'center', scale: 3 });
+      // what you played it on, so the gear ladder is visible
+      { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
+        const gw = textWidth(t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase()) + 16;
+        rect(ctx, inner.x + 14, inner.y + 166, gw, 14, t2.color);
+        drawText(ctx, t2.name + ' ' + INSTRUMENTS[m0.instrument].name.toUpperCase(), inner.x + 22, inner.y + 169, '#fdf6e2'); }
       // the performers, taking a bow
       (this.performers || Game.run.members).slice(0, 4).forEach((m, i) => { const px2 = inner.x + 210 + i * 58; drawShadow(ctx, px2, inner.y + 168, 34, 0.18); drawBugAt(ctx, m.spec, px2, inner.y + 168, { pose: 'cheer', expr: 'happy', scale: 1.4, rate: 4.2, phase: i * 1.3, bounce: 2.2 }); });
       let yy = inner.y + inner.h - 40;
@@ -6012,15 +6570,14 @@ class DraftScene {
       rect(ctx, x, y, cw, ch, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 4, y + 4, cw - 8, ch - 8, UI.paper);
       const rar = isCash ? 'cash' : c.rarity, rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', cash: '#2a7a3a' }[rar];
       rect(ctx, x + 4, y + 4, cw - 8, 18, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, y + 9, '#fff', { align: 'center' });
-      uiSlot(ctx, x + cw / 2 - 32, y + 32, 64);
-      const ic = icon(isCash ? 'money' : c.icon); ctx.drawImage(ic, x + cw / 2 - 22, y + 44, 44, 39);
+      uiItemSlot(ctx, x + cw / 2 - 34, y + 30, 68, isCash ? 'coin' : charmArt(c.icon), {});
       drawWrapped(ctx, (isCash ? 'TAKE $15' : c.name.toUpperCase()), x + 12, y + 106, 15, UI.ink, 15, { scale: 2 });
       drawWrapped(ctx, isCash ? 'Skip the ability. Cash is dinner.' : c.desc, x + 12, y + 152, 24, UI.inkSoft, 12);
       if (sel) { const k2 = Math.floor(this.t * 8) % 2; frame(ctx, x - 3 + k2, y - 3, cw + 6, ch + 6, '#fff8e8'); frame(ctx, x - 4 + k2, y - 4, cw + 8, ch + 8, '#d9a520'); }
     }
     // current charms
     drawText(ctx, 'YOUR ABILITIES  ' + r.charms.length + '/' + r.charmSlots, W / 2, 372, '#cfc9e6', { align: 'center' });
-    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52, k = r.charms[i]; uiSlot(ctx, cx, 392, 46, { empty: !k, selected: this.full != null && this.sel === i }); if (k) ctx.drawImage(icon(CHARMS[k].icon), cx + 12, 404, 22, 20); }
+    for (let i = 0; i < r.charmSlots; i++) { const cx = W / 2 - r.charmSlots * 26 + i * 52, k = r.charms[i]; uiItemSlot(ctx, cx, 392, 46, k ? charmArt(CHARMS[k].icon) : null, { empty: !k, selected: this.full != null && this.sel === i }); }
     if (this.full != null) { rect(ctx, 0, 452, W, 52, 'rgba(20,10,10,0.9)'); drawText(ctx, 'FULL - PICK ONE TO REPLACE', W / 2, 462, '#ff9f68', { align: 'center', scale: 2 }); drawText(ctx, Game.touch ? 'TAP A SLOT' : 'ARROWS + ENTER', W / 2, 484, '#cfc9e6', { align: 'center' }); }
     else drawText(ctx, Game.touch ? 'TAP A CARD' : 'ARROWS + ENTER', W / 2, 462, '#8a86b0', { align: 'center' });
   }
@@ -6040,24 +6597,29 @@ class RunState {
     this.seed = seed; this.rng = makeRng(seed);
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
+    this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
     this.pos = 'mission'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
     const c = char || ROSTER[0], p = HERO_PRESETS[c.key];
     s.hero = c.key;
-    s.members.push(new Member({ name: p.name, presetKey: c.key, spec: p, instrument: c.instrument, quality: 1, skill: 2 + c.stats[0], leader: true }));
+    s.members.push(new Member({ name: p.name, presetKey: c.key, spec: p, instrument: c.instrument, quality: 1, skill: 2 + c.stats[0], leader: true }));   // quality 1 is BUSTED: easy to play, pays badly
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
     s.pos = 'mission'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
+    s.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; s.goals = rollGoals(s);
     return s;
   }
   newDay() {
     const bonus = collectMods(this).tickets || 0;
     this.staminaMax = 46 + bonus * 6; this.stamina = this.staminaMax;
     this.tickets = 7 + bonus; this.doneNodes = {};
-    this.weather = this.day === 0 ? 'clear' : this.rng.pick(WEATHER_KEYS);
+    this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 };
+    this.goals = rollGoals(this);
+    // the first days back are grey on purpose
+    this.weather = this.day === 0 ? 'clear' : (this.day <= 1 && this.rng.chance(0.6)) ? this.rng.pick(['fog', 'rain', 'fog']) : this.rng.pick(WEATHER_KEYS);
   }
   rest(n) { this.stamina = clamp(this.stamina + n, 0, this.staminaMax); }
   hasCharm(k) { return this.charms.includes(k); }
@@ -6081,18 +6643,25 @@ class RunState {
     const avgSt = performers.reduce((a, m) => a + m.stamina, 0) / performers.length, hungerPen = performers.reduce((a, m) => a + m.hunger, 0) / performers.length;
     const m = collectMods(this, { difficulty, bossMod });
     m.windowMult *= (0.78 + 0.22 * (avgSt / 100)) * (1 - 0.08 * hungerPen);
+    // your gear decides how forgiving the timing is and how well the set pays
+    const lead = gearTier(this.members[0] ? this.members[0].quality : 1);
+    m.windowMult *= lead.window;
+    m.tipMult *= lead.pay;
+    m.gearPay = performers.reduce((a, p2) => a + gearTier(p2.quality).pay, 0) / Math.max(1, performers.length);
     return m;
   }
+  // The whole band's gear, averaged, as a number the tally can show.
+  gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -6178,7 +6747,7 @@ const Game = {
     ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
     ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
     drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 8, UI.ink, { align: 'center' });
-    let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 18; uiSlotMini(ctx, cx, 4, false, 16); ctx.drawImage(icon(CHARMS[ck].icon), cx + 3, 7, 10, 9); }
+    let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 20; uiSlotMini(ctx, cx, 3, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[ck].icon)), 0, 0, 32, 32, cx + 2, 5, 14, 14); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }
   },

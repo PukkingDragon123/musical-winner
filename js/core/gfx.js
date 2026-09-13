@@ -161,3 +161,75 @@ function vignetteRect(ctx, x, y, w, h, strength = 0.4, color = '#050409') {
 function grade(ctx, x, y, w, h, color, alpha = 0.08, mode = 'overlay') {
   ctx.save(); ctx.globalCompositeOperation = mode; ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fillRect(x, y, w, h); ctx.restore();
 }
+
+// ---------- Camera: push in, drift and kick during a set ----------
+class Camera {
+  constructor() { this.zoom = 1; this.tz = 1; this.x = 0; this.y = 0; this.tx = 0; this.ty = 0; this.roll = 0; this.troll = 0; this.kick = 0; }
+  push(z, x, y, roll) { this.tz = z; this.tx = x || 0; this.ty = y || 0; this.troll = roll || 0; }
+  reset() { this.push(1, 0, 0, 0); }
+  hit(n) { this.kick = Math.max(this.kick, n); }
+  update(dt) {
+    const k = Math.min(1, dt * 5);
+    this.zoom += (this.tz - this.zoom) * k;
+    this.x += (this.tx - this.x) * k; this.y += (this.ty - this.y) * k;
+    this.roll += (this.troll - this.roll) * k;
+    this.kick = Math.max(0, this.kick - dt * 4);
+  }
+  // Wrap a draw in the current camera. cx/cy is what stays put on screen.
+  apply(ctx, cx, cy) {
+    const z = this.zoom * (1 + this.kick * 0.04);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(this.roll); ctx.scale(z, z); ctx.translate(-cx - this.x, -cy - this.y);
+  }
+  done(ctx) { ctx.restore(); }
+}
+// ---------- Comic effects ----------
+// A jagged impact star with a word in it.
+function comicBurst(ctx, x, y, text, color, t, scale = 1) {
+  const k = clamp(t, 0, 1), pop = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8 * 0.25;
+  const s = scale * pop, spikes = 11, r1 = 30 * s, r2 = 17 * s;
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(Math.sin(t * 3) * 0.05);
+  ctx.globalAlpha = clamp(1.3 - k * 1.3, 0, 1);
+  const path = (r, rr, col) => {
+    ctx.fillStyle = col; ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / spikes, rad = i % 2 ? rr : r;
+      const px2 = Math.round(Math.cos(a) * rad), py = Math.round(Math.sin(a) * rad);
+      if (i === 0) ctx.moveTo(px2, py); else ctx.lineTo(px2, py); }
+    ctx.closePath(); ctx.fill();
+  };
+  path(r1 + 3, r2 + 3, '#1a1410');
+  path(r1, r2, color);
+  path(r1 * 0.62, r2 * 0.62, lighten(color, 0.3));
+  drawText(ctx, text, 0, -Math.round(4 * s), '#1a1410', { align: 'center', scale: Math.max(1, Math.round(2 * s)) });
+  ctx.globalAlpha = 1; ctx.restore();
+}
+// Radiating speed lines, for the moments that need to feel fast.
+function speedLines(ctx, x, y, r0, r1, n, color, t, alpha = 0.5) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + t * 0.6, len = r1 * (0.6 + ((i * 37) % 10) / 14);
+    const x0 = x + Math.cos(a) * r0, y0 = y + Math.sin(a) * r0;
+    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len;
+    ctx.strokeStyle = color; ctx.lineWidth = 1 + (i % 3); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  ctx.lineWidth = 1; ctx.globalAlpha = 1; ctx.restore();
+}
+// A halftone dot field, the cheap trick that makes anything look like a comic.
+function halftone(ctx, x, y, w, h, color, step = 6, alpha = 0.18) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  for (let yy = y; yy < y + h; yy += step) for (let xx = x + ((yy / step) % 2 ? step / 2 : 0); xx < x + w; xx += step) {
+    const k = 1 - (yy - y) / h; const r = Math.max(0, Math.round(k * (step / 2.4)));
+    if (r > 0) ctx.fillRect(Math.round(xx), Math.round(yy), r, r);
+  }
+  ctx.globalAlpha = 1; ctx.restore();
+}
+// An angled inset panel, like a comic cut-in.
+function comicPanel(ctx, x, y, w, h, angle, draw) {
+  ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(angle); ctx.translate(-w / 2, -h / 2);
+  ctx.fillStyle = 'rgba(10,8,14,0.5)'; ctx.fillRect(6, 8, w, h);
+  rect(ctx, -3, -3, w + 6, h + 6, '#f4ecd6');
+  rect(ctx, 0, 0, w, h, '#1a1622');
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+  draw(ctx, w, h);
+  ctx.restore();
+  ctx.restore();
+}

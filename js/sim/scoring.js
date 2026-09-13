@@ -32,6 +32,7 @@ class ScoreState {
     if (note.star && base) base *= 3;
     if (info.tail && base) base = Math.round(base * 0.6) + 10;
     if (note.type === 'big' && base) base += 10;
+    if (base && this.mods && this.mods.gearPay) base = Math.round(base * (0.7 + this.mods.gearPay * 0.3));
     if (note.chord && base) base += 4;
     info.applause = base;
     this.applause += base * this.sectionMult;

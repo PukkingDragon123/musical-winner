@@ -35,9 +35,9 @@ function drawFretboard(ctx, hw, R, opts = {}) {
   // body below the nut: wood, pickups, bridge
   const bodyTop = hw.nearY + 6, col = opts.bodyColor || '#8a3a22';
   const bw = hw.nearW + 120, bh = A.y + A.h - bodyTop;
-  ctx.fillStyle = darken(col, 0.3); ctx.beginPath(); ctx.ellipse(hw.cx, bodyTop + bh * 0.5, bw / 2, bh * 1.05, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(hw.cx, bodyTop + bh * 0.5, bw / 2 - 3, bh * 1.05 - 3, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 0.3; ctx.fillStyle = lighten(col, 0.3); ctx.beginPath(); ctx.ellipse(hw.cx - bw * 0.2, bodyTop + 6, bw / 5, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  ellipsePx(ctx, hw.cx, bodyTop + bh * 0.5, bw / 2, bh * 1.05, darken(col, 0.3));
+  ellipsePx(ctx, hw.cx, bodyTop + bh * 0.5, bw / 2 - 3, bh * 1.05 - 3, col);
+  ctx.globalAlpha = 0.3; ellipsePx(ctx, hw.cx - bw * 0.2, bodyTop + 6, bw / 5, 4, lighten(col, 0.3)); ctx.globalAlpha = 1;
   const pw = hw.nearW + 26;
   for (let i = 0; i < 2; i++) { const py = bodyTop + 7 + i * 12; rect(ctx, hw.cx - pw / 2, py, pw, 7, '#2a2430'); rect(ctx, hw.cx - pw / 2, py, pw, 2, '#6a6478'); for (let s = 0; s < hw.L; s++) { const x = hw.laneCx(s); circle(ctx, x, py + 3, 2, '#d8d0b0'); } }
   rect(ctx, hw.cx - pw / 2 - 10, bodyTop + 32, pw + 20, 4, '#c8b070'); rect(ctx, hw.cx - pw / 2 - 10, bodyTop + 32, pw + 20, 1, '#f0e0a0');
@@ -153,55 +153,88 @@ function drawViolinBody(ctx, x, y, dir, hold, t) {
 
 // ---------- A real drum kit drawn into the play area ----------
 // Each lane's receptor IS a drum, so hitting a note means hitting that drum.
-function drawDrumKit(ctx, hw, R, opts) {
-  const L = 4, cols = opts.colors || ['#e0563f', '#e8a33a', '#c8ccd8', '#f2cf4a'];
-  const names = opts.padNames || ['KICK', 'TOM', 'SNARE', 'CRASH'];
-  const baseY = hw.nearY;
-  // the rug the kit stands on
-  ctx.fillStyle = '#4a2436'; ctx.beginPath();
-  ctx.moveTo(hw.cx - hw.nearW * 0.62, baseY + 46); ctx.lineTo(hw.cx + hw.nearW * 0.62, baseY + 46);
-  ctx.lineTo(hw.cx + hw.nearW * 0.34, baseY - 16); ctx.lineTo(hw.cx - hw.nearW * 0.34, baseY - 16); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#5e2f44'; ctx.fillRect(hw.cx - hw.nearW * 0.6, baseY + 30, hw.nearW * 1.2, 3);
-  for (let l = 0; l < L; l++) {
-    const p = hw.pos(l, 0), cx = p.x, w = p.w;
-    const flash = R.flashes[l] || 0;
-    const squash = 1 - flash * 0.35;
-    const kind = l === 3 ? 'cymbal' : l === 0 ? 'kick' : 'drum';
-    R.receptors[l] = { x: cx, y: baseY + 2 };
+// Each drum is a cached pixel sprite, so nothing on the kit is anti-aliased.
+function drumSprite(kind, col, lit) {
+  return cached('drum|' + kind + '|' + col + '|' + lit, () => {
+    const OLD = '#1d1620';
     if (kind === 'cymbal') {
-      // a brass disc on a stand, tipping when struck
-      const tilt = flash * 0.5 * Math.sin(R.now * 40);
-      ctx.save(); ctx.translate(cx, baseY - 6); ctx.rotate(tilt);
-      const rw = w * 0.52;
-      ctx.fillStyle = '#8a6a18'; ctx.beginPath(); ctx.ellipse(0, 3, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = cols[l]; ctx.beginPath(); ctx.ellipse(0, 0, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(-rw * 0.3, -1, rw * 0.3, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#a8801a'; ctx.beginPath(); ctx.ellipse(0, 0, rw * 0.2, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      rect(ctx, cx - 1, baseY - 4, 2, 46, '#8a8a98');
-      rect(ctx, cx - 8, baseY + 40, 16, 2, '#6a6a78');
-      if (flash > 0) { ctx.globalAlpha = flash; circle(ctx, cx, baseY - 6, Math.round(rw * 0.9), '#fff6c0'); ctx.globalAlpha = 1; }
-    } else {
-      const rw = w * (kind === 'kick' ? 0.54 : 0.46), rh = rw * (kind === 'kick' ? 0.92 : 0.62) * squash;
-      const top = baseY + 6 - rh;
-      // shell
-      ctx.fillStyle = darken(cols[l], 0.3); ctx.beginPath(); ctx.ellipse(cx, top + rh, rw, rh * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = cols[l]; ctx.fillRect(Math.round(cx - rw), Math.round(top), Math.round(rw * 2), Math.round(rh));
-      ctx.fillStyle = lighten(cols[l], 0.22); ctx.fillRect(Math.round(cx - rw), Math.round(top), 3, Math.round(rh));
-      ctx.fillStyle = darken(cols[l], 0.2); ctx.fillRect(Math.round(cx + rw - 3), Math.round(top), 3, Math.round(rh));
-      // lugs
-      for (let i = -1; i <= 1; i++) rect(ctx, cx + i * rw * 0.6 - 1, top + rh * 0.3, 3, rh * 0.4, '#c8ccd8');
-      // head
-      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#d9d1bd'; ctx.beginPath(); ctx.ellipse(cx, top - 1, rw * 0.74, rw * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#c8ccd8'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.stroke ? 0 : 0; ctx.fill();
-      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw - 2, rw * 0.3, 0, 0, Math.PI * 2); ctx.fill();
-      if (flash > 0) { ctx.globalAlpha = flash * 0.9; ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
-      if (kind === 'kick') { const pd = Math.round(rw * 0.32); ctx.fillStyle = '#2e2a36'; ctx.beginPath(); ctx.ellipse(cx, top + 2, pd, pd * 0.34, 0, 0, Math.PI * 2); ctx.fill(); }
+      const P = new Pix(64, 20), m = P.mask();
+      P.mEllipse(m, 32, 9, 30, 5);
+      P.fill(m, lit ? lighten(col, 0.4) : col, { outline: OLD, shade: false });
+      P.paint(m, (x, y) => y > 10 ? darken(col, 0.26) : null);
+      P.paint(m, (x, y) => (y === 7 || y === 8) && x > 8 && x < 26 ? lighten(col, 0.34) : null);
+      for (let r = 8; r < 30; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - 32) - r) < 0.6 && y > 6 && y < 12 ? darken(col, 0.14) : null);
+      const b = P.mask(); P.mEllipse(b, 32, 8, 5, 2); P.fill(b, lighten(col, 0.22), { outline: OLD, shade: false });
+      P.set(32, 8, '#6a5a2a');
+      return P.toCanvas();
     }
-    // name on a little plate that sits on the shell, where it is readable
+    const big = kind === 'kick';
+    const w = big ? 60 : 48, h = big ? 52 : 34;
+    const P = new Pix(w, h + 8);
+    const rx = w / 2 - 2, ey = 6, depth = h - 8;
+    // shell
+    const sh = P.mask();
+    P.mRect(sh, 2, ey, w - 4, depth);
+    P.mEllipse(sh, w / 2, ey + depth, rx, 6);
+    P.fill(sh, lit ? lighten(col, 0.2) : col, { outline: OLD, shade: false });
+    P.paint(sh, (x, y) => x < 6 ? lighten(col, 0.26) : x > w - 8 ? darken(col, 0.22) : null);
+    P.paint(sh, (x, y) => y > ey + depth - 4 ? darken(col, 0.3) : null);
+    // hoops and lugs
+    const hoop = P.mask(); P.mRect(hoop, 2, ey - 1, w - 4, 3); P.mRect(hoop, 2, ey + depth - 3, w - 4, 3);
+    P.fill(hoop, '#d9c37a', { outline: OLD, shade: false });
+    for (let i = 0; i < (big ? 5 : 4); i++) { const lx = 7 + i * ((w - 14) / (big ? 4 : 3)); const lg = P.mask(); P.mRect(lg, Math.round(lx), ey + 3, 3, depth - 7); P.fill(lg, '#b9bcc8', { outline: OLD, shade: false }); }
+    // head
+    const hd = P.mask(); P.mEllipse(hd, w / 2, ey, rx, 6);
+    P.fill(hd, lit ? '#fffbe8' : '#efe9da', { outline: OLD, shade: false });
+    P.paint(hd, (x, y) => y < ey - 1 ? '#fdf8ec' : y > ey + 2 ? '#dcd4c0' : null);
+    const rim = P.mask(); P.mEllipse(rim, w / 2, ey, rx, 6); const in2 = P.mask(); P.mEllipse(in2, w / 2, ey, rx - 3, 4.2);
+    P.mSub(rim, in2); P.fill(rim, '#c8ccd8', { shade: false });
+    if (big) { const pd = P.mask(); P.mEllipse(pd, w / 2, ey + 1, 7, 2.4); P.fill(pd, '#2e2a36', { shade: false }); }
+    return P.toCanvas();
+  });
+}
+// A real drum kit stood at the near end of the highway.
+function drawDrumKit(ctx, hw, R, opts) {
+  const L = hw.L || 4;
+  const names = (opts.padNames && opts.padNames.length === L) ? opts.padNames : ['KICK', 'TOM', 'SNARE', 'CRASH'].slice(0, L);
+  const palette = opts.colors || ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];
+  const cols = []; for (let i = 0; i < L; i++) cols.push(palette[Math.round(i * (palette.length - 1) / Math.max(1, L - 1))]);
+  const baseY = hw.nearY;
+  // the rug, stepped rather than smooth
+  const rugTop = baseY - 18, rugBot = baseY + 46;
+  for (let y = rugTop; y < rugBot; y++) {
+    const k = (y - rugTop) / (rugBot - rugTop);
+    const hwid = Math.round(hw.nearW * (0.34 + k * 0.28));
+    rect(ctx, hw.cx - hwid, y, hwid * 2, 1, k > 0.9 ? '#3d1c2c' : (Math.floor(y / 6) % 2 ? '#4a2436' : '#57293f'));
+  }
+  rect(ctx, hw.cx - Math.round(hw.nearW * 0.6), rugBot - 4, Math.round(hw.nearW * 1.2), 3, '#7a3a56');
+  for (let l = 0; l < L; l++) {
+    const p = hw.pos(l, 0), cx = Math.round(p.x), w = p.w;
+    const flash = R.flashes[l] || 0, lit = flash > 0.02;
+    R.receptors[l] = { x: cx, y: baseY + 2 };
+    const isCymbal = names[l] === 'CRASH' || (L > 1 && l === L - 1 && names[l] !== 'KICK');
+    if (isCymbal) {
+      const c = drumSprite('cymbal', cols[l], lit);
+      const sc = Math.max(1, Math.round(w * 0.9 / 64));
+      const dw = 64 * sc, dh = 20 * sc;
+      const tilt = lit ? Math.round(Math.sin(R.now * 40) * 2) : 0;
+      rect(ctx, cx - 1, baseY - 6, 2, 48, '#8a8a98'); rect(ctx, cx - 1, baseY - 6, 1, 48, '#b0b0be');
+      rect(ctx, cx - 9, baseY + 40, 18, 3, '#6a6a78');
+      ctx.drawImage(c, cx - dw / 2, baseY - 12 + tilt, dw, dh);
+      if (lit) { ctx.globalAlpha = flash * 0.5; ellipsePx(ctx, cx, baseY - 4 + tilt, dw * 0.5, dh * 0.4, '#fff6c0'); ctx.globalAlpha = 1; }
+    } else {
+      const kind = names[l] === 'KICK' ? 'kick' : 'tom';
+      const c = drumSprite(kind, cols[l], lit);
+      const sc = Math.max(1, Math.round(w * 0.86 / c.width));
+      const dw = c.width * sc, dh = c.height * sc;
+      const squash = lit ? Math.round(flash * 4) : 0;
+      ctx.drawImage(c, cx - dw / 2, baseY + 8 - dh + squash, dw, dh - squash);
+      if (lit) { ctx.globalAlpha = flash * 0.7; ellipsePx(ctx, cx, baseY + 10 - dh + squash, dw * 0.44, dh * 0.12, '#fff6c0'); ctx.globalAlpha = 1; }
+    }
+    // name plate on a little tag
     const nw = textWidth(names[l], { font: 'small' }) + 8;
-    rect(ctx, cx - nw / 2, baseY + 14, nw, 9, flash > 0 ? '#5a4a20' : '#231c30');
-    drawText(ctx, names[l], cx, baseY + 16, flash > 0 ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
+    rect(ctx, cx - nw / 2, baseY + 16, nw, 9, lit ? '#5a4a20' : '#231c30');
+    rect(ctx, cx - nw / 2, baseY + 16, nw, 1, lit ? '#8a7430' : '#3a3048');
+    drawText(ctx, names[l], cx, baseY + 18, lit ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
   }
 }

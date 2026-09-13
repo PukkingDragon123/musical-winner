@@ -139,7 +139,7 @@ class SelectScene {
     const sx = this.memberX(this.spot);
     ctx.globalAlpha = 0.2; ctx.fillStyle = '#fff4c0';
     ctx.beginPath(); ctx.moveTo(sx - 22, 18); ctx.lineTo(sx + 22, 18); ctx.lineTo(sx + 110, floorY + 10); ctx.lineTo(sx - 110, floorY + 10); ctx.fill(); ctx.globalAlpha = 1;
-    ctx.globalAlpha = 0.16; ctx.beginPath(); ctx.ellipse(sx, floorY + 8, 105, 22, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.16; ellipsePx(ctx, sx, floorY + 8, 105, 22, '#fff4c0'); ctx.globalAlpha = 1;
     // the four on stage
     ROSTER.forEach((rr, i) => {
       const x = this.memberX(i), on = i === this.sel, spec2 = HERO_PRESETS[rr.key];
