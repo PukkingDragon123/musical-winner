@@ -67,12 +67,19 @@ function randomBugSpec(rng) {
     colors: { body: base, body2: dark, head: rng.chance(0.5) ? base : lighten(base, 0.08), limb: dark, wing: rng.pick(['#dfe9ff', '#ffd0e0', '#dde4cd', '#cfe8ff']), wing2: dark, eye: '#c83030', trim: lighten(base, 0.3) },
     outfit: {} };
   const r = rng();
-  if (r < 0.22) { spec.outfit.jacket = rng.pick(['#c04040', '#4060b0', '#3a8a5a', '#8a5a3a', '#242430', '#e0a030']); spec.outfit.shirt = '#f2ece0'; }
-  else if (r < 0.38) { spec.outfit.vest = rng.pick(['#f2ece0', '#3a3a46', '#8a3a5a']); spec.outfit.vestTrim = rng.pick(['#d84040', '#e0b040']); }
-  else if (r < 0.52) spec.outfit.tee = rng.pick(['#4d86c6', '#d8382c', '#2c2c36', '#79c257', '#e8c020']);
-  else if (r < 0.6) spec.outfit.blouse = '#f2ece0';
+  // The street is Tokyo, so half of it is in something you would actually see
+  // there: a festival coat, a school jacket, a yukata on the way to a matsuri.
+  if (r < 0.13) { spec.outfit.happi = rng.pick(['#2b3f7a', '#8a2a2a', '#1f5a4a', '#2c2c3a']); spec.outfit.happiTrim = rng.pick(['#f4efe4', '#e8c860']); }
+  else if (r < 0.22) spec.outfit.gakuran = true;
+  else if (r < 0.31) { spec.outfit.yukata = rng.pick(['#4a6fa8', '#8a4a6a', '#3f7a6a', '#c0c8d8', '#7a5a9a']); spec.outfit.obi = rng.pick(['#c8433a', '#e0b040', '#2c2c3a']); spec.outfit.yukataPat = rng.pick(['#f4efe4', '#ffd6e4', '#d8ecff']); }
+  else if (r < 0.44) { spec.outfit.jacket = rng.pick(['#c04040', '#4060b0', '#3a8a5a', '#8a5a3a', '#242430', '#e0a030']); spec.outfit.shirt = '#f2ece0'; }
+  else if (r < 0.54) { spec.outfit.vest = rng.pick(['#f2ece0', '#3a3a46', '#8a3a5a']); spec.outfit.vestTrim = rng.pick(['#d84040', '#e0b040']); }
+  else if (r < 0.66) spec.outfit.tee = rng.pick(['#4d86c6', '#d8382c', '#2c2c36', '#79c257', '#e8c020', '#f070b0']);
+  else if (r < 0.72) spec.outfit.blouse = '#f2ece0';
+  if (rng.chance(0.12)) spec.outfit.hachimaki = true;
   const h = rng();
-  if (h < 0.14) { spec.outfit.hat = 'cap'; spec.outfit.hatColor = rng.pick(['#242430', '#c04040', '#3060b0']); }
+  if (h < 0.1) { spec.outfit.hat = 'cap'; spec.outfit.hatColor = rng.pick(['#242430', '#c04040', '#3060b0']); }
+  else if (h < 0.16) spec.outfit.hat = 'gakubo';
   else if (h < 0.2) { spec.outfit.hat = 'top'; spec.outfit.hatColor = '#242430'; }
   else if (h < 0.3) { spec.outfit.hat = 'beanie'; spec.outfit.hatColor = rng.pick(['#3a7ac0', '#d05070', '#e0b040']); }
   else if (h < 0.36) spec.outfit.hat = 'flower';
@@ -209,6 +216,42 @@ function buildBug(spec, pose, expr) {
     const v = P.mask(); P.mPoly(v, [[cx - 3, bcy - geo.ry], [cx + 4, bcy - geo.ry], [cx + 3, bcy + 3], [cx - 2, bcy + 3]]); P.mSub(m, v);
     P.fill(m, O.vest, { outline: ol });
     if (O.vestTrim) P.paint(m, (x, y) => (Math.abs(x - (cx - 5)) < 1 || Math.abs(x - (cx + 5)) < 1) && (y - bcy) % 3 === 0 ? O.vestTrim : null);
+  }
+  // ---- happi: the short festival coat, open at the front, with a wide collar
+  // band running down each side and a character block on the back panel
+  if (O.happi) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 3);
+    const gap = P.mask(); P.mPoly(gap, [[cx - 2, bcy - geo.ry], [cx + 3, bcy - geo.ry], [cx + 3, bcy + geo.ry], [cx - 2, bcy + geo.ry]]); P.mSub(m, gap);
+    P.fill(m, O.happi, { outline: ol });
+    const trim = O.happiTrim || '#f4efe4';
+    // the collar band, following the opening down both sides
+    P.paint(m, (x, y) => (Math.abs(x - (cx - 4)) < 1.4 || Math.abs(x - (cx + 5)) < 1.4) ? trim : null);
+    // a sash at the waist
+    P.paint(m, (x, y) => y > bcy + geo.ry - 7 && y < bcy + geo.ry - 4 ? darken(O.happi, 0.24) : null);
+    // three bars standing in for a printed character on the shoulder
+    for (let i = 0; i < 3; i++) P.paint(m, (x, y) => y === bcy - geo.ry + 4 + i * 2 && x > cx - geo.rx + 2 && x < cx - 3 ? trim : null);
+  }
+  // ---- gakuran: the high-collared black school jacket, gold buttons
+  if (O.gakuran) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 4);
+    P.fill(m, '#1f1f2a', { outline: ol });
+    P.paint(m, (x, y) => y < bcy - geo.ry + 4 ? '#2c2c3a' : null);          // the stand collar
+    P.paint(m, (x, y) => y === bcy - geo.ry + 3 ? '#d8b040' : null);        // its gold trim
+    for (let i = 0; i < 3; i++) P.paint(m, (x, y) => Math.abs(x - cx - 1) < 1 && y === bcy - 2 + i * 4 ? '#e0c060' : null);
+    P.paint(m, (x, y) => y < bcy && x < cx - geo.rx * 0.45 ? '#31313f' : null);
+  }
+  // ---- yukata: a light summer kimono, crossed left over right, with a wide obi
+  if (O.yukata) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 2);
+    P.fill(m, O.yukata, { outline: ol });
+    const pat = O.yukataPat || lighten(O.yukata, 0.22);
+    P.paint(m, (x, y) => (x * 3 + y * 2) % 11 === 0 ? pat : null);          // a scattered print
+    // the crossed front
+    P.paint(m, (x, y) => { const t = y - (bcy - geo.ry); if (t < 0 || t > 12) return null;
+      return Math.abs((x - cx) - (t * 0.55 - 3)) < 1.2 ? '#f6f1e6' : null; });
+    // the obi, and its knot
+    P.paint(m, (x, y) => y > bcy + 1 && y < bcy + 6 ? (O.obi || '#c8433a') : null);
+    P.paint(m, (x, y) => y > bcy + 1 && y < bcy + 6 && (y - bcy) % 2 === 0 ? darken(O.obi || '#c8433a', 0.2) : null);
   }
   if (O.jacket) {
     const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 4);
@@ -483,6 +526,25 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
 }
 function drawHat(P, spec, cx, topY, hr, ol) {
   const O = spec.outfit || {};
+  // ---- hachimaki: a headband knotted at the side, with a rising sun on it
+  if (O.hachimaki) {
+    const m = P.mask(); P.mRect(m, cx - hr.rx - 1, topY + 3, hr.rx * 2 + 2, 4);
+    P.fill(m, '#f4efe4', { outline: ol, shade: false });
+    const d = P.mask(); P.mEllipse(d, cx, topY + 5, 2.2, 2);
+    P.fill(d, '#d8382c', { shade: false });
+    // the knot and its two tails hanging down one side
+    const k = P.mask(); P.mRect(k, cx + hr.rx, topY + 3, 3, 4);
+    P.mRect(k, cx + hr.rx + 1, topY + 6, 2, 7); P.mRect(k, cx + hr.rx + 3, topY + 6, 2, 5);
+    P.fill(k, '#f4efe4', { outline: ol, shade: false });
+  }
+  // ---- a folded paper crown of a matsuri cap, or a school cap
+  if (O.hat === 'gakubo') {
+    const m = P.mask(); P.mEllipse(m, cx, topY + 2, hr.rx + 1, 5);
+    const c2 = P.mask(); P.mRect(c2, 0, topY + 2, BUG_W, BUG_H); P.mSub(m, c2);
+    P.mRect(m, cx - hr.rx - 2, topY + 1, hr.rx * 2 + 4, 2);
+    P.fill(m, '#22222e', { outline: ol });
+    P.paint(m, (x, y) => y === topY + 1 ? '#d8b040' : null);
+  }
   if (O.hat === 'cap') { const m = P.mask(); P.mEllipse(m, cx, topY + 2, hr.rx + 1, 5); const c2 = P.mask(); P.mRect(c2, 0, topY + 2, BUG_W, BUG_H); P.mSub(m, c2);
     P.mRect(m, cx - 1, topY + 1, hr.rx + 6, 3); P.fill(m, O.hatColor || '#242430', { outline: ol });
     P.paint(m, (x, y) => y < topY - 2 && x < cx ? lighten(O.hatColor || '#242430', 0.18) : null); }

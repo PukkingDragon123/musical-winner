@@ -2,6 +2,9 @@
 'use strict';
 const OL = '#1a1410';
 function propCanvas(kind, variant = 0) {
+  // Callers sometimes hand this a ratio rather than an index; a fractional
+  // variant silently indexes past the end of a palette and yields undefined.
+  variant = Math.abs(Math.floor(variant)) || 0;
   return cached('prop|' + kind + '|' + variant, () => {
     let P;
     switch (kind) {
@@ -44,6 +47,84 @@ function propCanvas(kind, variant = 0) {
       case 'suitcase': { P = new Pix(18, 14); const m = P.mask(); P.mRound(m, 0, 3, 18, 11, 2); P.fill(m, '#8a5a3a', { outline: OL }); const h = P.mask(); P.mRect(h, 6, 0, 6, 4); P.fill(h, '#5a3a20', { outline: OL, shade: false }); P.paint(m, (x, y) => y === 8 ? '#5a3a20' : null); break; }
       case 'seat': { P = new Pix(30, 34); const m = P.mask(); P.mRound(m, 2, 0, 26, 24, 3); P.fill(m, '#3a4a6a', { outline: OL }); const c = P.mask(); P.mRound(c, 5, 22, 20, 10, 2); P.fill(c, '#4a5a7a', { outline: OL }); P.paint(m, (x, y) => y === 4 || y === 18 ? '#2a3a5a' : null); break; }
       case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
+      // ---- Tokyo street furniture and pop culture
+      case 'vending': { // the lit drinks machine on every corner
+        P = new Pix(18, 30); const m = P.mask(); P.mRect(m, 0, 0, 18, 30);
+        P.fill(m, '#d8dce4', { outline: OL }); P.grain(m, 0.04, 2);
+        const win = P.mask(); P.mRect(win, 2, 2, 14, 17); P.fill(win, '#1d2430', { shade: false });
+        const r2 = makeRng(7 + variant);
+        for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) {
+          const cx2 = 3 + col * 3, cy2 = 3 + row * 5;
+          P.set(cx2, cy2, r2.pick(['#e0483a', '#3a8ad8', '#e8c040', '#48b060', '#f07ab0']));
+          P.set(cx2 + 1, cy2, '#f4f4f8'); P.set(cx2, cy2 + 1, r2.pick(['#c03828', '#2a6ab0', '#c8a030']));
+          P.set(cx2 + 1, cy2 + 1, '#d0d4dc'); P.set(cx2, cy2 + 2, '#8a9098'); P.set(cx2 + 1, cy2 + 2, '#8a9098');
+        }
+        P.paint(win, (x, y) => y === 2 ? '#6a7a90' : null);
+        const tray = P.mask(); P.mRect(tray, 3, 22, 12, 4); P.fill(tray, '#2a3038', { outline: OL, shade: false });
+        for (let i = 0; i < 3; i++) P.set(13, 20 + i, '#f0c040');
+        break; }
+      case 'gacha': { // a stack of capsule machines
+        P = new Pix(16, 26); const base = P.mask(); P.mRect(base, 1, 14, 14, 12);
+        P.fill(base, '#c8443a', { outline: OL }); P.grain(base, 0.05, 4);
+        const dome = P.mask(); P.mEllipse(dome, 8, 10, 7, 8); const cut = P.mask(); P.mRect(cut, 0, 14, 16, 12); P.mSub(dome, cut);
+        P.fill(dome, '#cfe4f4', { outline: OL, shade: false });
+        const r3 = makeRng(11 + variant);
+        for (let i = 0; i < 14; i++) { const cx2 = r3.int(3, 12), cy2 = r3.int(6, 13);
+          P.set(cx2, cy2, r3.pick(['#f0a0c0', '#a0d8f0', '#f8e070', '#b0f0a0', '#e08060'])); }
+        const knob = P.mask(); P.mEllipse(knob, 8, 18, 2.4, 2.4); P.fill(knob, '#e8e0d0', { outline: OL });
+        P.set(8, 18, '#3a3a44');
+        const slot = P.mask(); P.mRect(slot, 5, 22, 6, 3); P.fill(slot, '#2a2028', { shade: false });
+        break; }
+      case 'arcade': { // a candy cabinet with an attract screen
+        P = new Pix(22, 34); const m = P.mask(); P.mRound(m, 0, 0, 22, 34, 2);
+        P.fill(m, ['#2a4ab0', '#c8383a', '#6a2a9a'][variant % 3], { outline: OL }); P.grain(m, 0.04, 6);
+        const scr = P.mask(); P.mRect(scr, 3, 5, 16, 12); P.fill(scr, '#0e1420', { outline: '#0a0a10', shade: false });
+        const r4 = makeRng(17 + variant);
+        for (let i = 0; i < 26; i++) P.set(r4.int(4, 18), r4.int(6, 16), r4.pick(['#40e0f0', '#f0d040', '#f04080', '#60f080']));
+        const panel = P.mask(); P.mRect(panel, 2, 19, 18, 6); P.fill(panel, '#1a1a24', { outline: OL, shade: false });
+        P.set(6, 21, '#e04040'); P.set(9, 21, '#40a0e0'); P.set(12, 21, '#e0c040');
+        P.set(16, 21, '#c8c8d4'); P.set(16, 20, '#e8e8f0');
+        const top = P.mask(); P.mRect(top, 1, 1, 20, 3); P.fill(top, '#f0f0f8', { shade: false });
+        P.paint(top, (x, y) => x % 3 === 0 ? '#e04080' : null);
+        break; }
+      case 'lantern2': { // a paper chochin with a band of ink down it
+        P = new Pix(12, 18); const m = P.mask(); P.mEllipse(m, 6, 9, 5, 8);
+        P.fill(m, ['#e8e0cc', '#d8483a', '#e8c860'][variant % 3], { outline: OL });
+        for (let y = 3; y < 16; y += 3) P.paint(m, (x, yy) => yy === y ? '#b8a88c' : null);
+        P.paint(m, (x, y) => x >= 5 && x <= 6 && y > 5 && y < 13 ? '#2a2028' : null);
+        const cap = P.mask(); P.mRect(cap, 4, 0, 4, 2); P.mRect(cap, 4, 16, 4, 2); P.fill(cap, '#3a3028', { outline: OL, shade: false });
+        break; }
+      case 'koban': { // the little police box, with its red lamp
+        P = new Pix(24, 28); const m = P.mask(); P.mRect(m, 0, 4, 24, 24);
+        P.fill(m, '#d8d4c8', { outline: OL }); P.grain(m, 0.04, 8);
+        const win = P.mask(); P.mRect(win, 3, 8, 7, 8); P.mRect(win, 14, 8, 7, 8);
+        P.fill(win, '#8ab8d8', { outline: OL, shade: false });
+        const door = P.mask(); P.mRect(door, 10, 18, 5, 10); P.fill(door, '#3a4450', { outline: OL, shade: false });
+        const lamp = P.mask(); P.mEllipse(lamp, 12, 2, 3, 2.4); P.fill(lamp, '#e03a3a', { outline: OL, shade: false });
+        P.set(11, 1, '#ff8a7a');
+        break; }
+      case 'crate2': { // stacked beer crates outside an izakaya
+        P = new Pix(20, 14); const m = P.mask(); P.mRect(m, 0, 0, 20, 14);
+        P.fill(m, ['#3a6a4a', '#8a3a3a', '#3a4a7a'][variant % 3], { outline: OL });
+        for (let y = 2; y < 13; y += 4) for (let x = 2; x < 18; x += 4) { const h = P.mask(); P.mRect(h, x, y, 3, 3); P.fill(h, '#1a1a20', { shade: false }); }
+        break; }
+      case 'bike': { // a mamachari leaning on its stand
+        P = new Pix(24, 14); const m = P.mask();
+        P.mEllipse(m, 5, 10, 3.6, 3.6); P.mEllipse(m, 19, 10, 3.6, 3.6);
+        P.fill(m, '#2a2a32', { outline: OL, shade: false });
+        const fr = P.mask(); P.mLine(fr, 5, 10, 12, 5, 1); P.mLine(fr, 12, 5, 19, 10, 1); P.mLine(fr, 12, 5, 9, 10, 1);
+        P.mRect(fr, 10, 2, 5, 2); P.fill(fr, ['#3a6ab0', '#8a3a5a', '#4a7a4a'][variant % 3], { outline: OL, shade: false });
+        const bask = P.mask(); P.mRect(bask, 2, 3, 6, 4); P.fill(bask, '#c8c0a8', { outline: OL, shade: false });
+        break; }
+      case 'sakura': { // a branch of blossom to hang over a scene
+        P = new Pix(26, 16); const br = P.mask(); P.mLine(br, 0, 12, 26, 6, 2);
+        P.fill(br, '#5a3a2a', { outline: OL, shade: false });
+        const r5 = makeRng(23 + variant);
+        for (let i = 0; i < 18; i++) { const bx = r5.int(2, 24), by = r5.int(1, 12);
+          const fl = P.mask(); P.mEllipse(fl, bx, by, 2, 1.8);
+          P.fill(fl, r5.pick(['#ffd0e0', '#ffb8d0', '#fff0f4']), { shade: false });
+          P.set(bx, by, '#ff90b8'); }
+        break; }
       // ---- stadium production: the expensive gear you had when you were somebody
       case 'cab': { // a 4x12 guitar cabinet, tolex and grille cloth
         P = new Pix(30, 26); const m = P.mask(); P.mRect(m, 0, 0, 30, 26);

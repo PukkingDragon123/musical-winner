@@ -294,18 +294,34 @@ class ConcertScene {
     if (this.phase === 'rise' || this.phase === 'hello') {
       const k = clamp(this.phaseT / 1.1, 0, 1), pop = popIn(this.phaseT - 0.3, 0.5);
       ctx.globalAlpha = clamp(k, 0, 1);
-      // the card sits above the backdrop rather than across it, on a band of
-      // shadow so gold type never fights the lit letters behind it
-      const tw = textWidth(OPERA.title, { scale: 6 }) + 60;
-      ctx.globalAlpha = clamp(k, 0, 1) * 0.72;
-      rect(ctx, W / 2 - tw / 2, 58, tw, 66, '#07060f');
+      // ---- the title card, built like a Japanese tour poster: a black band
+      // across the frame, the band name set huge, a vertical strip of the
+      // venue down one side, and a red seal stamped over the corner.
+      const tw = textWidth(OPERA.title, { scale: 5 }) + 150;
+      const cardW = Math.min(W - 40, Math.max(tw, 640)), cardX = Math.round(W / 2 - cardW / 2), cardY = 52;
       ctx.globalAlpha = clamp(k, 0, 1);
-      rect(ctx, W / 2 - tw / 2, 58, tw, 1, '#4a3a6a'); rect(ctx, W / 2 - tw / 2, 123, tw, 1, '#4a3a6a');
-      ctx.save(); ctx.translate(W / 2, 96); ctx.scale(pop, pop);
-      drawText(ctx, OPERA.title, 0, -26, '#ffd24a', { align: 'center', scale: 6, outline: '#4a1e08' });
+      // the band itself, with a hard rule top and bottom
+      rect(ctx, cardX, cardY, cardW, 92, '#0a0810');
+      rect(ctx, cardX, cardY, cardW, 2, '#e03a4a');
+      rect(ctx, cardX, cardY + 90, cardW, 2, '#e03a4a');
+      halftone(ctx, cardX, cardY + 2, cardW, 88, '#e03a4a', 6, 0.1);
+      // a vertical strip down the left, the way a poster carries the venue
+      rect(ctx, cardX + 8, cardY + 8, 16, 76, '#e03a4a');
+      for (let i = 0; i < 5; i++) rect(ctx, cardX + 11, cardY + 14 + i * 14, 10, 9, '#0a0810');
+      // the name, with a red shadow behind it so it sits off the black
+      ctx.save(); ctx.translate(cardX + 34 + (cardW - 70) / 2, cardY + 22); ctx.scale(pop, pop);
+      drawText(ctx, OPERA.title, 3, 3, '#7a1420', { align: 'center', scale: 5 });
+      drawText(ctx, OPERA.title, 0, 0, '#f6efe2', { align: 'center', scale: 5 });
       ctx.restore();
-      uiRibbon(ctx, W / 2, 136, OPERA.subtitle + '  -  SOLD OUT', { scale: 3, color: '#7a1a4a' });
-      ctx.globalAlpha = 1;
+      drawText(ctx, OPERA.venueName + '   ' + OPERA.seats, cardX + 34 + (cardW - 70) / 2, cardY + 64, '#e0a0a8', { align: 'center' });
+      // the seal, stamped over the corner at an angle
+      ctx.save(); ctx.translate(cardX + cardW - 28, cardY + 68); ctx.rotate(-0.12);
+      ellipsePx(ctx, 0, 0, 20, 20, '#c8283a');
+      ellipsePx(ctx, 0, 0, 17, 17, '#0a0810');
+      ellipsePx(ctx, 0, 0, 15, 15, '#c8283a');
+      for (let i = 0; i < 3; i++) rect(ctx, -8, -8 + i * 6, 16, 4, '#f6e6e8');
+      ctx.restore();
+      uiRibbon(ctx, W / 2, cardY + 100, OPERA.subtitle, { scale: 3, color: '#7a1a2a' });      ctx.globalAlpha = 1;
       if (this.phase === 'hello') bubble(ctx, W / 2 + 170, 300, this.beats[0].text, { dark: true, color: '#8a2a5a' });
       ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.t * 4);
       drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W / 2, H - 54, '#cfc9e6', { align: 'center', scale: 2 });

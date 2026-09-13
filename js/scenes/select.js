@@ -92,7 +92,7 @@ function drawHelp(ctx) {
     ['star', 'STARS', 'Gold notes pay triple.'], ['fire', 'BOMBS', 'Red notes: do not touch.'],
     ['note', 'BAND', 'Tap the closing ring when a bandmate solos.'],
     ['chips', 'SCORE', 'Applause x Mult = cash.'],
-    ['phone', 'TRAVEL', 'Every move on the map costs an Uber ticket.'],
+    ['phone', 'TRAVEL', 'Every move on the map costs a ride off your train pass.'],
     ['food', 'DINNER', 'Feed every bug at night or they leave.'],
     ['star', 'ABILITIES', 'Draft one new ability after every set.'],
   ];

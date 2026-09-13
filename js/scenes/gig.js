@@ -2,8 +2,8 @@
 'use strict';
 class GigScene {
   constructor(node) {
-    const r = Game.run; this.node = node; this.venue = VENUES[node.venue] || VENUES.corner; this.t = 0; this.phase = 'prep';
-    this.mode = node.icon === 'elite' ? 'elite' : node.venue === 'bridge' ? 'boss' : 'gig';
+    const r = Game.run; this.node = node; this.venue = VENUES[node.venue] || VENUES.shotengai; this.t = 0; this.phase = 'prep';
+    this.mode = node.icon === 'elite' ? 'elite' : (node.icon === 'boss' || node.venue === 'skytree') ? 'boss' : 'gig';
     this.bossMod = this.mode !== 'gig' ? (node.bossMod || (node.bossMod = r.rng.pick(BOSS_MOD_KEYS))) : null;
     this.difficulty = clamp(Math.round(1 + r.day * 0.8 + (this.mode === 'elite' ? 1 : 0) + (this.mode === 'boss' ? 2 : 0)), 1, 7);
     const leader = r.members[0], fam = INSTRUMENTS[leader.instrument].family;
@@ -23,6 +23,12 @@ class GigScene {
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
     this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
     this.cam = new Camera(); this.cutIn = null; this.haze = new Haze(6, hashStr(node.id) & 63);
+    // ---- the duel. Favour runs 0..1; you start level and the crowd decides.
+    if (this.mode === 'boss') {
+      this.rival = { favour: 0.5, phase: 0, spec: HERO_PRESETS.smoke || randomBugSpec(makeRng(99)),
+                     tauntT: 0, taunt: null, hurt: 0, flash: 0, downed: false };
+      this.bossMod = RIVAL.phases[0].mod;
+    }
     this.train = { x: -700, t: r.rng.range(4, 9) };
   }
   // Point the scene at one tune: everything downstream reads this.song.
@@ -117,7 +123,7 @@ class GigScene {
       this.rhythm.instr = lInstr; this.rhythm.instrKey = leader.instrument; this.rhythm.member = leader;
       this.earMode = true;
     } else this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
-      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); },
+      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); this.duelJudge(j); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
@@ -149,7 +155,7 @@ class GigScene {
     if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
-      this.backing.update(); this.rhythm.update(dt);
+      this.backing.update(); this.rhythm.update(dt); this.updateDuel(dt);
       this.cam.update(dt);
       if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
       // ---- the camera works the set like a crew would
@@ -225,6 +231,13 @@ class GigScene {
     res.total = res.perfect + res.great + res.good + res.miss;
     res.acc = res.total ? (res.perfect + res.great * 0.75 + res.good * 0.4) / res.total : 0;
     this.res = res;
+    // Winning the room off her is the whole point of the finale, so it has to
+    // be settled before the tally is run, not after it has already paid out.
+    if (this.rival) {
+      this.duelWon = this.rival.favour >= 0.75;
+      if (this.duelWon) { this.S.addCash(60, 'You took the room from ' + RIVAL.name); this.S.timesMult(1.5, 'Headliner'); }
+      else this.S.steps.push({ kind: 'note', label: RIVAL.name + ' kept the crowd (needed 75%)' });
+    }
     const total = this.S.finish({ combo: this.rhythm.combo, maxCombo: res.maxCombo, misses: res.miss, watchers: this.crowd.watchers.length, hype: this.rhythm.hype, acc: res.acc });
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
@@ -367,6 +380,83 @@ class GigScene {
     drawText(ctx, t2.composer.toUpperCase(), W / 2, cy + 92 + slide, '#b8aed0', { align: 'center' });
     if (b.t > 1.5) { ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6); drawText(ctx, 'COUNTING IN', W / 2, cy + 114 + slide, '#6be585', { align: 'center' }); ctx.globalAlpha = 1; }
     this.fx.draw(ctx);
+  }
+  // ---------- The duel ----------
+  // Every judgement moves the crowd. Land them and the favour swings to you;
+  // drop them and she takes it back. Crossing a third of the bar flips her
+  // into the next phase, which changes what she is doing to you.
+  duelJudge(j) {
+    const R = this.rival; if (!R || R.downed) return;
+    const d = j === 'perfect' ? 0.022 : j === 'great' ? 0.013 : j === 'good' ? 0.004 : -0.028;
+    R.favour = clamp(R.favour + d, 0, 1);
+    if (d > 0) { R.hurt = Math.min(1, R.hurt + 0.5); R.flash = 0.2; }
+    // she answers when you take a chunk off her
+    const want = R.favour > 0.66 ? 2 : R.favour > 0.33 ? 1 : 0;
+    const next = Math.max(R.phase, want);
+    if (next !== R.phase) {
+      R.phase = next;
+      this.bossMod = RIVAL.phases[next].mod;
+      if (this.rhythm && this.rhythm.mods) this.rhythm.mods.bossMod = this.bossMod;
+      R.taunt = RIVAL.taunts[next]; R.tauntT = 3;
+      this.cam.hit(5); Game.shake.hit(6, 0.4); Audio.ui('boo');
+      this.fx.burst(W * 0.78, this.L.groundY - 40, 26, { color: [RIVAL.phases[next].color, '#fff'], speed: 130, life: 0.8, kind: 'spark', gravity: 40, size: 2 });
+    }
+    if (R.favour >= 1 && !R.downed) { R.downed = true; R.taunt = 'Then it is yours.'; R.tauntT = 4; Audio.ui('fanfare'); Game.shake.hit(9, 0.6); }
+  }
+  updateDuel(dt) {
+    const R = this.rival; if (!R) return;
+    R.tauntT = Math.max(0, R.tauntT - dt);
+    R.hurt = Math.max(0, R.hurt - dt * 1.6);
+    R.flash = Math.max(0, R.flash - dt * 4);
+    // she works the crowd back while you are not scoring
+    if (!R.downed && this.rhythm && this.rhythm.now > 0) R.favour = clamp(R.favour - dt * 0.012, 0, 1);
+  }
+  // Her side of the stage, and the bar that says who the room belongs to.
+  drawDuel(ctx) {
+    const R = this.rival; if (!R) return;
+    const L = this.L, gy = L.groundY, rx = Math.round(W * 0.8);
+    // the rival, lit from behind, sagging as she loses the room
+    const slump = R.downed ? 10 : Math.round(R.favour * 8);
+    drawShadow(ctx, rx, gy + slump, 46, 0.32);
+    ctx.globalAlpha = R.downed ? 0.6 : 1;
+    lightPool(ctx, rx, gy - 40, 90, RIVAL.phases[R.phase].color, 0.18);
+    drawBugAt(ctx, R.spec, rx, gy + slump, {
+      pose: R.downed ? 'sad' : (Math.floor(this.t * 4) % 2 ? 'play' : 'play2'),
+      expr: R.downed ? 'sad' : R.hurt > 0.3 ? 'shock' : 'angry',
+      scale: 2.1, rate: 3.4, bounce: R.downed ? 0.3 : 1.6,
+    });
+    ctx.globalAlpha = 1;
+    if (R.flash > 0) { ctx.globalAlpha = R.flash; ellipsePx(ctx, rx, gy - 34, 40, 44, '#ffffff'); ctx.globalAlpha = 1; }
+    // her name plate
+    const nm = RIVAL.name, nw = textWidth(nm) + 16;
+    rect(ctx, rx - nw / 2, gy + 10, nw, 13, '#1a1420');
+    frame(ctx, rx - nw / 2, gy + 10, nw, 13, RIVAL.phases[R.phase].color);
+    drawText(ctx, nm, rx, gy + 13, RIVAL.phases[R.phase].color, { align: 'center' });
+    // ---- the favour bar, across the top: her side against yours
+    const bw = 420, bx = Math.round(W / 2 - bw / 2), by = 40;
+    rect(ctx, bx - 3, by - 3, bw + 6, 20, '#15121c');
+    frame(ctx, bx - 3, by - 3, bw + 6, 20, '#6a5f8a');
+    rect(ctx, bx, by, bw, 14, '#2a2036');
+    const mine = Math.round(bw * R.favour);
+    for (let i = 0; i < mine; i++) rect(ctx, bx + i, by, 1, 14, i > mine - 4 ? '#fff6d0' : mixColor('#e8563f', '#ffd24a', i / bw));
+    rect(ctx, bx + mine, by, bw - mine, 14, RIVAL.phases[R.phase].color);
+    ctx.globalAlpha = 0.25; halftone(ctx, bx + mine, by, bw - mine, 14, '#000000', 4, 1); ctx.globalAlpha = 1;
+    // the marker where the room currently stands
+    rect(ctx, bx + mine - 1, by - 4, 3, 22, '#ffffff');
+    drawText(ctx, 'YOU', bx + 4, by + 4, '#fff6d0', { font: 'small' });
+    drawText(ctx, RIVAL.title, bx + bw - 4, by + 4, '#1a1420', { align: 'right', font: 'small' });
+    // which phase she is in
+    const ph = RIVAL.phases[R.phase];
+    drawText(ctx, 'PHASE ' + (R.phase + 1) + '  ' + ph.name + '  -  ' + ph.desc, W / 2, by + 22, ph.color, { align: 'center', font: 'small' });
+    // and what she has to say about it
+    if (R.tauntT > 0 && R.taunt) {
+      ctx.globalAlpha = clamp(R.tauntT, 0, 1);
+      const tw = textWidth(R.taunt) + 20;
+      rect(ctx, rx - tw / 2, gy - 104, tw, 18, 'rgba(14,10,20,0.88)');
+      frame(ctx, rx - tw / 2, gy - 104, tw, 18, ph.color);
+      drawText(ctx, R.taunt, rx, gy - 99, '#f0e8ff', { align: 'center' });
+      ctx.globalAlpha = 1;
+    }
   }
   // The set read-outs live outside the camera: the shot moves, the HUD does not.
   drawSetHud(ctx) {
@@ -529,6 +619,7 @@ class GigScene {
         this.cam.done(ctx);
       }
       this.drawSetHud(ctx);
+      if (this.rival) this.drawDuel(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
       const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
       const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);

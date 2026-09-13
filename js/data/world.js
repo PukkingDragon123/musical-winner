@@ -1,27 +1,29 @@
 // ---------- Venues, boss modifiers, days, story ----------
 'use strict';
 const VENUES = {
-  corner:    { name: 'Valencia St Corner', kind: 'street', styles: ['victorian', 'pastel', 'victorian'], wealth: 1.0, traffic: 1.0, sky: 0.15, landmarks: ['sutro'] },
-  subway:    { name: '16th St BART', kind: 'subway', wealth: 0.85, traffic: 1.7, sky: 0.5 },
-  park:      { name: 'Dolores Park', kind: 'park', wealth: 1.0, traffic: 0.9, sky: 0.2, landmarks: ['transamerica', 'sutro'] },
-  haight:    { name: 'Haight & Ashbury', kind: 'street', styles: ['pastel', 'pastel', 'victorian'], wealth: 0.9, traffic: 1.3, sky: 0.3 },
-  cablecar:  { name: 'Powell St Turnaround', kind: 'street', styles: ['downtown', 'brick', 'victorian'], wealth: 1.3, traffic: 1.2, sky: 0.35, cablecar: true, landmarks: ['transamerica'] },
-  chinatown: { name: 'Grant Ave, Chinatown', kind: 'street', styles: ['chinatown', 'chinatown', 'brick'], wealth: 1.1, traffic: 1.3, sky: 0.7, lanterns: true, landmarks: ['transamerica', 'coit'] },
-  fidi:      { name: 'Montgomery St', kind: 'street', styles: ['downtown', 'downtown', 'downtown'], wealth: 1.9, traffic: 0.8, sky: 0.45, tall: true, landmarks: ['transamerica'] },
-  pier:      { name: 'Pier 39', kind: 'pier', wealth: 1.5, traffic: 1.2, sky: 0.55, landmarks: ['coit'] },
-  ferry:     { name: 'Ferry Building', kind: 'pier', wealth: 1.6, traffic: 1.0, sky: 0.25, ferry: true },
-  ggpark:    { name: 'Golden Gate Park', kind: 'park', wealth: 1.3, traffic: 1.0, sky: 0.3, ggpark: true },
-  bridge:    { name: 'Golden Gate Bridge', kind: 'bridge', wealth: 2.2, traffic: 1.0, sky: 0.6 },
-  stadium:   { name: 'Oracle Park', kind: 'stadium', wealth: 3, traffic: 0, sky: 0.9 },
+  shotengai: { name: 'Shimokita Shotengai', kind: 'street', styles: ['shitamachi', 'shitamachi', 'showa'], wealth: 1.0, traffic: 1.0, sky: 0.15, banners: true, landmarks: ['tokyotower'] },
+  metro:     { name: 'Shibuya Station', kind: 'subway', wealth: 0.85, traffic: 1.8, sky: 0.5 },
+  park:      { name: 'Yoyogi Park', kind: 'park', wealth: 1.0, traffic: 0.9, sky: 0.2, landmarks: ['tokyotower', 'skytree'] },
+  takeshita: { name: 'Takeshita-dori', kind: 'street', styles: ['kawaii', 'kawaii', 'showa'], wealth: 0.95, traffic: 1.6, sky: 0.3, banners: true, narrow: true },
+  scramble:  { name: 'Shibuya Scramble', kind: 'street', styles: ['glass', 'neon', 'glass'], wealth: 1.5, traffic: 2.0, sky: 0.4, screens: true, tall: true, landmarks: ['tokyotower'] },
+  yokocho:   { name: 'Golden Gai', kind: 'street', styles: ['showa', 'showa', 'shitamachi'], wealth: 1.1, traffic: 1.2, sky: 0.72, lanterns: true, narrow: true },
+  neon:      { name: 'Kabukicho', kind: 'street', styles: ['neon', 'neon', 'glass'], wealth: 1.25, traffic: 1.5, sky: 0.78, signs: true, tall: true },
+  akiba:     { name: 'Akihabara', kind: 'street', styles: ['neon', 'kawaii', 'glass'], wealth: 1.2, traffic: 1.4, sky: 0.5, signs: true, screens: true },
+  temple:    { name: 'Senso-ji', kind: 'temple', styles: ['temple', 'temple', 'shitamachi'], wealth: 1.15, traffic: 1.3, sky: 0.25, lanterns: true, landmarks: ['skytree'] },
+  ginza:     { name: 'Ginza Crossing', kind: 'street', styles: ['glass', 'glass', 'glass'], wealth: 2.0, traffic: 0.9, sky: 0.45, tall: true, landmarks: ['tokyotower'] },
+  sakura:    { name: 'Meguro River', kind: 'park', wealth: 1.2, traffic: 1.0, sky: 0.2, sakura: true },
+  bayside:   { name: 'Odaiba Waterfront', kind: 'pier', wealth: 1.5, traffic: 1.1, sky: 0.55, landmarks: ['skytree'] },
+  skytree:   { name: 'Tokyo Skytree', kind: 'bridge', wealth: 2.4, traffic: 1.0, sky: 0.62 },
+  dome:      { name: 'Tokyo Dome', kind: 'stadium', wealth: 3, traffic: 0, sky: 0.9 },
 };
 const DAY_VENUES = [
-  ['corner', 'park', 'subway'],
-  ['subway', 'corner', 'haight', 'cablecar'],
-  ['chinatown', 'cablecar', 'fidi', 'subway'],
-  ['pier', 'ferry', 'fidi', 'chinatown'],
-  ['ggpark', 'pier', 'ferry', 'cablecar'],
+  ['shotengai', 'park', 'metro'],
+  ['metro', 'shotengai', 'takeshita', 'yokocho'],
+  ['takeshita', 'yokocho', 'akiba', 'metro'],
+  ['scramble', 'neon', 'akiba', 'temple'],
+  ['ginza', 'scramble', 'bayside', 'temple'],
 ];
-const DAY_NAMES = ['The Mission', 'Downtown', 'Chinatown & Nob Hill', 'The Waterfront', 'Golden Gate'];
+const DAY_NAMES = ['Shimokitazawa', 'Shinjuku Nights', 'Harajuku & Akihabara', 'Shibuya Scramble', 'The Skytree'];
 
 // Boss / Big Gig modifiers (shown on the map like Balatro boss blinds)
 const BOSS_MODS = {
@@ -35,6 +37,24 @@ const BOSS_MODS = {
   blackout: { name: 'Blackout', icon: 'skull', desc: 'Only the bottom of the lanes is lit.', color: '#404060' },
 };
 const BOSS_MOD_KEYS = Object.keys(BOSS_MODS);
+// ---------- The rival ----------
+// The finale is not another street set with a debuff on it. There is somebody
+// else on the deck of the Skytree and only one of you is leaving with the
+// crowd. They work in three phases and each one changes what they do to you.
+const RIVAL = {
+  name: 'KUROHANE',
+  title: 'THE BLACK MOTH',
+  taunts: [
+    'You busk. I headline. Watch.',
+    'Not bad. Try it with the lights in your eyes.',
+    'Then take it. If you can still hear the beat.',
+  ],
+  phases: [
+    { name: 'OVERTURE',  mod: 'rushHour', color: '#ffb340', desc: 'She pulls the whole crowd at once.' },
+    { name: 'THE TURN',  mod: 'snob',     color: '#c58bff', desc: 'Nothing but PERFECT moves them now.' },
+    { name: 'LAST LIGHT', mod: 'blackout', color: '#404060', desc: 'She kills the house lights.' },
+  ],
+};
 
 const STORY = {
   bandName: 'MONARCH',
@@ -57,11 +77,11 @@ const STORY = {
     wake: [
       { who: 'buzz', text: '...ow. Where am I? Is that... a bench?' },
       { who: 'buzz', text: 'Right. No band. No gig. Six dollars and a guitar with four strings.' },
-      { who: 'buzz', text: 'Fine. If I cannot play stadiums, I will play the streets. Every corner of this city. And I will build a band Monarch could only dream of.' },
+      { who: 'buzz', text: 'Fine. If I cannot play the Dome, I will play the street. Every ward of this city. And I will build a band Monarch could only dream of.' },
     ],
   },
   finale: [
-    { who: 'buzz', text: 'Five days. Every corner of San Francisco. And now: the Golden Gate.' },
+    { who: 'buzz', text: 'Five days. Shibuya to Asakusa. And now: the Skytree.' },
     { who: 'monarch', text: 'You again? With... THAT band?' },
     { who: 'buzz', text: 'THIS band. Watch and learn.' },
   ],

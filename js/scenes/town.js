@@ -15,7 +15,7 @@ class ShopScene {
   constructor(node) {
     this.node = node; const r = Game.run; this.t = 0;
     if (!node.stock) { node.rerolls = 0; this.restock(); }
-    this.sel = 0; this.msg = 'Welcome to Weevil\'s. Everything is slightly overpriced. It is San Francisco.';
+    this.sel = 0; this.msg = 'Irasshaimase. Everything here is slightly overpriced. It is Tokyo.';
     this.buttons = [];
   }
   restock() {
@@ -254,7 +254,7 @@ class RestScene {
     const r = Game.run; this.t = 0; this.log = null;
     this.menu = new Menu([
       { label: 'Nap: +45 stamina for all', icon: 'rest', onSelect: () => { r.members.forEach(m => m.stamina = Math.min(100, m.stamina + 45)); this.finish('EVERYONE IS RESTED'); } },
-      { label: 'Call an Uber: +2 tickets', icon: 'phone', onSelect: () => { r.tickets += 2; this.finish('+2 UBER TICKETS'); } },
+      { label: 'Top up the train pass: +2 rides', icon: 'phone', onSelect: () => { r.tickets += 2; this.finish('+2 TRAIN RIDES'); } },
       { label: 'Jam: +1 skill to your weakest', icon: 'metronome', onSelect: () => { const m = r.members.slice().sort((a, b) => a.skill - b.skill)[0]; m.skill = Math.min(10, m.skill + 1); r.members.forEach(x => x.stamina = Math.max(0, x.stamina - 10)); Audio.ui('levelup'); this.finish(m.name.toUpperCase() + ' LEVELLED UP'); } },
     ]);
   }

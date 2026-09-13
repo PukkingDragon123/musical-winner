@@ -98,6 +98,14 @@ class RhythmGame {
       if (piece === 'bucket') Audio.drum('kick', 0, v * 0.35);   // a bucket still thumps
       return null;
     }
+    if (k === 'taiko') {
+      // skin in the middle, rim at the edge, and a big one gets both
+      const v = j === 'perfect' ? 1 : j === 'great' ? 0.82 : 0.6;
+      const don = note.type === 'don' || note.type === 'big';
+      Audio.drum(don ? 'odaiko' : 'shime', 0, v);
+      if (note.type === 'big') Audio.drum('shime', 0, v * 0.5);
+      return null;
+    }
     const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
     const dur = hold ? Math.max(0.3, note.dur) + 0.3 : (k === 'tambourine' ? 0.1 : 0.35);
     return Audio.note(this.mods.voiceOverride || ins.voice || 'guitar', note.midi, 0, dur, vel);
@@ -165,10 +173,10 @@ class RhythmGame {
       const isDon = code === 'KeyF' || code === 'KeyJ', isKa = code === 'KeyD' || code === 'KeyK'; if (!isDon && !isKa) return;
       this.flashes[isDon ? 'don' : 'ka'] = 0.15;
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
-      if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.6, 0, 100); Audio.drum(isDon ? 'don' : 'ka', 0, 0.6); const r = this.receptors.main; this.fx.burst(r.x, r.y, 5, { color: '#ffd166', speed: 60, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0 }); if (this.hooks.onRoll) this.hooks.onRoll(); return; }
-      if (isDon && this.lastDon.note && this.now - this.lastDon.t < 0.07 && this.lastDon.code !== code) { const n = this.lastDon.note; this.lastDon.note = null; if (n.type === 'big' && n.hit) { this.hype = clamp(this.hype + 2.5, 0, 100); this.popups.push({ text: 'BIG DON!', color: '#ff9f68', t: 0, big: true }); Audio.drum('don', 0, 1); Audio.drum('tom', 0, 0.6); if (this.mods.fx) this.mods.fx.shake.hit(5, 0.25); } return; }
+      if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.6, 0, 100); Audio.drum(isDon ? 'odaiko' : 'shime', 0, 0.6); const r = this.receptors.main; this.fx.burst(r.x, r.y, 5, { color: '#ffd166', speed: 60, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0 }); if (this.hooks.onRoll) this.hooks.onRoll(); return; }
+      if (isDon && this.lastDon.note && this.now - this.lastDon.t < 0.07 && this.lastDon.code !== code) { const n = this.lastDon.note; this.lastDon.note = null; if (n.type === 'big' && n.hit) { this.hype = clamp(this.hype + 2.5, 0, 100); this.popups.push({ text: 'BIG DON!', color: '#ff9f68', t: 0, big: true }); Audio.drum('odaiko', 0, 1); Audio.drum('shime', 0, 0.5); if (this.mods.fx) this.mods.fx.shake.hit(5, 0.25); } return; }
       const n = this.findNote(x => x.type !== 'roll');
-      if (!n) { if (this.now > 0) Audio.drum(isDon ? 'don' : 'ka', 0, 0.25); return; }
+      if (!n) { if (this.now > 0) Audio.drum(isDon ? 'odaiko' : 'shime', 0, 0.25); return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       const wantDon = n.type === 'don' || n.type === 'big'; let j = this.judgeDt(this.now - n.t); if (wantDon !== isDon) j = 'miss';
       n.judged = true; n.hit = j !== 'miss'; n.judge = j;

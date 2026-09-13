@@ -12,7 +12,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'mission'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -22,7 +22,7 @@ class RunState {
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
-    s.pos = 'mission'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
+    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
     s.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; s.goals = rollGoals(s);
     return s;
   }

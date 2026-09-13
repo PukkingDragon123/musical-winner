@@ -91,8 +91,11 @@ const TUNE_BY_GENRE = (g) => TUNE_KEYS.filter(k => TUNES[k].genre === g);
 
 // ---- The opening rock opera. Original, in the spirit of a six-minute epic.
 const OPERA = {
-  title: 'A NIGHT AT THE HIVE',
-  subtitle: 'THE FAREWELL SHOW',
+  title: 'LAST NIGHT AT THE HIVE',
+  subtitle: 'TOKYO DOME - FINAL NIGHT',
+  venueName: 'TOKYO DOME',
+  kana: 'MONAAKU',            // how the crowd chants the name back
+  seats: '55,000 SOLD OUT',
   movements: [
     { key: 'intro', title: 'I. HOUSE LIGHTS', instrument: 'piano', bpm: 72, style: 'opera', difficulty: 1, key_: 57, chords: [0, 5, 3, 4],
       lights: ['#c58bff', '#5bc0ff'], pyro: 0,

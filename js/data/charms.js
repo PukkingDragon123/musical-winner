@@ -77,7 +77,7 @@ Object.assign(CHARMS, {
   opener:      { name: 'Strong Opener', rarity: 'common', price: 22, icon: 'note', desc: 'The first 20 notes score triple.', onHit: (S, n, j, info) => { S._cnt = (S._cnt || 0) + 1; if (S._cnt <= 20 && j !== 'miss') S.addApplause(info.applause * 2); } },
   closer:      { name: 'Big Finish', rarity: 'uncommon', price: 36, icon: 'encore', desc: 'x2 Mult if your final combo beats 40.', onSetEnd: (S) => { if (S.combo >= 40) S.timesMult(2, 'Big Finish'); } },
   tipsy:       { name: 'Happy Hour', rarity: 'common', price: 22, icon: 'coin', desc: 'Tips from the hat are worth double.', mods: { tipMult: 2 } },
-  gigEconomy:  { name: 'Gig Economy', rarity: 'uncommon', price: 34, icon: 'phone', desc: '+1 Uber ticket every morning.', mods: { tickets: 1 } },
+  gigEconomy:  { name: 'Commuter Pass', rarity: 'uncommon', price: 34, icon: 'phone', desc: '+1 train ride every morning.', mods: { tickets: 1 } },
   earworm:     { name: 'Earworm', rarity: 'rare', price: 55, icon: 'note', desc: 'x1.5 Mult when you play the same tune twice in a row.', onSetEnd: (S) => { if (S.run && S.run.lastTune === S.info.tune) S.timesMult(1.5, 'Earworm'); } },
   busStop:     { name: 'Muni Pass', rarity: 'common', price: 26, icon: 'phone', desc: 'Travel costs 1 ticket less on long hops.', mods: { cheapTravel: true } },
 });

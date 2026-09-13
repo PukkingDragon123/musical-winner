@@ -78,6 +78,20 @@ const Audio = {
       case 'vox': { const o = mk('sawtooth', f0, 0, 0.35); mk('triangle', f0, 6, 0.3); mk('sine', f0 * 2, 0, 0.12); vib(o, 5.8, 16);
         filt.type = 'bandpass'; filt.frequency.value = f0 * 2.6; filt.Q.value = 1.8; this._env(out, t, 0.06, vel * 0.65, 0.1, 0.85, t + dur, 0.18); release = 0.18; endAt = t + dur + 0.4; break; }
       case 'harmonica': { const o = mk('square', f0, 0, 0.25); mk('sawtooth', f0 * 2, 3, 0.2); vib(o, 6, 12); filt.frequency.value = 3000; this._env(out, t, 0.03, vel * 0.5, 0.1, 0.8, t + dur, 0.1); break; }
+      // ---- shamisen: a hard plectrum strike on gut, with the buzzing sawari
+      case 'shamisen': { mk('triangle', f0, 0, 0.55); mk('sawtooth', f0, 11, 0.3); mk('square', f0 * 2, 0, 0.12); mk('sawtooth', f0 * 3.02, 0, 0.06);
+        filt.frequency.setValueAtTime(4200, t); filt.frequency.exponentialRampToValueAtTime(600, t + 0.35); filt.Q.value = 2;
+        this._noise(t, 0.03, 'highpass', 2600, 1, vel * 0.35, this.musicGain);   // the plectrum itself
+        this._env(out, t, 0.002, vel, 0.42, 0.1, t + Math.min(dur, 0.9), 0.12); endAt = t + Math.min(dur, 0.9) + 0.3; break; }
+      // ---- koto: a long, clean plucked string with a slow bloom
+      case 'koto': { mk('sine', f0, 0, 0.6); mk('triangle', f0 * 2, 0, 0.22); mk('sine', f0 * 3, 0, 0.1); mk('sine', f0 * 4.02, 0, 0.05);
+        filt.frequency.setValueAtTime(5200, t); filt.frequency.exponentialRampToValueAtTime(900, t + 0.9);
+        this._env(out, t, 0.004, vel * 0.95, 0.8, 0.1, t + Math.min(dur, 1.6), 0.25); endAt = t + Math.min(dur, 1.6) + 0.4; break; }
+      // ---- shakuhachi: breath first, then a hollow tone that wavers
+      case 'shakuhachi': { const o = mk('sine', f0, 0, 0.5); mk('triangle', f0, 7, 0.2); mk('sine', f0 * 2, 0, 0.07); vib(o, 4.4, 18);
+        this._noise(t, Math.min(dur, 0.5), 'bandpass', f0 * 3, 0.8, vel * 0.22, this.musicGain);   // the breath across the edge
+        filt.type = 'bandpass'; filt.frequency.value = f0 * 2.1; filt.Q.value = 1.1;
+        this._env(out, t, 0.1, vel * 0.7, 0.12, 0.85, t + dur, 0.22); release = 0.22; endAt = t + dur + 0.45; break; }
       default: mk('triangle', f0, 0, 0.7); this._env(out, t, 0.01, vel, 0.3, 0.3, t + dur, 0.1);
     }
     oscs.forEach(o => { o.start(t); o.stop(endAt + 0.1); });
@@ -107,6 +121,11 @@ const Audio = {
       case 'crate': tone(180, 90, 0.1, 'square', vel * 0.35); this._noise(t, 0.12, 'bandpass', 900, 1.1, vel * 0.5, dest); break;
       case 'floortom': tone(180, 78, 0.3, 'sine', vel * 0.9); this._noise(t, 0.07, 'lowpass', 400, 1, vel * 0.2, dest); break;
       case 'ride': this._noise(t, 0.5, 'highpass', 6000, 0.6, vel * 0.28, dest); tone(2400, 2100, 0.12, 'square', vel * 0.07); break;
+      // ---- a big taiko: a deep skin with the rim shot beside it
+      case 'odaiko': tone(110, 52, 0.42, 'sine', vel * 1.25); tone(220, 90, 0.14, 'triangle', vel * 0.3); this._noise(t, 0.1, 'lowpass', 500, 1, vel * 0.45, dest); break;
+      case 'shime': tone(420, 260, 0.1, 'triangle', vel * 0.5); this._noise(t, 0.1, 'bandpass', 2200, 2, vel * 0.5, dest); break;
+      case 'kane': tone(1900, 1750, 0.5, 'square', vel * 0.16); tone(2840, 2700, 0.7, 'sine', vel * 0.1); break;   // the temple hand-gong
+      case 'woodblock': tone(1500, 900, 0.05, 'square', vel * 0.4); this._noise(t, 0.03, 'highpass', 3000, 1, vel * 0.3, dest); break;
     }
   },
   ui(kind) {

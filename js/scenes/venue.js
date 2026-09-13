@@ -19,12 +19,35 @@ function buildVenue(venue, seed, dayT) {
   if (venue.kind === 'street') {
     let x = -20, i = 0; const styles = venue.styles || ['victorian', 'pastel'];
     while (x < W + 240) { const w = r.int(60, 108); const f = facadeCanvas(styles[i % styles.length], seed * 31 + i, w); mx.drawImage(f, x, 250 - f.height * 1.45, w * 1.45, f.height * 1.45); x += w * 1.45 + 2; i++; }
-    if (venue.lanterns) { for (let lx = 14; lx < W + 240; lx += 62) mx.drawImage(propCanvas('lantern'), lx, 150 + (lx % 124 ? 0 : 10), 12, 18); }
+    if (venue.lanterns) { for (let lx = 14; lx < W + 240; lx += 62) mx.drawImage(propCanvas('lantern2', Math.floor(lx / 62) % 3), lx, 148 + (lx % 124 ? 0 : 10), 18, 27); }
+    // ---- Tokyo street furniture, laid along the shopfronts
+    for (let px2 = 60; px2 < W + 220; px2 += r.int(150, 240)) {
+      const pick = r.int(0, 5);
+      if (pick === 0) mx.drawImage(propCanvas('vending', r.int(0, 2)), px2, 178, 27, 45);
+      else if (pick === 1) { mx.drawImage(propCanvas('gacha', r.int(0, 2)), px2, 184, 24, 39); mx.drawImage(propCanvas('gacha', r.int(0, 2)), px2 + 25, 184, 24, 39); }
+      else if (pick === 2) mx.drawImage(propCanvas('bike', r.int(0, 2)), px2, 202, 36, 21);
+      else if (pick === 3) mx.drawImage(propCanvas('crate2', r.int(0, 2)), px2, 202, 30, 21);
+      else if (pick === 4 && venue.signs) mx.drawImage(propCanvas('arcade', r.int(0, 2)), px2, 172, 33, 51);
+      else mx.drawImage(propCanvas('trash'), px2, 200, 18, 24);
+      drawShadow(mx, px2 + 14, 224, 34, 0.14);
+    }
+    if (venue.narrow) { // a low alley: bunting of small lanterns overhead
+      for (let lx = 0; lx < W + 240; lx += 34) { rect(mx, lx, 92, 34, 1, '#3a3040'); mx.drawImage(propCanvas('lantern2', Math.floor(lx / 34) % 3), lx + 10, 92, 12, 18); }
+    }
+    if (venue.screens) { // the big video walls of a crossing
+      for (const [sx, sy, sw, sh] of [[200, 44, 150, 82], [700, 30, 190, 96]]) {
+        rect(mx, sx - 3, sy - 3, sw + 6, sh + 6, '#15121c');
+        rect(mx, sx, sy, sw, sh, '#0e1420');
+        for (let i = 0; i < 70; i++) { const bx = sx + r.int(2, sw - 8), by = sy + r.int(2, sh - 6);
+          rect(mx, bx, by, r.int(3, 8), 2, r.pick(['#40d8f0', '#f0d040', '#f04888', '#68f088', '#f8f8ff'])); }
+        for (let y = sy; y < sy + sh; y += 3) { mx.globalAlpha = 0.16; rect(mx, sx, y, sw, 1, '#000'); mx.globalAlpha = 1; }
+      }
+    }
   } else if (venue.kind === 'subway') {
     mx.fillStyle = '#2a2a34'; mx.fillRect(0, 0, W + 260, 250);
     for (let x = 0; x < W + 260; x += 11) for (let y = 60; y < 230; y += 9) rect(mx, x, y, 10, 8, ((x / 11 + y / 9) % 2) ? '#c8c0a8' : '#b8b09a');
     rect(mx, 0, 0, W + 260, 58, '#1e1e26'); for (let x = 0; x < W + 260; x += 84) { rect(mx, x + 14, 12, 9, 6, '#ffe8a0'); ctx2glow(mx, x + 18, 15); }
-    rect(mx, 0, 104, W + 260, 18, '#2a4a9a'); drawText(mx, '16TH ST MISSION      16TH ST MISSION      16TH ST MISSION      16TH ST MISSION', 14, 107, '#fff', { scale: 2 });
+    rect(mx, 0, 104, W + 260, 18, '#2a4a9a'); drawText(mx, 'SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA', 14, 107, '#fff', { scale: 2 });
     for (let x = 56; x < W + 260; x += 224) { rect(mx, x, 0, 24, 250, '#7a7a8a'); rect(mx, x + 3, 0, 6, 250, '#9a9aaa'); rect(mx, x + 18, 0, 3, 250, '#5a5a6a'); }
     mx.drawImage(propCanvas('sign', 0), 300, 176, 21, 33); mx.drawImage(propCanvas('bench'), 480, 218, 45, 21);
     function ctx2glow(c, x, y) { c.globalAlpha = 0.15; circle(c, x, y + 14, 16, '#ffe680'); c.globalAlpha = 1; }
@@ -63,6 +86,28 @@ function buildVenue(venue, seed, dayT) {
       for (let k = 0; k < 5; k++) { mx.strokeStyle = '#c8bfa0'; mx.beginPath(); mx.moveTo(620, 92); mx.lineTo(566 + k * 27, 130); mx.stroke(); }
       rect(mx, 606, 168, 28, 34, '#4a3a2a'); rect(mx, 606, 168, 28, 3, '#6a5a44');
     }
+  } else if (venue.kind === 'temple') {
+    // ---- a temple forecourt: the great gate, its lantern, and a swept yard
+    vgrad(mx, 0, 0, W + 260, 168, '#2c3550', '#4a4262');
+    rect(mx, 0, 168, W + 260, 82, '#b0a894');
+    for (let x = 0; x < W + 260; x += 26) for (let y = 170; y < 250; y += 13) rect(mx, x + ((y / 13) % 2 ? 13 : 0), y, 25, 12, ((x / 26 + y / 13) % 2) ? '#b8b09c' : '#aca48e');
+    // the main hall behind, on its stone base
+    const hx = 380, hw = 480;
+    rect(mx, hx, 96, hw, 76, '#9a3a2a'); rect(mx, hx, 96, hw, 4, '#c8604a');
+    for (let px2 = hx + 14; px2 < hx + hw - 10; px2 += 54) { rect(mx, px2, 100, 12, 72, '#b04a34'); rect(mx, px2, 100, 3, 72, '#c8604a'); }
+    mx.fillStyle = '#3a4450'; mx.beginPath(); mx.moveTo(hx - 46, 100); mx.lineTo(hx + hw + 46, 100); mx.lineTo(hx + hw - 20, 52); mx.lineTo(hx + 20, 52); mx.fill();
+    for (let px2 = hx - 44; px2 < hx + hw + 44; px2 += 8) rect(mx, px2, 54, 4, 46, '#46525f');
+    rect(mx, hx - 46, 96, hw + 92, 5, '#e8c86a');
+    // the big red lantern hanging in the gate
+    rect(mx, 596, 100, 2, 22, '#2a2028');
+    const lg = propCanvas('lantern2', 1); mx.drawImage(lg, 572, 120, 48, 72);
+    // stone lanterns and a pair of torii either side
+    mx.drawImage(landmarkCanvas('torii'), 140, 96, 90, 102);
+    mx.drawImage(landmarkCanvas('torii'), 1080, 104, 75, 85);
+    for (const sx of [320, 940]) { rect(mx, sx, 196, 16, 30, '#9a968c'); rect(mx, sx - 4, 186, 24, 10, '#a8a49a'); rect(mx, sx - 2, 180, 20, 6, '#8e8a80'); }
+    // an incense burner, smoking
+    rect(mx, 700, 200, 44, 24, '#5a5048'); rect(mx, 700, 196, 44, 5, '#7a7066');
+    for (let i = 0; i < 5; i++) { mx.globalAlpha = 0.18; circle(mx, 716 + i * 3, 188 - i * 9, 5 + i * 2, '#e8e4dc'); mx.globalAlpha = 1; }
   } else if (venue.kind === 'pier') {
     rect(mx, 0, 0, W + 260, 176, '#3a6a9a'); for (let y = 8; y < 174; y += 7) for (let x = (y * 7) % 28; x < W + 260; x += 28) rect(mx, x, y, 12, 2, '#5a8ab8');
     mx.drawImage(propCanvas('boat'), 180, 86, 45, 18); mx.drawImage(propCanvas('sailboat'), 700, 56, 24, 27); mx.drawImage(propCanvas('sailboat'), 1020, 100, 24, 27);

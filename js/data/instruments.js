@@ -1,6 +1,8 @@
 // ---------- Instruments ----------
 'use strict';
 const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
+// A Japanese instrument reads in its own palette: vermilion, gold, indigo, ink.
+const JP_LANE_COLORS = ['#e0503c', '#e8b840', '#f0e4cc', '#3f6fb0', '#8a5fb0', '#d8747a'];
 // Colour per kit piece, keyed by piece name rather than by lane, because how
 // many pieces you own changes as you climb the ladder.
 const PIECE_COLORS = {
@@ -59,13 +61,28 @@ const INSTRUMENTS = {
                 desc: 'Press the lit valve combination together, right on the beat.' },
   violin:     { name: 'Violin', game: 'bow', keys: ['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS'], keyNames: ['UP', 'DOWN'], voice: 'violin', price: 65, tipMult: 1.2, family: 'strings',
                 desc: 'Bow UP or DOWN on the marker. Hold the long bows.' },
+  // ---------- Japanese instruments ----------
+  taiko:      { name: 'Taiko', game: 'taiko', keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+                voice: null, price: 45, tipMult: 1.15, family: 'percussion', jp: true,
+                desc: 'Skin in the middle, rim at the edge. Two sounds, and you had better know which is which.' },
+  shamisen:   { name: 'Shamisen', game: 'lanes', lanes: 3, keys: ['KeyD', 'KeyF', 'KeyJ'], keyNames: ['D', 'F', 'J'],
+                voice: 'shamisen', price: 58, tipMult: 1.25, family: 'strings', jp: true,
+                desc: 'Three strings struck with a plectrum the size of a spade. Sharp, dry, and it buzzes on purpose.' },
+  koto:       { name: 'Koto', game: 'lanes', lanes: 5, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['S', 'D', 'F', 'J', 'K'],
+                voice: 'koto', price: 85, tipMult: 1.4, family: 'strings', jp: true,
+                desc: 'Thirteen strings over movable bridges. Five of them are yours to worry about.' },
+  shakuhachi: { name: 'Shakuhachi', game: 'wind', keys: ['Space'], keyNames: ['SPACE'],
+                voice: 'shakuhachi', price: 52, tipMult: 1.2, family: 'horns', jp: true,
+                desc: 'A length of bamboo. Hold the phrase, release on the mark, and mind your breath.' },
   // NPC-only
   mic:        { name: 'Vocals', game: 'npc', keys: [], keyNames: [], voice: 'vox', price: 0, tipMult: 1.4, family: 'voice', desc: 'A voice that fills stadiums.' },
   harmonica:  { name: 'Harmonica', game: 'npc', keys: [], keyNames: [], voice: 'harmonica', price: 0, tipMult: 0.9, family: 'horns', desc: 'Blues in a pocket.' },
   triangle:   { name: 'Triangle', game: 'npc', keys: [], keyNames: [], voice: 'tambourine', price: 0, tipMult: 0.6, family: 'percussion', desc: 'Ding.' },
   keytar:     { name: 'Keytar', game: 'npc', keys: [], keyNames: [], voice: 'organ', price: 0, tipMult: 1.2, family: 'keys', desc: 'The eighties never ended.' },
 };
-const PLAYABLE = ['guitar', 'bass', 'piano', 'tambourine', 'drums', 'sax', 'trumpet', 'violin'];
+const PLAYABLE = ['guitar', 'bass', 'piano', 'tambourine', 'drums', 'sax', 'trumpet', 'violin', 'taiko', 'shamisen', 'koto', 'shakuhachi'];
+// The ones a Tokyo shop is most likely to have on the wall.
+const JP_INSTRUMENTS = PLAYABLE.filter(k => INSTRUMENTS[k].jp);
 const GENRES = {
   rock:   { name: 'Rock', color: '#ff5a5a', bpm: [116, 140], dens: 1.15, backing: 'rock' },
   funk:   { name: 'Funk', color: '#ffb340', bpm: [98, 116], dens: 1.1, backing: 'funk', syncopated: true },

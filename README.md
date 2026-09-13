@@ -1,7 +1,8 @@
 # Bug Busker Orchestra
 
-A 2D pixel-art **rhythm roguelike**. Pick a busker, headline a stadium, blow the solo,
-get flown to San Francisco, and rebuild a band one street corner at a time.
+A 2D pixel-art **rhythm roguelike** set in Tokyo. Pick a busker, headline the Dome, blow the
+solo, get put on a flight, and rebuild a band one street corner at a time — Shimokitazawa to
+Shibuya to Akihabara to Asakusa, and finally the Skytree.
 
 Open `index.html`, or run `node build.js` for a single-file `dist/bug-busker-orchestra.html`.
 No build step, no dependencies. Every sprite, every note and every street is generated in code.
@@ -12,7 +13,7 @@ The title curtain lifts straight onto the stage. **Four bugs stand in the lights
 keys and vocals, Stag on lead guitar, Dot on drums, Slim on bass. A spotlight slides between
 them while you choose. The one you take is the one you play for the rest of the run.
 
-Then **A NIGHT AT THE HIVE**, a six-movement stadium set of original stadium-rock hooks:
+Then **LAST NIGHT AT THE HIVE** at the Tokyo Dome, a six-movement set of original stadium-rock hooks:
 House Lights, Slow Burn, Low Road, Six Strings, Choir of Thousands, and the solo nobody has
 ever landed. Every non-playing beat is framed full-screen and cinematic — lights, lasers and
 pyro escalate each movement, the band cheers or slumps with your accuracy, and a lower-third
@@ -37,6 +38,40 @@ any music shop buys some back.
 Pins mark venues to play, music shops, food (Dumpling Dynasty, Burrito Beetle, Sourdough
 Sam's), open mics to recruit, events, rest stops and street-corner pickups. Stamina runs out,
 night falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
+
+## The city
+
+The map is Tokyo. **Shinjuku** with Kabukicho and the six-seat bars of Golden Gai, **Nakano**
+and **Koenji**, **Shimokitazawa** for thrift shops and basements, **Yoyogi Park** and Meiji
+Shrine, **Harajuku** and Takeshita-dori, the **Shibuya Scramble** and Hachiko, **Roppongi**,
+the Meguro River under blossom, **Ginza** and Tsukiji, **Akihabara** with its game centres and
+maid cafes, **Ueno**, **Asakusa** and Senso-ji, **Odaiba**, and the **Skytree** waiting at the
+end of it. You travel on a train pass, not a taxi.
+
+Each venue is built to its ward: candy awnings and pastel frontages on Takeshita-dori, lantern
+bunting strung over a Golden Gai alley, stacked signboards and video walls in Kabukicho and at
+the Scramble, mirrored curtain wall in Ginza, and a temple forecourt at Senso-ji with a torii,
+a vermilion hall under a tiled roof, stone lanterns and an incense burner going. Vending
+machines, capsule machines, arcade cabinets, beer crates and leaning bicycles line the street.
+The cast dresses for it too — happi coats, hachimaki headbands, school gakuran, yukata with an
+obi.
+
+## Japanese instruments
+
+Four of them, each with its own synthesis. **Taiko**: skin in the middle, rim at the edge, on a
+real odaiko with a lacquered stand and a pair of bachi. **Shamisen**: three strings struck with
+a big plectrum, complete with the plectrum click and the buzz it makes on purpose. **Koto**:
+long clean plucked strings with a slow bloom. **Shakuhachi**: breath across the edge first, then
+a hollow tone that wavers.
+
+## The finale
+
+The Skytree is not another street set with a debuff on it. **KUROHANE, the Black Moth** is up
+there, and only one of you leaves with the crowd. A favour bar across the top says who the room
+belongs to; every judgement moves it. She works in three phases and each takes the bar back a
+different way — she pulls the whole crowd at once, then accepts nothing but PERFECT, then kills
+the house lights — and she taunts you on the way through. Take 75% of the room and the night is
+yours.
 
 ## Playing
 

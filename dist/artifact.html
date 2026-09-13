@@ -666,6 +666,20 @@ const Audio = {
       case 'vox': { const o = mk('sawtooth', f0, 0, 0.35); mk('triangle', f0, 6, 0.3); mk('sine', f0 * 2, 0, 0.12); vib(o, 5.8, 16);
         filt.type = 'bandpass'; filt.frequency.value = f0 * 2.6; filt.Q.value = 1.8; this._env(out, t, 0.06, vel * 0.65, 0.1, 0.85, t + dur, 0.18); release = 0.18; endAt = t + dur + 0.4; break; }
       case 'harmonica': { const o = mk('square', f0, 0, 0.25); mk('sawtooth', f0 * 2, 3, 0.2); vib(o, 6, 12); filt.frequency.value = 3000; this._env(out, t, 0.03, vel * 0.5, 0.1, 0.8, t + dur, 0.1); break; }
+      // ---- shamisen: a hard plectrum strike on gut, with the buzzing sawari
+      case 'shamisen': { mk('triangle', f0, 0, 0.55); mk('sawtooth', f0, 11, 0.3); mk('square', f0 * 2, 0, 0.12); mk('sawtooth', f0 * 3.02, 0, 0.06);
+        filt.frequency.setValueAtTime(4200, t); filt.frequency.exponentialRampToValueAtTime(600, t + 0.35); filt.Q.value = 2;
+        this._noise(t, 0.03, 'highpass', 2600, 1, vel * 0.35, this.musicGain);   // the plectrum itself
+        this._env(out, t, 0.002, vel, 0.42, 0.1, t + Math.min(dur, 0.9), 0.12); endAt = t + Math.min(dur, 0.9) + 0.3; break; }
+      // ---- koto: a long, clean plucked string with a slow bloom
+      case 'koto': { mk('sine', f0, 0, 0.6); mk('triangle', f0 * 2, 0, 0.22); mk('sine', f0 * 3, 0, 0.1); mk('sine', f0 * 4.02, 0, 0.05);
+        filt.frequency.setValueAtTime(5200, t); filt.frequency.exponentialRampToValueAtTime(900, t + 0.9);
+        this._env(out, t, 0.004, vel * 0.95, 0.8, 0.1, t + Math.min(dur, 1.6), 0.25); endAt = t + Math.min(dur, 1.6) + 0.4; break; }
+      // ---- shakuhachi: breath first, then a hollow tone that wavers
+      case 'shakuhachi': { const o = mk('sine', f0, 0, 0.5); mk('triangle', f0, 7, 0.2); mk('sine', f0 * 2, 0, 0.07); vib(o, 4.4, 18);
+        this._noise(t, Math.min(dur, 0.5), 'bandpass', f0 * 3, 0.8, vel * 0.22, this.musicGain);   // the breath across the edge
+        filt.type = 'bandpass'; filt.frequency.value = f0 * 2.1; filt.Q.value = 1.1;
+        this._env(out, t, 0.1, vel * 0.7, 0.12, 0.85, t + dur, 0.22); release = 0.22; endAt = t + dur + 0.45; break; }
       default: mk('triangle', f0, 0, 0.7); this._env(out, t, 0.01, vel, 0.3, 0.3, t + dur, 0.1);
     }
     oscs.forEach(o => { o.start(t); o.stop(endAt + 0.1); });
@@ -695,6 +709,11 @@ const Audio = {
       case 'crate': tone(180, 90, 0.1, 'square', vel * 0.35); this._noise(t, 0.12, 'bandpass', 900, 1.1, vel * 0.5, dest); break;
       case 'floortom': tone(180, 78, 0.3, 'sine', vel * 0.9); this._noise(t, 0.07, 'lowpass', 400, 1, vel * 0.2, dest); break;
       case 'ride': this._noise(t, 0.5, 'highpass', 6000, 0.6, vel * 0.28, dest); tone(2400, 2100, 0.12, 'square', vel * 0.07); break;
+      // ---- a big taiko: a deep skin with the rim shot beside it
+      case 'odaiko': tone(110, 52, 0.42, 'sine', vel * 1.25); tone(220, 90, 0.14, 'triangle', vel * 0.3); this._noise(t, 0.1, 'lowpass', 500, 1, vel * 0.45, dest); break;
+      case 'shime': tone(420, 260, 0.1, 'triangle', vel * 0.5); this._noise(t, 0.1, 'bandpass', 2200, 2, vel * 0.5, dest); break;
+      case 'kane': tone(1900, 1750, 0.5, 'square', vel * 0.16); tone(2840, 2700, 0.7, 'sine', vel * 0.1); break;   // the temple hand-gong
+      case 'woodblock': tone(1500, 900, 0.05, 'square', vel * 0.4); this._noise(t, 0.03, 'highpass', 3000, 1, vel * 0.3, dest); break;
     }
   },
   ui(kind) {
@@ -987,12 +1006,19 @@ function randomBugSpec(rng) {
     colors: { body: base, body2: dark, head: rng.chance(0.5) ? base : lighten(base, 0.08), limb: dark, wing: rng.pick(['#dfe9ff', '#ffd0e0', '#dde4cd', '#cfe8ff']), wing2: dark, eye: '#c83030', trim: lighten(base, 0.3) },
     outfit: {} };
   const r = rng();
-  if (r < 0.22) { spec.outfit.jacket = rng.pick(['#c04040', '#4060b0', '#3a8a5a', '#8a5a3a', '#242430', '#e0a030']); spec.outfit.shirt = '#f2ece0'; }
-  else if (r < 0.38) { spec.outfit.vest = rng.pick(['#f2ece0', '#3a3a46', '#8a3a5a']); spec.outfit.vestTrim = rng.pick(['#d84040', '#e0b040']); }
-  else if (r < 0.52) spec.outfit.tee = rng.pick(['#4d86c6', '#d8382c', '#2c2c36', '#79c257', '#e8c020']);
-  else if (r < 0.6) spec.outfit.blouse = '#f2ece0';
+  // The street is Tokyo, so half of it is in something you would actually see
+  // there: a festival coat, a school jacket, a yukata on the way to a matsuri.
+  if (r < 0.13) { spec.outfit.happi = rng.pick(['#2b3f7a', '#8a2a2a', '#1f5a4a', '#2c2c3a']); spec.outfit.happiTrim = rng.pick(['#f4efe4', '#e8c860']); }
+  else if (r < 0.22) spec.outfit.gakuran = true;
+  else if (r < 0.31) { spec.outfit.yukata = rng.pick(['#4a6fa8', '#8a4a6a', '#3f7a6a', '#c0c8d8', '#7a5a9a']); spec.outfit.obi = rng.pick(['#c8433a', '#e0b040', '#2c2c3a']); spec.outfit.yukataPat = rng.pick(['#f4efe4', '#ffd6e4', '#d8ecff']); }
+  else if (r < 0.44) { spec.outfit.jacket = rng.pick(['#c04040', '#4060b0', '#3a8a5a', '#8a5a3a', '#242430', '#e0a030']); spec.outfit.shirt = '#f2ece0'; }
+  else if (r < 0.54) { spec.outfit.vest = rng.pick(['#f2ece0', '#3a3a46', '#8a3a5a']); spec.outfit.vestTrim = rng.pick(['#d84040', '#e0b040']); }
+  else if (r < 0.66) spec.outfit.tee = rng.pick(['#4d86c6', '#d8382c', '#2c2c36', '#79c257', '#e8c020', '#f070b0']);
+  else if (r < 0.72) spec.outfit.blouse = '#f2ece0';
+  if (rng.chance(0.12)) spec.outfit.hachimaki = true;
   const h = rng();
-  if (h < 0.14) { spec.outfit.hat = 'cap'; spec.outfit.hatColor = rng.pick(['#242430', '#c04040', '#3060b0']); }
+  if (h < 0.1) { spec.outfit.hat = 'cap'; spec.outfit.hatColor = rng.pick(['#242430', '#c04040', '#3060b0']); }
+  else if (h < 0.16) spec.outfit.hat = 'gakubo';
   else if (h < 0.2) { spec.outfit.hat = 'top'; spec.outfit.hatColor = '#242430'; }
   else if (h < 0.3) { spec.outfit.hat = 'beanie'; spec.outfit.hatColor = rng.pick(['#3a7ac0', '#d05070', '#e0b040']); }
   else if (h < 0.36) spec.outfit.hat = 'flower';
@@ -1129,6 +1155,42 @@ function buildBug(spec, pose, expr) {
     const v = P.mask(); P.mPoly(v, [[cx - 3, bcy - geo.ry], [cx + 4, bcy - geo.ry], [cx + 3, bcy + 3], [cx - 2, bcy + 3]]); P.mSub(m, v);
     P.fill(m, O.vest, { outline: ol });
     if (O.vestTrim) P.paint(m, (x, y) => (Math.abs(x - (cx - 5)) < 1 || Math.abs(x - (cx + 5)) < 1) && (y - bcy) % 3 === 0 ? O.vestTrim : null);
+  }
+  // ---- happi: the short festival coat, open at the front, with a wide collar
+  // band running down each side and a character block on the back panel
+  if (O.happi) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 3);
+    const gap = P.mask(); P.mPoly(gap, [[cx - 2, bcy - geo.ry], [cx + 3, bcy - geo.ry], [cx + 3, bcy + geo.ry], [cx - 2, bcy + geo.ry]]); P.mSub(m, gap);
+    P.fill(m, O.happi, { outline: ol });
+    const trim = O.happiTrim || '#f4efe4';
+    // the collar band, following the opening down both sides
+    P.paint(m, (x, y) => (Math.abs(x - (cx - 4)) < 1.4 || Math.abs(x - (cx + 5)) < 1.4) ? trim : null);
+    // a sash at the waist
+    P.paint(m, (x, y) => y > bcy + geo.ry - 7 && y < bcy + geo.ry - 4 ? darken(O.happi, 0.24) : null);
+    // three bars standing in for a printed character on the shoulder
+    for (let i = 0; i < 3; i++) P.paint(m, (x, y) => y === bcy - geo.ry + 4 + i * 2 && x > cx - geo.rx + 2 && x < cx - 3 ? trim : null);
+  }
+  // ---- gakuran: the high-collared black school jacket, gold buttons
+  if (O.gakuran) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 4);
+    P.fill(m, '#1f1f2a', { outline: ol });
+    P.paint(m, (x, y) => y < bcy - geo.ry + 4 ? '#2c2c3a' : null);          // the stand collar
+    P.paint(m, (x, y) => y === bcy - geo.ry + 3 ? '#d8b040' : null);        // its gold trim
+    for (let i = 0; i < 3; i++) P.paint(m, (x, y) => Math.abs(x - cx - 1) < 1 && y === bcy - 2 + i * 4 ? '#e0c060' : null);
+    P.paint(m, (x, y) => y < bcy && x < cx - geo.rx * 0.45 ? '#31313f' : null);
+  }
+  // ---- yukata: a light summer kimono, crossed left over right, with a wide obi
+  if (O.yukata) {
+    const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 2);
+    P.fill(m, O.yukata, { outline: ol });
+    const pat = O.yukataPat || lighten(O.yukata, 0.22);
+    P.paint(m, (x, y) => (x * 3 + y * 2) % 11 === 0 ? pat : null);          // a scattered print
+    // the crossed front
+    P.paint(m, (x, y) => { const t = y - (bcy - geo.ry); if (t < 0 || t > 12) return null;
+      return Math.abs((x - cx) - (t * 0.55 - 3)) < 1.2 ? '#f6f1e6' : null; });
+    // the obi, and its knot
+    P.paint(m, (x, y) => y > bcy + 1 && y < bcy + 6 ? (O.obi || '#c8433a') : null);
+    P.paint(m, (x, y) => y > bcy + 1 && y < bcy + 6 && (y - bcy) % 2 === 0 ? darken(O.obi || '#c8433a', 0.2) : null);
   }
   if (O.jacket) {
     const m = P.mask(); P.mEllipse(m, cx, bcy - 1, geo.rx + 0.5, geo.ry); cut(m, bcy + geo.ry - 4);
@@ -1403,6 +1465,25 @@ function drawFace(P, spec, cx, cy, hr, ol, expr) {
 }
 function drawHat(P, spec, cx, topY, hr, ol) {
   const O = spec.outfit || {};
+  // ---- hachimaki: a headband knotted at the side, with a rising sun on it
+  if (O.hachimaki) {
+    const m = P.mask(); P.mRect(m, cx - hr.rx - 1, topY + 3, hr.rx * 2 + 2, 4);
+    P.fill(m, '#f4efe4', { outline: ol, shade: false });
+    const d = P.mask(); P.mEllipse(d, cx, topY + 5, 2.2, 2);
+    P.fill(d, '#d8382c', { shade: false });
+    // the knot and its two tails hanging down one side
+    const k = P.mask(); P.mRect(k, cx + hr.rx, topY + 3, 3, 4);
+    P.mRect(k, cx + hr.rx + 1, topY + 6, 2, 7); P.mRect(k, cx + hr.rx + 3, topY + 6, 2, 5);
+    P.fill(k, '#f4efe4', { outline: ol, shade: false });
+  }
+  // ---- a folded paper crown of a matsuri cap, or a school cap
+  if (O.hat === 'gakubo') {
+    const m = P.mask(); P.mEllipse(m, cx, topY + 2, hr.rx + 1, 5);
+    const c2 = P.mask(); P.mRect(c2, 0, topY + 2, BUG_W, BUG_H); P.mSub(m, c2);
+    P.mRect(m, cx - hr.rx - 2, topY + 1, hr.rx * 2 + 4, 2);
+    P.fill(m, '#22222e', { outline: ol });
+    P.paint(m, (x, y) => y === topY + 1 ? '#d8b040' : null);
+  }
   if (O.hat === 'cap') { const m = P.mask(); P.mEllipse(m, cx, topY + 2, hr.rx + 1, 5); const c2 = P.mask(); P.mRect(c2, 0, topY + 2, BUG_W, BUG_H); P.mSub(m, c2);
     P.mRect(m, cx - 1, topY + 1, hr.rx + 6, 3); P.fill(m, O.hatColor || '#242430', { outline: ol });
     P.paint(m, (x, y) => y < topY - 2 && x < cx ? lighten(O.hatColor || '#242430', 0.18) : null); }
@@ -2109,6 +2190,9 @@ function drawAbilityIcon(ctx, x, y, size, kind, t, opts = {}) {
 'use strict';
 const OL = '#1a1410';
 function propCanvas(kind, variant = 0) {
+  // Callers sometimes hand this a ratio rather than an index; a fractional
+  // variant silently indexes past the end of a palette and yields undefined.
+  variant = Math.abs(Math.floor(variant)) || 0;
   return cached('prop|' + kind + '|' + variant, () => {
     let P;
     switch (kind) {
@@ -2151,6 +2235,84 @@ function propCanvas(kind, variant = 0) {
       case 'suitcase': { P = new Pix(18, 14); const m = P.mask(); P.mRound(m, 0, 3, 18, 11, 2); P.fill(m, '#8a5a3a', { outline: OL }); const h = P.mask(); P.mRect(h, 6, 0, 6, 4); P.fill(h, '#5a3a20', { outline: OL, shade: false }); P.paint(m, (x, y) => y === 8 ? '#5a3a20' : null); break; }
       case 'seat': { P = new Pix(30, 34); const m = P.mask(); P.mRound(m, 2, 0, 26, 24, 3); P.fill(m, '#3a4a6a', { outline: OL }); const c = P.mask(); P.mRound(c, 5, 22, 20, 10, 2); P.fill(c, '#4a5a7a', { outline: OL }); P.paint(m, (x, y) => y === 4 || y === 18 ? '#2a3a5a' : null); break; }
       case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
+      // ---- Tokyo street furniture and pop culture
+      case 'vending': { // the lit drinks machine on every corner
+        P = new Pix(18, 30); const m = P.mask(); P.mRect(m, 0, 0, 18, 30);
+        P.fill(m, '#d8dce4', { outline: OL }); P.grain(m, 0.04, 2);
+        const win = P.mask(); P.mRect(win, 2, 2, 14, 17); P.fill(win, '#1d2430', { shade: false });
+        const r2 = makeRng(7 + variant);
+        for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) {
+          const cx2 = 3 + col * 3, cy2 = 3 + row * 5;
+          P.set(cx2, cy2, r2.pick(['#e0483a', '#3a8ad8', '#e8c040', '#48b060', '#f07ab0']));
+          P.set(cx2 + 1, cy2, '#f4f4f8'); P.set(cx2, cy2 + 1, r2.pick(['#c03828', '#2a6ab0', '#c8a030']));
+          P.set(cx2 + 1, cy2 + 1, '#d0d4dc'); P.set(cx2, cy2 + 2, '#8a9098'); P.set(cx2 + 1, cy2 + 2, '#8a9098');
+        }
+        P.paint(win, (x, y) => y === 2 ? '#6a7a90' : null);
+        const tray = P.mask(); P.mRect(tray, 3, 22, 12, 4); P.fill(tray, '#2a3038', { outline: OL, shade: false });
+        for (let i = 0; i < 3; i++) P.set(13, 20 + i, '#f0c040');
+        break; }
+      case 'gacha': { // a stack of capsule machines
+        P = new Pix(16, 26); const base = P.mask(); P.mRect(base, 1, 14, 14, 12);
+        P.fill(base, '#c8443a', { outline: OL }); P.grain(base, 0.05, 4);
+        const dome = P.mask(); P.mEllipse(dome, 8, 10, 7, 8); const cut = P.mask(); P.mRect(cut, 0, 14, 16, 12); P.mSub(dome, cut);
+        P.fill(dome, '#cfe4f4', { outline: OL, shade: false });
+        const r3 = makeRng(11 + variant);
+        for (let i = 0; i < 14; i++) { const cx2 = r3.int(3, 12), cy2 = r3.int(6, 13);
+          P.set(cx2, cy2, r3.pick(['#f0a0c0', '#a0d8f0', '#f8e070', '#b0f0a0', '#e08060'])); }
+        const knob = P.mask(); P.mEllipse(knob, 8, 18, 2.4, 2.4); P.fill(knob, '#e8e0d0', { outline: OL });
+        P.set(8, 18, '#3a3a44');
+        const slot = P.mask(); P.mRect(slot, 5, 22, 6, 3); P.fill(slot, '#2a2028', { shade: false });
+        break; }
+      case 'arcade': { // a candy cabinet with an attract screen
+        P = new Pix(22, 34); const m = P.mask(); P.mRound(m, 0, 0, 22, 34, 2);
+        P.fill(m, ['#2a4ab0', '#c8383a', '#6a2a9a'][variant % 3], { outline: OL }); P.grain(m, 0.04, 6);
+        const scr = P.mask(); P.mRect(scr, 3, 5, 16, 12); P.fill(scr, '#0e1420', { outline: '#0a0a10', shade: false });
+        const r4 = makeRng(17 + variant);
+        for (let i = 0; i < 26; i++) P.set(r4.int(4, 18), r4.int(6, 16), r4.pick(['#40e0f0', '#f0d040', '#f04080', '#60f080']));
+        const panel = P.mask(); P.mRect(panel, 2, 19, 18, 6); P.fill(panel, '#1a1a24', { outline: OL, shade: false });
+        P.set(6, 21, '#e04040'); P.set(9, 21, '#40a0e0'); P.set(12, 21, '#e0c040');
+        P.set(16, 21, '#c8c8d4'); P.set(16, 20, '#e8e8f0');
+        const top = P.mask(); P.mRect(top, 1, 1, 20, 3); P.fill(top, '#f0f0f8', { shade: false });
+        P.paint(top, (x, y) => x % 3 === 0 ? '#e04080' : null);
+        break; }
+      case 'lantern2': { // a paper chochin with a band of ink down it
+        P = new Pix(12, 18); const m = P.mask(); P.mEllipse(m, 6, 9, 5, 8);
+        P.fill(m, ['#e8e0cc', '#d8483a', '#e8c860'][variant % 3], { outline: OL });
+        for (let y = 3; y < 16; y += 3) P.paint(m, (x, yy) => yy === y ? '#b8a88c' : null);
+        P.paint(m, (x, y) => x >= 5 && x <= 6 && y > 5 && y < 13 ? '#2a2028' : null);
+        const cap = P.mask(); P.mRect(cap, 4, 0, 4, 2); P.mRect(cap, 4, 16, 4, 2); P.fill(cap, '#3a3028', { outline: OL, shade: false });
+        break; }
+      case 'koban': { // the little police box, with its red lamp
+        P = new Pix(24, 28); const m = P.mask(); P.mRect(m, 0, 4, 24, 24);
+        P.fill(m, '#d8d4c8', { outline: OL }); P.grain(m, 0.04, 8);
+        const win = P.mask(); P.mRect(win, 3, 8, 7, 8); P.mRect(win, 14, 8, 7, 8);
+        P.fill(win, '#8ab8d8', { outline: OL, shade: false });
+        const door = P.mask(); P.mRect(door, 10, 18, 5, 10); P.fill(door, '#3a4450', { outline: OL, shade: false });
+        const lamp = P.mask(); P.mEllipse(lamp, 12, 2, 3, 2.4); P.fill(lamp, '#e03a3a', { outline: OL, shade: false });
+        P.set(11, 1, '#ff8a7a');
+        break; }
+      case 'crate2': { // stacked beer crates outside an izakaya
+        P = new Pix(20, 14); const m = P.mask(); P.mRect(m, 0, 0, 20, 14);
+        P.fill(m, ['#3a6a4a', '#8a3a3a', '#3a4a7a'][variant % 3], { outline: OL });
+        for (let y = 2; y < 13; y += 4) for (let x = 2; x < 18; x += 4) { const h = P.mask(); P.mRect(h, x, y, 3, 3); P.fill(h, '#1a1a20', { shade: false }); }
+        break; }
+      case 'bike': { // a mamachari leaning on its stand
+        P = new Pix(24, 14); const m = P.mask();
+        P.mEllipse(m, 5, 10, 3.6, 3.6); P.mEllipse(m, 19, 10, 3.6, 3.6);
+        P.fill(m, '#2a2a32', { outline: OL, shade: false });
+        const fr = P.mask(); P.mLine(fr, 5, 10, 12, 5, 1); P.mLine(fr, 12, 5, 19, 10, 1); P.mLine(fr, 12, 5, 9, 10, 1);
+        P.mRect(fr, 10, 2, 5, 2); P.fill(fr, ['#3a6ab0', '#8a3a5a', '#4a7a4a'][variant % 3], { outline: OL, shade: false });
+        const bask = P.mask(); P.mRect(bask, 2, 3, 6, 4); P.fill(bask, '#c8c0a8', { outline: OL, shade: false });
+        break; }
+      case 'sakura': { // a branch of blossom to hang over a scene
+        P = new Pix(26, 16); const br = P.mask(); P.mLine(br, 0, 12, 26, 6, 2);
+        P.fill(br, '#5a3a2a', { outline: OL, shade: false });
+        const r5 = makeRng(23 + variant);
+        for (let i = 0; i < 18; i++) { const bx = r5.int(2, 24), by = r5.int(1, 12);
+          const fl = P.mask(); P.mEllipse(fl, bx, by, 2, 1.8);
+          P.fill(fl, r5.pick(['#ffd0e0', '#ffb8d0', '#fff0f4']), { shade: false });
+          P.set(bx, by, '#ff90b8'); }
+        break; }
       // ---- stadium production: the expensive gear you had when you were somebody
       case 'cab': { // a 4x12 guitar cabinet, tolex and grille cloth
         P = new Pix(30, 26); const m = P.mask(); P.mRect(m, 0, 0, 30, 26);
@@ -2268,6 +2430,19 @@ const FACADE_STYLES = {
   chinatown: { cols: ['#8a2a2a', '#6a2a3a', '#a03a2a', '#7a3a2a'], trim: '#d0a030', floors: [2, 4], floorH: 20, bay: false, pagoda: true },
   brick:     { cols: ['#8a4a3a', '#7a4a3a', '#9a5a4a', '#6a3a30'], trim: '#c8b8a0', floors: [3, 5], floorH: 18, bay: false, fire: true },
   pastel:    { cols: ['#d05070', '#50a0d0', '#e0b040', '#60b060', '#a060c0', '#f08060'], trim: '#f4efe0', floors: [2, 3], floorH: 22, bay: true },
+  // ---- Tokyo
+  // shitamachi: the low, tiled, slightly weathered old-town block
+  shitamachi: { cols: ['#b9a894', '#a89882', '#c4b6a2', '#9a8c7a', '#cfc0a8'], trim: '#6a5c48', floors: [2, 3], floorH: 21, bay: false, tiled: true },
+  // showa: narrow post-war bar fronts, painted and re-painted
+  showa:      { cols: ['#7a5a48', '#6a4a4a', '#8a6a4a', '#5a4a44', '#7a4a3a'], trim: '#e0c88a', floors: [2, 3], floorH: 19, bay: false, noren: true },
+  // kawaii: the sugar-coloured Harajuku frontages
+  kawaii:     { cols: ['#f0a0c0', '#a8d8f0', '#f8e090', '#c0a8f0', '#a8f0c8', '#f8b8a0'], trim: '#ffffff', floors: [2, 4], floorH: 20, bay: false, awning: true },
+  // glass: Ginza and the Scramble, mirrored and cold
+  glass:      { cols: ['#3a4a60', '#44566e', '#32425a', '#4e6078'], trim: '#8fa8c4', floors: [6, 12], floorH: 13, bay: false, mirror: true },
+  // neon: Kabukicho, every surface rented out to a sign
+  neon:       { cols: ['#2a2434', '#332a40', '#241f30', '#3a2f46'], trim: '#6a5a80', floors: [4, 8], floorH: 15, bay: false, signs: true },
+  // temple: vermilion posts and a heavy tiled roof
+  temple:     { cols: ['#9a3a2a', '#8a3428', '#a84432'], trim: '#e8c86a', floors: [1, 2], floorH: 30, bay: false, kawara: true },
 };
 // Returns a canvas of a single building facade whose bottom edge is the street level.
 function facadeCanvas(style, seed, w) {
@@ -2304,6 +2479,53 @@ function facadeCanvas(style, seed, w) {
     else { const roof = P.mask(); P.mRect(roof, 0, 9, w, 2); P.fill(roof, dark, { outline: OL, shade: false }); if (r.chance(0.5)) { const wt = P.mask(); P.mRect(wt, r.int(3, Math.max(3, w - 10)), 3, 6, 7); P.fill(wt, '#6a5a4a', { outline: OL }); } if (r.chance(0.4)) { const ant = P.mask(); P.mRect(ant, w - 6, 0, 1, 10); P.fill(ant, '#888', { shade: false }); P.set(w - 6, 0, '#ff4040'); } }
     // wall texture
     P.paint(body, (x, y) => { const c = P.get(x, y); if (c !== col) return null; return (style === 'brick' && (y % 3 === 0) && ((x + (y % 6 === 0 ? 0 : 2)) % 5 === 0)) ? dark : (x === 0 ? light : x === w - 1 ? dark : null); });
+    // ---- Tokyo dressing, layered on after the wall is built
+    if (st.tiled) {
+      // the small square tiles an old-town frontage is faced with
+      P.paint(body, (x, y) => (x % 4 === 0 || y % 4 === 0) && P.get(x, y) === col ? darken(col, 0.09) : null);
+    }
+    if (st.kawara) {
+      // a heavy tiled temple roof with an upturned ridge
+      const roof = P.mask();
+      P.mPoly(roof, [[-6, 14], [w + 6, 14], [w - 4, 4], [4, 4]]);
+      P.fill(roof, '#3a4450', { outline: OL });
+      for (let x = -4; x < w + 4; x += 4) { const rib = P.mask(); P.mRect(rib, x, 5, 2, 9); P.fill(rib, '#4c5866', { shade: false }); }
+      P.paint(roof, (x, y) => y === 13 ? '#e8c86a' : null);
+    }
+    if (st.mirror) {
+      // a mirrored curtain wall: bands of sky reflected down the face
+      P.paint(body, (x, y) => { const c = P.get(x, y); if (c !== col) return null; return (y % 13 < 2) ? lighten(col, 0.22) : ((x * 3 + y) % 17 === 0 ? lighten(col, 0.12) : null); });
+    }
+    if (st.noren) {
+      // a split curtain hung over the door of every little bar
+      const nx = Math.floor(w / 2) - 8;
+      const nr = P.mask(); P.mRect(nr, nx, 10 + h - 16, 16, 6);
+      P.fill(nr, r.pick(['#1f3a6a', '#6a1f2a', '#2a4a2a', '#3a2a4a']), { outline: OL, shade: false });
+      for (const sx of [nx + 5, nx + 10]) P.paint(nr, (x, y) => x === sx ? '#12101a' : null);
+    }
+    if (st.awning) {
+      // a scalloped candy awning over the shopfront
+      const aw2 = P.mask(); P.mRect(aw2, 1, 10 + h - 20, w - 2, 5);
+      const ac = r.pick(['#f06aa0', '#6ac8f0', '#f8d24a', '#8af0b0']);
+      P.fill(aw2, ac, { outline: OL, shade: false });
+      P.paint(aw2, (x, y) => (x % 6 < 3) ? '#fdfcf8' : null);
+      for (let x = 2; x < w - 2; x += 6) P.set(x, 10 + h - 15, darken(ac, 0.2));
+    }
+    if (st.signs) {
+      // stacked signboards bolted to the face, the way Kabukicho does it
+      const cols2 = ['#f0407a', '#40d0f0', '#f0d040', '#8a50f0', '#40f0a0'];
+      let sy = 16;
+      while (sy < 10 + h - 26) {
+        const sh = r.int(6, 10), side = r.chance(0.5);
+        const sx = side ? 1 : w - 10, sw = r.int(7, 10);
+        const sg = P.mask(); P.mRect(sg, Math.min(sx, w - sw - 1), sy, sw, sh);
+        const sc = r.pick(cols2);
+        P.fill(sg, '#16121f', { outline: OL, shade: false });
+        // the lit characters on it, as bars of light
+        P.paint(sg, (x, y) => (y - sy) % 3 === 1 && (x % 2 === 0) ? sc : null);
+        sy += sh + r.int(3, 7);
+      }
+    }
     return P.toCanvas();
   });
 }
@@ -2338,6 +2560,43 @@ function landmarkCanvas(kind) {
       P.mRect(m, 0, 44, 200, 3); for (const tx of [50, 150]) { P.mRect(m, tx - 4, 6, 3, 44); P.mRect(m, tx + 1, 6, 3, 44); P.mRect(m, tx - 6, 4, 12, 3); P.mRect(m, tx - 6, 22, 12, 2); P.mRect(m, tx - 6, 34, 12, 2); }
       for (let x = 0; x < 200; x++) { const c = Math.abs(((x + 50) % 100) - 50) / 50; const y = 6 + Math.round(c * c * 36); P.mRect(m, x, y, 1, 1); if (x % 6 === 0) P.mRect(m, x, y, 1, 44 - y); }
       P.fill(m, '#c8432a', { outline: null, shade: false }); P.paint(m, (x, y) => y === 44 ? '#e05a3a' : null);
+    }
+    else if (kind === 'tokyotower') {
+      // a lattice tower in international orange and white
+      P = new Pix(34, 84); const m = P.mask();
+      P.mLine(m, 3, 84, 14, 4, 2); P.mLine(m, 31, 84, 20, 4, 2);
+      P.mRect(m, 14, 0, 6, 6); P.mRect(m, 15, 6, 4, 18);
+      for (const [yy, half] of [[24, 6], [44, 9], [64, 12]]) P.mRect(m, 17 - half, yy, half * 2, 3);
+      P.mRect(m, 6, 70, 22, 4);
+      P.fill(m, '#e05a2a', { outline: OL, shade: false });
+      // the white bands that break the orange up
+      P.paint(m, (x, y) => (y > 8 && y < 20) || (y > 30 && y < 40) || (y > 50 && y < 58) ? '#f4ecdc' : null);
+      // the lattice itself
+      const lat = P.mask();
+      for (let y = 24; y < 80; y += 7) { P.mLine(lat, 17 - (y - 10) * 0.22, y, 17 + (y - 10) * 0.22, y + 7, 1); P.mLine(lat, 17 + (y - 10) * 0.22, y, 17 - (y - 10) * 0.22, y + 7, 1); }
+      P.paint(lat, (x, y) => P.get(x, y) ? darken(P.get(x, y), 0.18) : null);
+      P.set(17, 0, '#ffd24a');
+    }
+    else if (kind === 'skytree') {
+      // a tall pale spire with two observation decks and a red light on top
+      P = new Pix(22, 110); const m = P.mask();
+      for (let y = 0; y < 110; y++) { const half = Math.max(1, Math.round(1 + Math.pow(y / 110, 1.7) * 8)); P.mRect(m, 11 - half, y, half * 2, 1); }
+      P.fill(m, '#cfd6e4', { outline: OL, shade: false });
+      P.ditherTo(m, '#a8b2c8', (x, y) => clamp(1 - y / 110, 0, 1) * 0.6);
+      for (const [yy, half] of [[54, 8], [74, 9]]) { const d = P.mask(); P.mRect(d, 11 - half, yy, half * 2, 5); P.fill(d, '#e8edf6', { outline: OL, shade: false }); P.paint(d, (x, y) => y === yy + 2 ? '#7fc8e8' : null); }
+      const sp = P.mask(); P.mRect(sp, 10, 0, 2, 22); P.fill(sp, '#dfe6f2', { shade: false });
+      P.set(11, 0, '#ff4a4a'); P.set(10, 1, '#ff8a6a');
+      // the steel lattice, hinted rather than drawn
+      P.paint(m, (x, y) => y > 20 && (x + y) % 5 === 0 ? '#b4bccc' : null);
+    }
+    else if (kind === 'torii') {
+      P = new Pix(30, 34); const m = P.mask();
+      P.mRect(m, 4, 8, 4, 26); P.mRect(m, 22, 8, 4, 26);
+      P.mPoly(m, [[0, 2], [30, 2], [28, 7], [2, 7]]);
+      P.mRect(m, 3, 11, 24, 3);
+      P.fill(m, '#c8402a', { outline: OL });
+      P.paint(m, (x, y) => y === 2 || y === 11 ? '#e4644a' : null);
+      P.paint(m, (x, y) => y > 30 ? '#2a2028' : null);
     }
     else { P = new Pix(4, 4); }
     return P.toCanvas();
@@ -2466,18 +2725,54 @@ function drawKeyboard(ctx, hw, R, opts = {}) {
   rect(ctx, A.x, A.y + A.h - 4, A.w, 4, '#3a2a2a');
 }
 // ---------- TAIKO drum body ----------
+// A proper odaiko: a barrel of hollowed wood, a tacked hide head, and the
+// lacquered X-stand it sits in. The centre is the skin, the ring is the rim,
+// and the two sound nothing like each other.
 function drawTaikoDrum(ctx, x, y, r, hitDon, hitKa, t) {
-  const sq = hitDon > 0 || hitKa > 0 ? 1 + Math.max(hitDon, hitKa) * 0.12 : 1;
+  const sq = hitDon > 0 || hitKa > 0 ? 1 + Math.max(hitDon, hitKa) * 0.1 : 1;
   const rr = Math.round(r * sq);
-  circle(ctx, x, y + 3, rr + 6, '#2a1a10');
-  circle(ctx, x, y, rr + 6, '#6a3a1e'); circle(ctx, x, y, rr + 5, '#8a5228'); circle(ctx, x, y, rr + 3, '#5a3018');
-  circle(ctx, x, y, rr, hitDon > 0 ? '#ffd8b0' : hitKa > 0 ? '#d8e8ff' : '#f2e6d0');
-  circle(ctx, x, y, rr - 1, hitDon > 0 ? '#ffeede' : hitKa > 0 ? '#eef4ff' : '#f8f0e0');
-  ctx.globalAlpha = 0.25; circle(ctx, x - rr / 3, y - rr / 3, Math.round(rr / 2), '#ffffff'); ctx.globalAlpha = 1;
-  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + 0.3; px(ctx, x + Math.cos(a) * (rr + 4), y + Math.sin(a) * (rr + 4), '#e0b040'); }
-  // sticks
+  x = Math.round(x); y = Math.round(y);
+  // the stand behind it: two lacquered legs and a crossbar
+  for (const d of [-1, 1]) {
+    line(ctx, x + d * (rr + 4), y + rr - 4, x + d * (rr + 20), y + rr + 26, '#2e1a14');
+    line(ctx, x + d * (rr + 5), y + rr - 4, x + d * (rr + 21), y + rr + 26, '#4a2c20');
+  }
+  rect(ctx, x - rr - 16, y + rr + 22, (rr + 16) * 2, 3, '#3a2218');
+  rect(ctx, x - rr - 16, y + rr + 22, (rr + 16) * 2, 1, '#5e3a28');
+  // the shell, a barrel seen end-on
+  ellipsePx(ctx, x, y + 4, rr + 9, rr + 9, '#241209');
+  ellipsePx(ctx, x, y, rr + 9, rr + 9, '#6a3a1e');
+  ellipsePx(ctx, x, y, rr + 8, rr + 8, '#8a5228');
+  // the grain of the wood around the rim
+  for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2; const c = (i % 3) ? '#7a4622' : '#96602f';
+    ellipseRingPx(ctx, x, y, rr + 7 - (i % 2), rr + 7 - (i % 2), null);
+    px(ctx, Math.round(x + Math.cos(a) * (rr + 6)), Math.round(y + Math.sin(a) * (rr + 6)), c); }
+  ellipsePx(ctx, x, y, rr + 4, rr + 4, '#5a3018');
+  // the hide head, pale and slightly warm, darkening where it is struck
+  const headCol = hitDon > 0 ? '#fff0d4' : '#f2e6d0';
+  ellipsePx(ctx, x, y, rr, rr, headCol);
+  ellipsePx(ctx, x, y, rr - 1, rr - 1, hitDon > 0 ? '#fff8ea' : '#f8f0e0');
+  // the worn spot in the middle where every stroke lands
+  ellipsePx(ctx, x, y, Math.round(rr * 0.44), Math.round(rr * 0.44), hitDon > 0 ? '#ffeab8' : '#eee0c6');
+  ctx.globalAlpha = 0.22; ellipsePx(ctx, x - rr / 3, y - rr / 3, Math.round(rr / 2), Math.round(rr / 2.4), '#ffffff'); ctx.globalAlpha = 1;
+  // the tacks that hold the hide on, all the way round
+  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2 + 0.17;
+    const tx = Math.round(x + Math.cos(a) * (rr + 2)), ty = Math.round(y + Math.sin(a) * (rr + 2));
+    px(ctx, tx, ty, hitKa > 0 ? '#fff4c8' : '#e0b040'); px(ctx, tx, ty + 1, '#8a6420'); }
+  // the rim itself lights when you hit the edge
+  if (hitKa > 0) { ctx.globalAlpha = clamp(hitKa * 3, 0, 1); ellipseRingPx(ctx, x, y, rr + 5, rr + 5, '#d8e8ff'); ellipseRingPx(ctx, x, y, rr + 6, rr + 6, '#8ab8f0'); ctx.globalAlpha = 1; }
+  if (hitDon > 0) { ctx.globalAlpha = clamp(hitDon * 2.2, 0, 1); ellipseRingPx(ctx, x, y, Math.round(rr * 0.6), Math.round(rr * 0.6), '#ffd8a0'); ctx.globalAlpha = 1; }
+  // a pair of bachi, thick and tapered, resting either side
   const sw = Math.sin(t * 9) * 3;
-  for (const s of [-1, 1]) { const bx = x + s * (rr + 14), by = y + 10 + (s > 0 ? sw : -sw); line(ctx, bx, by + 12, bx - s * 8, by - 6, '#e8d0a0'); line(ctx, bx + 1, by + 12, bx + 1 - s * 8, by - 6, '#c8a870'); }
+  for (const s of [-1, 1]) {
+    const bx = x + s * (rr + 17), by = y + 8 + (s > 0 ? sw : -sw);
+    for (let i = 0; i < 20; i++) {
+      const px2 = Math.round(bx - s * i * 0.4), py2 = Math.round(by + 12 - i * 0.9);
+      const thick = i > 12 ? 3 : 2;
+      rect(ctx, px2, py2, thick, 2, i > 15 ? '#f0e2c0' : '#ddc79a');
+      rect(ctx, px2, py2 + 2, thick, 1, '#a8895e');
+    }
+  }
 }
 // ---------- SAX / TRUMPET / VIOLIN bodies ----------
 function drawSaxBody(ctx, x, y, breath, playing, t) {
@@ -3406,6 +3701,8 @@ function drawSleeve(ctx, key, x, y, size, opts = {}) {
 // ---------- Instruments ----------
 'use strict';
 const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
+// A Japanese instrument reads in its own palette: vermilion, gold, indigo, ink.
+const JP_LANE_COLORS = ['#e0503c', '#e8b840', '#f0e4cc', '#3f6fb0', '#8a5fb0', '#d8747a'];
 // Colour per kit piece, keyed by piece name rather than by lane, because how
 // many pieces you own changes as you climb the ladder.
 const PIECE_COLORS = {
@@ -3464,13 +3761,28 @@ const INSTRUMENTS = {
                 desc: 'Press the lit valve combination together, right on the beat.' },
   violin:     { name: 'Violin', game: 'bow', keys: ['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS'], keyNames: ['UP', 'DOWN'], voice: 'violin', price: 65, tipMult: 1.2, family: 'strings',
                 desc: 'Bow UP or DOWN on the marker. Hold the long bows.' },
+  // ---------- Japanese instruments ----------
+  taiko:      { name: 'Taiko', game: 'taiko', keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+                voice: null, price: 45, tipMult: 1.15, family: 'percussion', jp: true,
+                desc: 'Skin in the middle, rim at the edge. Two sounds, and you had better know which is which.' },
+  shamisen:   { name: 'Shamisen', game: 'lanes', lanes: 3, keys: ['KeyD', 'KeyF', 'KeyJ'], keyNames: ['D', 'F', 'J'],
+                voice: 'shamisen', price: 58, tipMult: 1.25, family: 'strings', jp: true,
+                desc: 'Three strings struck with a plectrum the size of a spade. Sharp, dry, and it buzzes on purpose.' },
+  koto:       { name: 'Koto', game: 'lanes', lanes: 5, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['S', 'D', 'F', 'J', 'K'],
+                voice: 'koto', price: 85, tipMult: 1.4, family: 'strings', jp: true,
+                desc: 'Thirteen strings over movable bridges. Five of them are yours to worry about.' },
+  shakuhachi: { name: 'Shakuhachi', game: 'wind', keys: ['Space'], keyNames: ['SPACE'],
+                voice: 'shakuhachi', price: 52, tipMult: 1.2, family: 'horns', jp: true,
+                desc: 'A length of bamboo. Hold the phrase, release on the mark, and mind your breath.' },
   // NPC-only
   mic:        { name: 'Vocals', game: 'npc', keys: [], keyNames: [], voice: 'vox', price: 0, tipMult: 1.4, family: 'voice', desc: 'A voice that fills stadiums.' },
   harmonica:  { name: 'Harmonica', game: 'npc', keys: [], keyNames: [], voice: 'harmonica', price: 0, tipMult: 0.9, family: 'horns', desc: 'Blues in a pocket.' },
   triangle:   { name: 'Triangle', game: 'npc', keys: [], keyNames: [], voice: 'tambourine', price: 0, tipMult: 0.6, family: 'percussion', desc: 'Ding.' },
   keytar:     { name: 'Keytar', game: 'npc', keys: [], keyNames: [], voice: 'organ', price: 0, tipMult: 1.2, family: 'keys', desc: 'The eighties never ended.' },
 };
-const PLAYABLE = ['guitar', 'bass', 'piano', 'tambourine', 'drums', 'sax', 'trumpet', 'violin'];
+const PLAYABLE = ['guitar', 'bass', 'piano', 'tambourine', 'drums', 'sax', 'trumpet', 'violin', 'taiko', 'shamisen', 'koto', 'shakuhachi'];
+// The ones a Tokyo shop is most likely to have on the wall.
+const JP_INSTRUMENTS = PLAYABLE.filter(k => INSTRUMENTS[k].jp);
 const GENRES = {
   rock:   { name: 'Rock', color: '#ff5a5a', bpm: [116, 140], dens: 1.15, backing: 'rock' },
   funk:   { name: 'Funk', color: '#ffb340', bpm: [98, 116], dens: 1.1, backing: 'funk', syncopated: true },
@@ -3613,7 +3925,7 @@ Object.assign(CHARMS, {
   opener:      { name: 'Strong Opener', rarity: 'common', price: 22, icon: 'note', desc: 'The first 20 notes score triple.', onHit: (S, n, j, info) => { S._cnt = (S._cnt || 0) + 1; if (S._cnt <= 20 && j !== 'miss') S.addApplause(info.applause * 2); } },
   closer:      { name: 'Big Finish', rarity: 'uncommon', price: 36, icon: 'encore', desc: 'x2 Mult if your final combo beats 40.', onSetEnd: (S) => { if (S.combo >= 40) S.timesMult(2, 'Big Finish'); } },
   tipsy:       { name: 'Happy Hour', rarity: 'common', price: 22, icon: 'coin', desc: 'Tips from the hat are worth double.', mods: { tipMult: 2 } },
-  gigEconomy:  { name: 'Gig Economy', rarity: 'uncommon', price: 34, icon: 'phone', desc: '+1 Uber ticket every morning.', mods: { tickets: 1 } },
+  gigEconomy:  { name: 'Commuter Pass', rarity: 'uncommon', price: 34, icon: 'phone', desc: '+1 train ride every morning.', mods: { tickets: 1 } },
   earworm:     { name: 'Earworm', rarity: 'rare', price: 55, icon: 'note', desc: 'x1.5 Mult when you play the same tune twice in a row.', onSetEnd: (S) => { if (S.run && S.run.lastTune === S.info.tune) S.timesMult(1.5, 'Earworm'); } },
   busStop:     { name: 'Muni Pass', rarity: 'common', price: 26, icon: 'phone', desc: 'Travel costs 1 ticket less on long hops.', mods: { cheapTravel: true } },
 });
@@ -3622,27 +3934,29 @@ Object.assign(CHARMS, {
 // ---------- Venues, boss modifiers, days, story ----------
 'use strict';
 const VENUES = {
-  corner:    { name: 'Valencia St Corner', kind: 'street', styles: ['victorian', 'pastel', 'victorian'], wealth: 1.0, traffic: 1.0, sky: 0.15, landmarks: ['sutro'] },
-  subway:    { name: '16th St BART', kind: 'subway', wealth: 0.85, traffic: 1.7, sky: 0.5 },
-  park:      { name: 'Dolores Park', kind: 'park', wealth: 1.0, traffic: 0.9, sky: 0.2, landmarks: ['transamerica', 'sutro'] },
-  haight:    { name: 'Haight & Ashbury', kind: 'street', styles: ['pastel', 'pastel', 'victorian'], wealth: 0.9, traffic: 1.3, sky: 0.3 },
-  cablecar:  { name: 'Powell St Turnaround', kind: 'street', styles: ['downtown', 'brick', 'victorian'], wealth: 1.3, traffic: 1.2, sky: 0.35, cablecar: true, landmarks: ['transamerica'] },
-  chinatown: { name: 'Grant Ave, Chinatown', kind: 'street', styles: ['chinatown', 'chinatown', 'brick'], wealth: 1.1, traffic: 1.3, sky: 0.7, lanterns: true, landmarks: ['transamerica', 'coit'] },
-  fidi:      { name: 'Montgomery St', kind: 'street', styles: ['downtown', 'downtown', 'downtown'], wealth: 1.9, traffic: 0.8, sky: 0.45, tall: true, landmarks: ['transamerica'] },
-  pier:      { name: 'Pier 39', kind: 'pier', wealth: 1.5, traffic: 1.2, sky: 0.55, landmarks: ['coit'] },
-  ferry:     { name: 'Ferry Building', kind: 'pier', wealth: 1.6, traffic: 1.0, sky: 0.25, ferry: true },
-  ggpark:    { name: 'Golden Gate Park', kind: 'park', wealth: 1.3, traffic: 1.0, sky: 0.3, ggpark: true },
-  bridge:    { name: 'Golden Gate Bridge', kind: 'bridge', wealth: 2.2, traffic: 1.0, sky: 0.6 },
-  stadium:   { name: 'Oracle Park', kind: 'stadium', wealth: 3, traffic: 0, sky: 0.9 },
+  shotengai: { name: 'Shimokita Shotengai', kind: 'street', styles: ['shitamachi', 'shitamachi', 'showa'], wealth: 1.0, traffic: 1.0, sky: 0.15, banners: true, landmarks: ['tokyotower'] },
+  metro:     { name: 'Shibuya Station', kind: 'subway', wealth: 0.85, traffic: 1.8, sky: 0.5 },
+  park:      { name: 'Yoyogi Park', kind: 'park', wealth: 1.0, traffic: 0.9, sky: 0.2, landmarks: ['tokyotower', 'skytree'] },
+  takeshita: { name: 'Takeshita-dori', kind: 'street', styles: ['kawaii', 'kawaii', 'showa'], wealth: 0.95, traffic: 1.6, sky: 0.3, banners: true, narrow: true },
+  scramble:  { name: 'Shibuya Scramble', kind: 'street', styles: ['glass', 'neon', 'glass'], wealth: 1.5, traffic: 2.0, sky: 0.4, screens: true, tall: true, landmarks: ['tokyotower'] },
+  yokocho:   { name: 'Golden Gai', kind: 'street', styles: ['showa', 'showa', 'shitamachi'], wealth: 1.1, traffic: 1.2, sky: 0.72, lanterns: true, narrow: true },
+  neon:      { name: 'Kabukicho', kind: 'street', styles: ['neon', 'neon', 'glass'], wealth: 1.25, traffic: 1.5, sky: 0.78, signs: true, tall: true },
+  akiba:     { name: 'Akihabara', kind: 'street', styles: ['neon', 'kawaii', 'glass'], wealth: 1.2, traffic: 1.4, sky: 0.5, signs: true, screens: true },
+  temple:    { name: 'Senso-ji', kind: 'temple', styles: ['temple', 'temple', 'shitamachi'], wealth: 1.15, traffic: 1.3, sky: 0.25, lanterns: true, landmarks: ['skytree'] },
+  ginza:     { name: 'Ginza Crossing', kind: 'street', styles: ['glass', 'glass', 'glass'], wealth: 2.0, traffic: 0.9, sky: 0.45, tall: true, landmarks: ['tokyotower'] },
+  sakura:    { name: 'Meguro River', kind: 'park', wealth: 1.2, traffic: 1.0, sky: 0.2, sakura: true },
+  bayside:   { name: 'Odaiba Waterfront', kind: 'pier', wealth: 1.5, traffic: 1.1, sky: 0.55, landmarks: ['skytree'] },
+  skytree:   { name: 'Tokyo Skytree', kind: 'bridge', wealth: 2.4, traffic: 1.0, sky: 0.62 },
+  dome:      { name: 'Tokyo Dome', kind: 'stadium', wealth: 3, traffic: 0, sky: 0.9 },
 };
 const DAY_VENUES = [
-  ['corner', 'park', 'subway'],
-  ['subway', 'corner', 'haight', 'cablecar'],
-  ['chinatown', 'cablecar', 'fidi', 'subway'],
-  ['pier', 'ferry', 'fidi', 'chinatown'],
-  ['ggpark', 'pier', 'ferry', 'cablecar'],
+  ['shotengai', 'park', 'metro'],
+  ['metro', 'shotengai', 'takeshita', 'yokocho'],
+  ['takeshita', 'yokocho', 'akiba', 'metro'],
+  ['scramble', 'neon', 'akiba', 'temple'],
+  ['ginza', 'scramble', 'bayside', 'temple'],
 ];
-const DAY_NAMES = ['The Mission', 'Downtown', 'Chinatown & Nob Hill', 'The Waterfront', 'Golden Gate'];
+const DAY_NAMES = ['Shimokitazawa', 'Shinjuku Nights', 'Harajuku & Akihabara', 'Shibuya Scramble', 'The Skytree'];
 
 // Boss / Big Gig modifiers (shown on the map like Balatro boss blinds)
 const BOSS_MODS = {
@@ -3656,6 +3970,24 @@ const BOSS_MODS = {
   blackout: { name: 'Blackout', icon: 'skull', desc: 'Only the bottom of the lanes is lit.', color: '#404060' },
 };
 const BOSS_MOD_KEYS = Object.keys(BOSS_MODS);
+// ---------- The rival ----------
+// The finale is not another street set with a debuff on it. There is somebody
+// else on the deck of the Skytree and only one of you is leaving with the
+// crowd. They work in three phases and each one changes what they do to you.
+const RIVAL = {
+  name: 'KUROHANE',
+  title: 'THE BLACK MOTH',
+  taunts: [
+    'You busk. I headline. Watch.',
+    'Not bad. Try it with the lights in your eyes.',
+    'Then take it. If you can still hear the beat.',
+  ],
+  phases: [
+    { name: 'OVERTURE',  mod: 'rushHour', color: '#ffb340', desc: 'She pulls the whole crowd at once.' },
+    { name: 'THE TURN',  mod: 'snob',     color: '#c58bff', desc: 'Nothing but PERFECT moves them now.' },
+    { name: 'LAST LIGHT', mod: 'blackout', color: '#404060', desc: 'She kills the house lights.' },
+  ],
+};
 
 const STORY = {
   bandName: 'MONARCH',
@@ -3678,11 +4010,11 @@ const STORY = {
     wake: [
       { who: 'buzz', text: '...ow. Where am I? Is that... a bench?' },
       { who: 'buzz', text: 'Right. No band. No gig. Six dollars and a guitar with four strings.' },
-      { who: 'buzz', text: 'Fine. If I cannot play stadiums, I will play the streets. Every corner of this city. And I will build a band Monarch could only dream of.' },
+      { who: 'buzz', text: 'Fine. If I cannot play the Dome, I will play the street. Every ward of this city. And I will build a band Monarch could only dream of.' },
     ],
   },
   finale: [
-    { who: 'buzz', text: 'Five days. Every corner of San Francisco. And now: the Golden Gate.' },
+    { who: 'buzz', text: 'Five days. Shibuya to Asakusa. And now: the Skytree.' },
     { who: 'monarch', text: 'You again? With... THAT band?' },
     { who: 'buzz', text: 'THIS band. Watch and learn.' },
   ],
@@ -3782,8 +4114,11 @@ const TUNE_BY_GENRE = (g) => TUNE_KEYS.filter(k => TUNES[k].genre === g);
 
 // ---- The opening rock opera. Original, in the spirit of a six-minute epic.
 const OPERA = {
-  title: 'A NIGHT AT THE HIVE',
-  subtitle: 'THE FAREWELL SHOW',
+  title: 'LAST NIGHT AT THE HIVE',
+  subtitle: 'TOKYO DOME - FINAL NIGHT',
+  venueName: 'TOKYO DOME',
+  kana: 'MONAAKU',            // how the crowd chants the name back
+  seats: '55,000 SOLD OUT',
   movements: [
     { key: 'intro', title: 'I. HOUSE LIGHTS', instrument: 'piano', bpm: 72, style: 'opera', difficulty: 1, key_: 57, chords: [0, 5, 3, 4],
       lights: ['#c58bff', '#5bc0ff'], pyro: 0,
@@ -3972,113 +4307,121 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
 }
 
 // ===== js/data/sfmap.js =====
-// ---------- San Francisco: a living map you travel with Uber tickets ----------
+// ---------- Tokyo: a living map you travel with train passes ----------
 'use strict';
 const MAP_SCALE = 1.5;
 const MAPW = 1500, MAPH = 1140;
 const DISTRICTS = [
-  { name: 'PRESIDIO', x: 150, y: 120, park: true, poly: [[60, 60], [300, 70], [310, 190], [70, 200]] },
-  { name: 'THE MARINA', x: 390, y: 110, poly: [[310, 70], [520, 70], [520, 175], [310, 180]] },
-  { name: 'FISHERMANS WHARF', x: 660, y: 90, poly: [[520, 60], [790, 70], [800, 150], [520, 150]] },
-  { name: 'NORTH BEACH', x: 690, y: 175, poly: [[600, 150], [800, 150], [810, 225], [600, 225]] },
-  { name: 'CHINATOWN', x: 660, y: 245, poly: [[600, 225], [760, 225], [760, 290], [600, 290]] },
-  { name: 'NOB HILL', x: 560, y: 250, poly: [[470, 200], [600, 200], [600, 300], [470, 300]] },
-  { name: 'FINANCIAL DISTRICT', x: 810, y: 265, poly: [[760, 225], [900, 235], [900, 320], [760, 310]] },
-  { name: 'RICHMOND', x: 190, y: 275, poly: [[70, 210], [430, 215], [430, 330], [70, 330]] },
-  { name: 'GOLDEN GATE PARK', x: 250, y: 365, park: true, poly: [[70, 335], [430, 340], [430, 405], [70, 400]] },
-  { name: 'HAIGHT-ASHBURY', x: 470, y: 360, poly: [[435, 330], [560, 335], [560, 410], [435, 405]] },
-  { name: 'THE SUNSET', x: 200, y: 470, poly: [[70, 410], [420, 415], [420, 560], [70, 555]] },
-  { name: 'TWIN PEAKS', x: 460, y: 465, hill: true, poly: [[420, 415], [560, 420], [560, 520], [420, 515]] },
-  { name: 'SOMA', x: 780, y: 400, poly: [[660, 320], [900, 330], [900, 460], [660, 450]] },
-  { name: 'THE MISSION', x: 620, y: 500, poly: [[560, 425], [790, 435], [790, 600], [560, 590]] },
-  { name: 'THE CASTRO', x: 520, y: 545, poly: [[430, 520], [560, 525], [560, 600], [430, 595]] },
-  { name: 'BERNAL HEIGHTS', x: 700, y: 640, poly: [[560, 600], [820, 610], [820, 700], [560, 690]] },
+  { name: 'SHINJUKU', x: 300, y: 180, poly: [[190, 110], [430, 115], [435, 255], [190, 250]] },
+  { name: 'KABUKICHO', x: 330, y: 118, poly: [[250, 80], [430, 85], [430, 140], [250, 138]] },
+  { name: 'YOYOGI PARK', x: 300, y: 330, park: true, poly: [[200, 280], [420, 285], [420, 385], [200, 380]] },
+  { name: 'HARAJUKU', x: 470, y: 315, poly: [[425, 270], [570, 275], [570, 360], [425, 355]] },
+  { name: 'OMOTESANDO', x: 560, y: 385, poly: [[480, 360], [640, 365], [640, 420], [480, 415]] },
+  { name: 'SHIBUYA', x: 420, y: 465, poly: [[330, 400], [540, 405], [540, 530], [330, 525]] },
+  { name: 'SHIMOKITAZAWA', x: 165, y: 450, poly: [[70, 395], [290, 400], [290, 500], [70, 495]] },
+  { name: 'NAKANO', x: 150, y: 250, poly: [[70, 200], [190, 205], [190, 300], [70, 295]] },
+  { name: 'AKIHABARA', x: 720, y: 210, poly: [[650, 160], [810, 165], [810, 260], [650, 255]] },
+  { name: 'UENO', x: 780, y: 115, park: true, poly: [[690, 70], [860, 75], [860, 155], [690, 150]] },
+  { name: 'ASAKUSA', x: 900, y: 95, poly: [[865, 55], [990, 60], [990, 150], [865, 145]] },
+  { name: 'GINZA', x: 730, y: 340, poly: [[650, 290], [820, 295], [820, 380], [650, 375]] },
+  { name: 'ROPPONGI', x: 590, y: 490, poly: [[545, 440], [690, 445], [690, 540], [545, 535]] },
+  { name: 'TSUKIJI', x: 800, y: 450, poly: [[720, 405], [880, 410], [880, 490], [720, 485]] },
+  { name: 'ODAIBA', x: 900, y: 590, poly: [[820, 545], [990, 550], [990, 650], [820, 645]] },
+  { name: 'MEGURO', x: 420, y: 600, poly: [[300, 550], [540, 555], [540, 650], [300, 645]] },
 ];
 const WATER = [
-  { name: 'PACIFIC OCEAN', poly: [[0, 0], [65, 0], [70, 760], [0, 760]] },
-  { name: 'SAN FRANCISCO BAY', poly: [[820, 0], [1000, 0], [1000, 760], [830, 760], [900, 470], [905, 230], [800, 60]] },
-  { name: '', poly: [[0, 0], [1000, 0], [1000, 55], [300, 62], [0, 40]] },
+  { name: 'TOKYO BAY', poly: [[790, 690], [1000, 690], [1000, 500], [900, 505], [860, 560], [800, 620]] },
+  { name: 'SUMIDA RIVER', poly: [[985, 40], [1000, 40], [1000, 700], [955, 700], [930, 420], [950, 180]] },
+  { name: '', poly: [[0, 690], [1000, 690], [1000, 760], [0, 760]] },
 ];
-// Streets: polylines with names, drawn Google-Maps style
+// Streets: polylines with names, drawn like a transit map
 const STREETS = [
-  { name: 'THE EMBARCADERO', big: true, pts: [[790, 80], [830, 160], [860, 240], [880, 330], [890, 430]] },
-  { name: 'MARKET ST', big: true, pts: [[880, 330], [790, 370], [700, 410], [610, 450], [520, 495], [460, 520]] },
-  { name: 'VAN NESS AVE', big: true, pts: [[520, 90], [525, 220], [530, 340], [535, 450], [540, 560]] },
-  { name: 'GEARY BLVD', big: true, pts: [[80, 285], [260, 285], [430, 282], [560, 275], [700, 268], [830, 260]] },
-  { name: 'COLUMBUS AVE', pts: [[790, 120], [720, 180], [660, 230], [610, 280]] },
-  { name: 'LOMBARD ST', pts: [[310, 130], [450, 128], [560, 130], [640, 135]] },
-  { name: 'GRANT AVE', pts: [[655, 150], [655, 230], [652, 300]] },
-  { name: 'CALIFORNIA ST', pts: [[430, 235], [520, 232], [610, 230], [700, 228], [800, 226]] },
-  { name: 'DIVISADERO ST', pts: [[435, 220], [438, 340], [440, 450], [442, 550]] },
-  { name: 'HAIGHT ST', pts: [[430, 370], [500, 368], [560, 366], [620, 364]] },
-  { name: 'MISSION ST', big: true, pts: [[790, 390], [720, 450], [660, 510], [620, 570], [600, 640]] },
-  { name: 'VALENCIA ST', pts: [[700, 460], [650, 520], [620, 580], [605, 650]] },
-  { name: '19TH AVE', big: true, pts: [[210, 215], [212, 330], [214, 420], [216, 560]] },
-  { name: 'JUDAH ST', pts: [[80, 445], [200, 445], [320, 443], [420, 440]] },
-  { name: 'GREAT HIGHWAY', pts: [[80, 220], [78, 340], [76, 450], [78, 560]] },
-  { name: 'FULTON ST', pts: [[80, 335], [220, 337], [340, 338], [430, 338]] },
-  { name: 'CASTRO ST', pts: [[500, 520], [502, 570], [504, 620]] },
-  { name: 'KING ST', pts: [[890, 430], [820, 450], [760, 465]] },
-  { name: 'BAY ST', pts: [[330, 105], [450, 103], [560, 102], [680, 100]] },
+  { name: 'YAMANOTE LINE', big: true, pts: [[300, 120], [290, 260], [330, 380], [420, 440], [560, 430], [680, 370], [740, 260], [760, 140], [800, 90]] },
+  { name: 'MEIJI-DORI', big: true, pts: [[300, 90], [310, 210], [330, 300], [400, 400], [430, 470], [440, 560]] },
+  { name: 'OMOTESANDO', big: true, pts: [[440, 330], [500, 350], [560, 380], [620, 400], [660, 415]] },
+  { name: 'TAKESHITA-DORI', pts: [[430, 300], [490, 302], [545, 305]] },
+  { name: 'CHUO-DORI', big: true, pts: [[720, 100], [722, 180], [726, 265], [730, 340], [734, 400]] },
+  { name: 'YASUKUNI-DORI', big: true, pts: [[240, 130], [370, 128], [500, 135], [620, 145], [720, 150]] },
+  { name: 'KAMINARIMON-DORI', pts: [[865, 100], [920, 98], [975, 100]] },
+  { name: 'AOYAMA-DORI', pts: [[470, 430], [560, 445], [650, 460], [700, 470]] },
+  { name: 'KOSHU-KAIDO', pts: [[80, 215], [190, 218], [300, 222], [400, 225]] },
+  { name: 'DOGENZAKA', pts: [[400, 470], [360, 500], [330, 530]] },
+  { name: 'SOTOBORI-DORI', pts: [[640, 200], [660, 290], [680, 370], [700, 440]] },
+  { name: 'HARUMI-DORI', pts: [[700, 350], [780, 380], [850, 420], [900, 470]] },
+  { name: 'RAINBOW BRIDGE', big: true, pts: [[830, 490], [870, 530], [900, 570]] },
+  { name: 'INOKASHIRA LINE', pts: [[90, 430], [190, 440], [290, 450], [380, 460]] },
+  { name: 'GINZA LINE', pts: [[430, 320], [530, 350], [640, 330], [720, 300], [790, 180], [880, 110]] },
 ];
 // Travel graph. type: venue|shop|food|recruit|event|pickup|rest|home
 // Each node: id, x, y, name, type, icon, district, venue(for gigs), tip
 const NODES = [
-  { id: 'wharf', x: 660, y: 95, name: 'FISHERMAN\'S WHARF', type: 'venue', venue: 'pier', icon: 'gig', sub: 'SEA LIONS & TOURISTS' },
-  { id: 'pier39', x: 760, y: 95, name: 'PIER 39', type: 'venue', venue: 'pier', icon: 'gig', sub: 'FAT WALLETS' },
-  { id: 'sourdough', x: 590, y: 100, name: 'SOURDOUGH SAM\'S', type: 'food', icon: 'food', sub: 'CLAM CHOWDER BOWL' },
-  { id: 'lombard', x: 560, y: 130, name: 'LOMBARD ST', type: 'venue', venue: 'cablecar', icon: 'gig', sub: 'THE CROOKED ONE' },
-  { id: 'palace', x: 350, y: 128, name: 'PALACE OF FINE ARTS', type: 'venue', venue: 'park', icon: 'elite', sub: 'BIG GIG' },
-  { id: 'presidio', x: 170, y: 150, name: 'PRESIDIO', type: 'rest', icon: 'rest', sub: 'NAP IN THE EUCALYPTUS' },
-  { id: 'ggb', x: 120, y: 75, name: 'GOLDEN GATE BRIDGE', type: 'venue', venue: 'bridge', icon: 'boss', sub: 'THE FINALE' },
-  { id: 'coit', x: 720, y: 165, name: 'COIT TOWER', type: 'venue', venue: 'fidi', icon: 'gig', sub: 'VIEW OF THE BAY' },
-  { id: 'beach', x: 690, y: 215, name: 'NORTH BEACH CAFE', type: 'recruit', icon: 'openmic', sub: 'OPEN MIC NIGHT' },
-  { id: 'gate', x: 655, y: 265, name: 'CHINATOWN GATE', type: 'venue', venue: 'chinatown', icon: 'gig', sub: 'GRANT AVE CROWDS' },
-  { id: 'dumpling', x: 600, y: 250, name: 'DUMPLING DYNASTY', type: 'food', icon: 'food', sub: '6 FOR A DOLLAR' },
-  { id: 'fortune', x: 700, y: 300, name: 'FORTUNE COOKIE CO.', type: 'event', icon: 'event', sub: 'WHAT DOES YOURS SAY?' },
-  { id: 'cable', x: 560, y: 230, name: 'CABLE CAR TURNAROUND', type: 'venue', venue: 'cablecar', icon: 'gig', sub: 'POWELL & MARKET' },
-  { id: 'union', x: 760, y: 250, name: 'UNION SQUARE', type: 'venue', venue: 'fidi', icon: 'elite', sub: 'BIG GIG - RICH CROWD' },
-  { id: 'ferry', x: 850, y: 300, name: 'FERRY BUILDING', type: 'venue', venue: 'ferry', icon: 'gig', sub: 'FARMERS MARKET' },
-  { id: 'amoebug', x: 470, y: 275, name: 'AMOEBUG RECORDS', type: 'shop', icon: 'shop', sub: 'CHARMS & INSTRUMENTS' },
-  { id: 'geary', x: 300, y: 283, name: 'GEARY & 14TH', type: 'pickup', icon: 'coin' },
-  { id: 'clement', x: 180, y: 250, name: 'CLEMENT ST NOODLES', type: 'food', icon: 'food', sub: 'HAND PULLED' },
-  { id: 'ocean', x: 95, y: 350, name: 'OCEAN BEACH', type: 'venue', venue: 'pier', icon: 'gig', sub: 'WINDY. VERY WINDY.' },
-  { id: 'ggpark', x: 250, y: 368, name: 'GG PARK BANDSHELL', type: 'venue', venue: 'ggpark', icon: 'elite', sub: 'BIG GIG - REAL STAGE' },
-  { id: 'teagarden', x: 340, y: 360, name: 'JAPANESE TEA GARDEN', type: 'rest', icon: 'rest', sub: 'QUIET. VERY QUIET.' },
-  { id: 'haight', x: 490, y: 368, name: 'HAIGHT & ASHBURY', type: 'venue', venue: 'haight', icon: 'gig', sub: 'TIE DYE FOREVER' },
-  { id: 'vinyl', x: 560, y: 366, name: 'HAIGHT VINYL', type: 'shop', icon: 'shop', sub: 'DUSTY CRATES' },
-  { id: 'alamo', x: 470, y: 320, name: 'PAINTED LADIES', type: 'event', icon: 'event', sub: 'POSTCARD VIEW' },
-  { id: 'judah', x: 230, y: 445, name: 'JUDAH & 19TH', type: 'pickup', icon: 'coin' },
-  { id: 'sunset', x: 150, y: 470, name: 'SUNSET DINER', type: 'food', icon: 'food', sub: 'ALL DAY BREAKFAST' },
-  { id: 'twin', x: 460, y: 470, name: 'TWIN PEAKS', type: 'event', icon: 'event', sub: 'THE WHOLE CITY' },
-  { id: 'sutro', x: 400, y: 430, name: 'SUTRO TOWER', type: 'pickup', icon: 'coin' },
-  { id: 'castro', x: 505, y: 560, name: 'CASTRO THEATRE', type: 'venue', venue: 'haight', icon: 'gig', sub: 'NEON MARQUEE' },
-  { id: 'dolores', x: 610, y: 480, name: 'DOLORES PARK', type: 'venue', venue: 'park', icon: 'gig', sub: 'PICNIC BLANKETS' },
-  { id: 'burrito', x: 660, y: 520, name: 'BURRITO BEETLE', type: 'food', icon: 'food', sub: 'MISSION STYLE' },
-  { id: 'mission', x: 700, y: 455, name: '16TH ST BART', type: 'venue', venue: 'subway', icon: 'gig', sub: 'UNDERGROUND ACOUSTICS' },
-  { id: 'clarion', x: 640, y: 570, name: 'CLARION ALLEY', type: 'event', icon: 'event', sub: 'MURALS & SPRAY CANS' },
-  { id: 'valencia', x: 605, y: 635, name: 'VALENCIA ST', type: 'recruit', icon: 'openmic', sub: 'BUSKER BATTLE' },
-  { id: 'bernal', x: 720, y: 640, name: 'BERNAL HILL', type: 'rest', icon: 'rest', sub: 'DOGS AND SUNSETS' },
-  { id: 'ballpark', x: 860, y: 420, name: 'THE BALLPARK', type: 'venue', venue: 'stadium', icon: 'elite', sub: 'BIG GIG - GARLIC FRIES' },
-  { id: 'soma', x: 790, y: 380, name: 'SOMA WAREHOUSE', type: 'recruit', icon: 'openmic', sub: 'WAREHOUSE JAM' },
-  { id: 'bobabugs', x: 760, y: 340, name: 'BOBA BUGS', type: 'food', icon: 'food', sub: 'EXTRA PEARLS' },
-  { id: 'caltrain', x: 820, y: 470, name: 'CALTRAIN', type: 'pickup', icon: 'coin' },
+  // ---- Shinjuku
+  { id: 'kabuki', x: 330, y: 112, name: 'KABUKICHO GATE', type: 'venue', venue: 'neon', icon: 'gig', sub: 'NEON AND NOISE' },
+  { id: 'goldengai', x: 400, y: 132, name: 'GOLDEN GAI', type: 'venue', venue: 'yokocho', icon: 'gig', sub: 'SIX SEATS A BAR' },
+  { id: 'omoide', x: 262, y: 138, name: 'MEMORY LANE', type: 'food', icon: 'food', sub: 'YAKITORI AND SMOKE' },
+  { id: 'shinjuku', x: 300, y: 205, name: 'SHINJUKU STATION', type: 'venue', venue: 'metro', icon: 'gig', sub: 'BUSIEST ON EARTH' },
+  { id: 'tocho', x: 210, y: 175, name: 'METRO GOV BUILDING', type: 'event', icon: 'event', sub: 'THE WHOLE CITY, FREE' },
+  { id: 'disk', x: 372, y: 218, name: 'DISK UNION', type: 'shop', icon: 'shop', sub: 'SIX FLOORS OF VINYL' },
+  // ---- Nakano / Shimokita
+  { id: 'nakano', x: 150, y: 248, name: 'NAKANO BROADWAY', type: 'shop', icon: 'shop', sub: 'FIGURES AND ODDITIES' },
+  { id: 'koenji', x: 110, y: 330, name: 'KOENJI BASEMENT', type: 'recruit', icon: 'openmic', sub: 'PUNK SINCE 1978' },
+  { id: 'shimokita', x: 170, y: 448, name: 'SHIMOKITAZAWA', type: 'venue', venue: 'shotengai', icon: 'gig', sub: 'THRIFT AND GUITARS' },
+  { id: 'curry', x: 250, y: 470, name: 'SHIMOKITA CURRY', type: 'food', icon: 'food', sub: 'SOUP CURRY, EXTRA HOT' },
+  { id: 'inokashira', x: 95, y: 428, name: 'INOKASHIRA LINE', type: 'pickup', icon: 'coin' },
+  // ---- Yoyogi / Harajuku
+  { id: 'yoyogi', x: 300, y: 330, name: 'YOYOGI PARK', type: 'venue', venue: 'park', icon: 'gig', sub: 'SUNDAY ROCKABILLIES' },
+  { id: 'meiji', x: 380, y: 300, name: 'MEIJI SHRINE', type: 'rest', icon: 'rest', sub: 'GRAVEL, CEDARS, QUIET' },
+  { id: 'takeshita', x: 480, y: 302, name: 'TAKESHITA-DORI', type: 'venue', venue: 'takeshita', icon: 'gig', sub: 'CREPES AND CHAOS' },
+  { id: 'crepe', x: 545, y: 318, name: 'MARION CREPES', type: 'food', icon: 'food', sub: 'STRAWBERRY, WHIPPED' },
+  { id: 'omotesando', x: 560, y: 385, name: 'OMOTESANDO', type: 'venue', venue: 'ginza', icon: 'elite', sub: 'BIG GIG - RICH CROWD' },
+  // ---- Shibuya
+  { id: 'scramble', x: 420, y: 455, name: 'SHIBUYA SCRAMBLE', type: 'venue', venue: 'scramble', icon: 'elite', sub: 'BIG GIG - 3000 A LIGHT' },
+  { id: 'hachiko', x: 448, y: 478, name: 'HACHIKO STATUE', type: 'event', icon: 'event', sub: 'EVERYONE MEETS HERE' },
+  { id: 'shibuyasta', x: 400, y: 492, name: 'SHIBUYA STATION', type: 'venue', venue: 'metro', icon: 'gig', sub: 'UNDERGROUND ACOUSTICS' },
+  { id: 'dogenzaka', x: 352, y: 508, name: 'DOGENZAKA', type: 'recruit', icon: 'openmic', sub: 'LIVE HOUSE BASEMENT' },
+  { id: 'tower', x: 470, y: 425, name: 'TOWER RECORDS', type: 'shop', icon: 'shop', sub: 'NO MUSIC NO LIFE' },
+  { id: 'ramen', x: 340, y: 448, name: 'SHIBUYA RAMEN', type: 'food', icon: 'food', sub: 'TONKOTSU, EXTRA EGG' },
+  // ---- Roppongi / Meguro
+  { id: 'roppongi', x: 590, y: 488, name: 'ROPPONGI CROSSING', type: 'venue', venue: 'neon', icon: 'gig', sub: 'AFTER MIDNIGHT' },
+  { id: 'meguro', x: 420, y: 598, name: 'MEGURO RIVER', type: 'venue', venue: 'sakura', icon: 'gig', sub: 'CHERRY TREES, BOTH BANKS' },
+  { id: 'onsen', x: 520, y: 570, name: 'SENTO BATHHOUSE', type: 'rest', icon: 'rest', sub: 'HOT WATER, NO PHONES' },
+  { id: 'gyoza', x: 640, y: 545, name: 'GYOZA STAND', type: 'food', icon: 'food', sub: 'SIX FOR 300 YEN' },
+  // ---- Ginza / Tsukiji
+  { id: 'ginza', x: 730, y: 335, name: 'GINZA CROSSING', type: 'venue', venue: 'ginza', icon: 'elite', sub: 'BIG GIG - DEEP POCKETS' },
+  { id: 'kabukiza', x: 770, y: 375, name: 'KABUKI-ZA', type: 'event', icon: 'event', sub: 'A REAL THEATRE' },
+  { id: 'tsukiji', x: 800, y: 448, name: 'TSUKIJI OUTER MARKET', type: 'food', icon: 'food', sub: 'TAMAGOYAKI ON A STICK' },
+  { id: 'yurakucho', x: 690, y: 400, name: 'YURAKUCHO ARCHES', type: 'venue', venue: 'yokocho', icon: 'gig', sub: 'UNDER THE TRACKS' },
+  // ---- Akihabara / Ueno / Asakusa
+  { id: 'akiba', x: 720, y: 208, name: 'AKIHABARA', type: 'venue', venue: 'akiba', icon: 'gig', sub: 'ELECTRIC TOWN' },
+  { id: 'arcade', x: 770, y: 240, name: 'GAME CENTER', type: 'event', icon: 'event', sub: 'CRANE GAMES AND RHYTHM' },
+  { id: 'maid', x: 668, y: 230, name: 'MAID CAFE', type: 'recruit', icon: 'openmic', sub: 'OKAERINASAI' },
+  { id: 'radio', x: 760, y: 175, name: 'RADIO KAIKAN', type: 'shop', icon: 'shop', sub: 'PARTS AND FIGURES' },
+  { id: 'ueno', x: 780, y: 112, name: 'UENO PARK', type: 'venue', venue: 'park', icon: 'gig', sub: 'PICNICS AND PIGEONS' },
+  { id: 'ameyoko', x: 700, y: 120, name: 'AMEYOKO MARKET', type: 'pickup', icon: 'coin' },
+  { id: 'sensoji', x: 900, y: 92, name: 'SENSO-JI', type: 'venue', venue: 'temple', icon: 'gig', sub: 'INCENSE AND LANTERNS' },
+  { id: 'nakamise', x: 950, y: 120, name: 'NAKAMISE-DORI', type: 'pickup', icon: 'coin' },
+  // ---- Odaiba and the finale
+  { id: 'odaiba', x: 890, y: 590, name: 'ODAIBA WATERFRONT', type: 'venue', venue: 'bayside', icon: 'elite', sub: 'BIG GIG - BAY BREEZE' },
+  { id: 'dome', x: 610, y: 255, name: 'TOKYO DOME', type: 'venue', venue: 'dome', icon: 'elite', sub: 'BIG GIG - THE BIG EGG' },
+  { id: 'skytree', x: 965, y: 215, name: 'TOKYO SKYTREE', type: 'venue', venue: 'skytree', icon: 'boss', sub: 'THE FINALE' },
 ];
 const EDGES = [
-  ['ggb', 'presidio'], ['presidio', 'palace'], ['palace', 'lombard'], ['lombard', 'sourdough'], ['sourdough', 'wharf'], ['wharf', 'pier39'],
-  ['pier39', 'coit'], ['coit', 'beach'], ['beach', 'gate'], ['gate', 'dumpling'], ['dumpling', 'cable'], ['cable', 'lombard'],
-  ['gate', 'fortune'], ['fortune', 'union'], ['union', 'ferry'], ['ferry', 'bobabugs'], ['bobabugs', 'soma'], ['soma', 'ballpark'],
-  ['ballpark', 'caltrain'], ['caltrain', 'mission'], ['union', 'cable'], ['cable', 'amoebug'], ['amoebug', 'geary'], ['geary', 'clement'],
-  ['clement', 'presidio'], ['clement', 'ocean'], ['ocean', 'ggpark'], ['ggpark', 'teagarden'], ['teagarden', 'geary'], ['ggpark', 'judah'],
-  ['judah', 'sunset'], ['sunset', 'ocean'], ['judah', 'sutro'], ['sutro', 'twin'], ['twin', 'castro'], ['ggpark', 'haight'],
-  ['haight', 'vinyl'], ['vinyl', 'alamo'], ['alamo', 'amoebug'], ['vinyl', 'dolores'], ['dolores', 'mission'], ['mission', 'burrito'],
-  ['burrito', 'clarion'], ['clarion', 'valencia'], ['valencia', 'bernal'], ['bernal', 'caltrain'], ['dolores', 'castro'], ['castro', 'clarion'],
-  ['twin', 'haight'], ['mission', 'soma'], ['coit', 'union'], ['palace', 'geary'], ['sutro', 'haight'],
+  ['kabuki', 'goldengai'], ['kabuki', 'omoide'], ['omoide', 'shinjuku'], ['goldengai', 'shinjuku'], ['shinjuku', 'tocho'],
+  ['shinjuku', 'disk'], ['tocho', 'nakano'], ['nakano', 'koenji'], ['koenji', 'shimokita'], ['shimokita', 'curry'],
+  ['shimokita', 'inokashira'], ['inokashira', 'koenji'], ['curry', 'ramen'], ['disk', 'yoyogi'], ['shinjuku', 'yoyogi'],
+  ['yoyogi', 'meiji'], ['meiji', 'takeshita'], ['takeshita', 'crepe'], ['crepe', 'omotesando'], ['omotesando', 'tower'],
+  ['yoyogi', 'scramble'], ['scramble', 'hachiko'], ['hachiko', 'shibuyasta'], ['shibuyasta', 'dogenzaka'], ['dogenzaka', 'ramen'],
+  ['ramen', 'scramble'], ['tower', 'scramble'], ['shibuyasta', 'meguro'], ['meguro', 'onsen'], ['onsen', 'roppongi'],
+  ['roppongi', 'gyoza'], ['gyoza', 'yurakucho'], ['omotesando', 'roppongi'], ['roppongi', 'ginza'], ['ginza', 'kabukiza'],
+  ['kabukiza', 'tsukiji'], ['tsukiji', 'odaiba'], ['ginza', 'yurakucho'], ['yurakucho', 'akiba'], ['ginza', 'akiba'],
+  ['akiba', 'arcade'], ['akiba', 'maid'], ['maid', 'radio'], ['radio', 'ueno'], ['ueno', 'ameyoko'], ['ameyoko', 'akiba'],
+  ['ueno', 'sensoji'], ['sensoji', 'nakamise'], ['nakamise', 'skytree'], ['akiba', 'dome'], ['dome', 'shinjuku'],
+  ['dome', 'ueno'], ['odaiba', 'skytree'], ['meguro', 'shimokita'], ['takeshita', 'omotesando'], ['arcade', 'ginza'],
 ];
 // Decorative map labels (no gameplay)
 const MAP_DETAILS = [
-  { kind: 'label', x: 900, y: 120, text: 'ALCATRAZ' }, { kind: 'label', x: 940, y: 560, text: 'BAY BRIDGE' },
-  { kind: 'label', x: 30, y: 400, text: 'PACIFIC' }, { kind: 'label', x: 930, y: 350, text: 'THE BAY' },
+  { kind: 'label', x: 955, y: 330, text: 'SUMIDA R.' }, { kind: 'label', x: 900, y: 680, text: 'TOKYO BAY' },
+  { kind: 'label', x: 60, y: 120, text: 'TO KICHIJOJI' }, { kind: 'label', x: 640, y: 620, text: 'TO SHINAGAWA' },
 ];
 function nodeById(id) { return NODES.find(n => n.id === id); }
 function buildGraph() {
@@ -4087,10 +4430,11 @@ function buildGraph() {
   return map;
 }
 const WEATHERS = {
-  clear: { name: 'CLEAR', icon: 'sun', tint: null, tipMult: 1, desc: 'Sunny. Wallets open.' },
-  fog:   { name: 'KARL THE FOG', icon: 'fog', tint: 'rgba(220,226,238,0.34)', tipMult: 0.9, desc: 'Fog rolls in. Smaller crowds.' },
-  rain:  { name: 'RAIN', icon: 'rain', tint: 'rgba(90,120,170,0.28)', tipMult: 0.8, desc: 'Everyone hurries past.' },
-  golden:{ name: 'GOLDEN HOUR', icon: 'sun', tint: 'rgba(255,190,120,0.22)', tipMult: 1.25, desc: 'The city glows. Tips up.' },
+  clear:  { name: 'CLEAR', icon: 'sun', tint: null, tipMult: 1, desc: 'Blue sky. Wallets open.' },
+  fog:    { name: 'CITY HAZE', icon: 'fog', tint: 'rgba(220,226,238,0.34)', tipMult: 0.9, desc: 'Grey over the towers. Smaller crowds.' },
+  rain:   { name: 'TSUYU RAIN', icon: 'rain', tint: 'rgba(90,120,170,0.28)', tipMult: 0.8, desc: 'A wall of clear umbrellas hurries past.' },
+  golden: { name: 'GOLDEN HOUR', icon: 'sun', tint: 'rgba(255,190,120,0.22)', tipMult: 1.25, desc: 'The whole city goes amber. Tips up.' },
+  sakura: { name: 'PETAL FALL', icon: 'sun', tint: 'rgba(255,200,220,0.18)', tipMult: 1.15, desc: 'Blossom on the wind. Everybody lingers.' },
 };
 const WEATHER_KEYS = Object.keys(WEATHERS);
 
@@ -4685,6 +5029,14 @@ class RhythmGame {
       if (piece === 'bucket') Audio.drum('kick', 0, v * 0.35);   // a bucket still thumps
       return null;
     }
+    if (k === 'taiko') {
+      // skin in the middle, rim at the edge, and a big one gets both
+      const v = j === 'perfect' ? 1 : j === 'great' ? 0.82 : 0.6;
+      const don = note.type === 'don' || note.type === 'big';
+      Audio.drum(don ? 'odaiko' : 'shime', 0, v);
+      if (note.type === 'big') Audio.drum('shime', 0, v * 0.5);
+      return null;
+    }
     const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
     const dur = hold ? Math.max(0.3, note.dur) + 0.3 : (k === 'tambourine' ? 0.1 : 0.35);
     return Audio.note(this.mods.voiceOverride || ins.voice || 'guitar', note.midi, 0, dur, vel);
@@ -4752,10 +5104,10 @@ class RhythmGame {
       const isDon = code === 'KeyF' || code === 'KeyJ', isKa = code === 'KeyD' || code === 'KeyK'; if (!isDon && !isKa) return;
       this.flashes[isDon ? 'don' : 'ka'] = 0.15;
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
-      if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.6, 0, 100); Audio.drum(isDon ? 'don' : 'ka', 0, 0.6); const r = this.receptors.main; this.fx.burst(r.x, r.y, 5, { color: '#ffd166', speed: 60, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0 }); if (this.hooks.onRoll) this.hooks.onRoll(); return; }
-      if (isDon && this.lastDon.note && this.now - this.lastDon.t < 0.07 && this.lastDon.code !== code) { const n = this.lastDon.note; this.lastDon.note = null; if (n.type === 'big' && n.hit) { this.hype = clamp(this.hype + 2.5, 0, 100); this.popups.push({ text: 'BIG DON!', color: '#ff9f68', t: 0, big: true }); Audio.drum('don', 0, 1); Audio.drum('tom', 0, 0.6); if (this.mods.fx) this.mods.fx.shake.hit(5, 0.25); } return; }
+      if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.6, 0, 100); Audio.drum(isDon ? 'odaiko' : 'shime', 0, 0.6); const r = this.receptors.main; this.fx.burst(r.x, r.y, 5, { color: '#ffd166', speed: 60, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0 }); if (this.hooks.onRoll) this.hooks.onRoll(); return; }
+      if (isDon && this.lastDon.note && this.now - this.lastDon.t < 0.07 && this.lastDon.code !== code) { const n = this.lastDon.note; this.lastDon.note = null; if (n.type === 'big' && n.hit) { this.hype = clamp(this.hype + 2.5, 0, 100); this.popups.push({ text: 'BIG DON!', color: '#ff9f68', t: 0, big: true }); Audio.drum('odaiko', 0, 1); Audio.drum('shime', 0, 0.5); if (this.mods.fx) this.mods.fx.shake.hit(5, 0.25); } return; }
       const n = this.findNote(x => x.type !== 'roll');
-      if (!n) { if (this.now > 0) Audio.drum(isDon ? 'don' : 'ka', 0, 0.25); return; }
+      if (!n) { if (this.now > 0) Audio.drum(isDon ? 'odaiko' : 'shime', 0, 0.25); return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       const wantDon = n.type === 'don' || n.type === 'big'; let j = this.judgeDt(this.now - n.t); if (wantDon !== isDon) j = 'miss';
       n.judged = true; n.hit = j !== 'miss'; n.judge = j;
@@ -5853,12 +6205,35 @@ function buildVenue(venue, seed, dayT) {
   if (venue.kind === 'street') {
     let x = -20, i = 0; const styles = venue.styles || ['victorian', 'pastel'];
     while (x < W + 240) { const w = r.int(60, 108); const f = facadeCanvas(styles[i % styles.length], seed * 31 + i, w); mx.drawImage(f, x, 250 - f.height * 1.45, w * 1.45, f.height * 1.45); x += w * 1.45 + 2; i++; }
-    if (venue.lanterns) { for (let lx = 14; lx < W + 240; lx += 62) mx.drawImage(propCanvas('lantern'), lx, 150 + (lx % 124 ? 0 : 10), 12, 18); }
+    if (venue.lanterns) { for (let lx = 14; lx < W + 240; lx += 62) mx.drawImage(propCanvas('lantern2', Math.floor(lx / 62) % 3), lx, 148 + (lx % 124 ? 0 : 10), 18, 27); }
+    // ---- Tokyo street furniture, laid along the shopfronts
+    for (let px2 = 60; px2 < W + 220; px2 += r.int(150, 240)) {
+      const pick = r.int(0, 5);
+      if (pick === 0) mx.drawImage(propCanvas('vending', r.int(0, 2)), px2, 178, 27, 45);
+      else if (pick === 1) { mx.drawImage(propCanvas('gacha', r.int(0, 2)), px2, 184, 24, 39); mx.drawImage(propCanvas('gacha', r.int(0, 2)), px2 + 25, 184, 24, 39); }
+      else if (pick === 2) mx.drawImage(propCanvas('bike', r.int(0, 2)), px2, 202, 36, 21);
+      else if (pick === 3) mx.drawImage(propCanvas('crate2', r.int(0, 2)), px2, 202, 30, 21);
+      else if (pick === 4 && venue.signs) mx.drawImage(propCanvas('arcade', r.int(0, 2)), px2, 172, 33, 51);
+      else mx.drawImage(propCanvas('trash'), px2, 200, 18, 24);
+      drawShadow(mx, px2 + 14, 224, 34, 0.14);
+    }
+    if (venue.narrow) { // a low alley: bunting of small lanterns overhead
+      for (let lx = 0; lx < W + 240; lx += 34) { rect(mx, lx, 92, 34, 1, '#3a3040'); mx.drawImage(propCanvas('lantern2', Math.floor(lx / 34) % 3), lx + 10, 92, 12, 18); }
+    }
+    if (venue.screens) { // the big video walls of a crossing
+      for (const [sx, sy, sw, sh] of [[200, 44, 150, 82], [700, 30, 190, 96]]) {
+        rect(mx, sx - 3, sy - 3, sw + 6, sh + 6, '#15121c');
+        rect(mx, sx, sy, sw, sh, '#0e1420');
+        for (let i = 0; i < 70; i++) { const bx = sx + r.int(2, sw - 8), by = sy + r.int(2, sh - 6);
+          rect(mx, bx, by, r.int(3, 8), 2, r.pick(['#40d8f0', '#f0d040', '#f04888', '#68f088', '#f8f8ff'])); }
+        for (let y = sy; y < sy + sh; y += 3) { mx.globalAlpha = 0.16; rect(mx, sx, y, sw, 1, '#000'); mx.globalAlpha = 1; }
+      }
+    }
   } else if (venue.kind === 'subway') {
     mx.fillStyle = '#2a2a34'; mx.fillRect(0, 0, W + 260, 250);
     for (let x = 0; x < W + 260; x += 11) for (let y = 60; y < 230; y += 9) rect(mx, x, y, 10, 8, ((x / 11 + y / 9) % 2) ? '#c8c0a8' : '#b8b09a');
     rect(mx, 0, 0, W + 260, 58, '#1e1e26'); for (let x = 0; x < W + 260; x += 84) { rect(mx, x + 14, 12, 9, 6, '#ffe8a0'); ctx2glow(mx, x + 18, 15); }
-    rect(mx, 0, 104, W + 260, 18, '#2a4a9a'); drawText(mx, '16TH ST MISSION      16TH ST MISSION      16TH ST MISSION      16TH ST MISSION', 14, 107, '#fff', { scale: 2 });
+    rect(mx, 0, 104, W + 260, 18, '#2a4a9a'); drawText(mx, 'SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA   SHIBUYA', 14, 107, '#fff', { scale: 2 });
     for (let x = 56; x < W + 260; x += 224) { rect(mx, x, 0, 24, 250, '#7a7a8a'); rect(mx, x + 3, 0, 6, 250, '#9a9aaa'); rect(mx, x + 18, 0, 3, 250, '#5a5a6a'); }
     mx.drawImage(propCanvas('sign', 0), 300, 176, 21, 33); mx.drawImage(propCanvas('bench'), 480, 218, 45, 21);
     function ctx2glow(c, x, y) { c.globalAlpha = 0.15; circle(c, x, y + 14, 16, '#ffe680'); c.globalAlpha = 1; }
@@ -5897,6 +6272,28 @@ function buildVenue(venue, seed, dayT) {
       for (let k = 0; k < 5; k++) { mx.strokeStyle = '#c8bfa0'; mx.beginPath(); mx.moveTo(620, 92); mx.lineTo(566 + k * 27, 130); mx.stroke(); }
       rect(mx, 606, 168, 28, 34, '#4a3a2a'); rect(mx, 606, 168, 28, 3, '#6a5a44');
     }
+  } else if (venue.kind === 'temple') {
+    // ---- a temple forecourt: the great gate, its lantern, and a swept yard
+    vgrad(mx, 0, 0, W + 260, 168, '#2c3550', '#4a4262');
+    rect(mx, 0, 168, W + 260, 82, '#b0a894');
+    for (let x = 0; x < W + 260; x += 26) for (let y = 170; y < 250; y += 13) rect(mx, x + ((y / 13) % 2 ? 13 : 0), y, 25, 12, ((x / 26 + y / 13) % 2) ? '#b8b09c' : '#aca48e');
+    // the main hall behind, on its stone base
+    const hx = 380, hw = 480;
+    rect(mx, hx, 96, hw, 76, '#9a3a2a'); rect(mx, hx, 96, hw, 4, '#c8604a');
+    for (let px2 = hx + 14; px2 < hx + hw - 10; px2 += 54) { rect(mx, px2, 100, 12, 72, '#b04a34'); rect(mx, px2, 100, 3, 72, '#c8604a'); }
+    mx.fillStyle = '#3a4450'; mx.beginPath(); mx.moveTo(hx - 46, 100); mx.lineTo(hx + hw + 46, 100); mx.lineTo(hx + hw - 20, 52); mx.lineTo(hx + 20, 52); mx.fill();
+    for (let px2 = hx - 44; px2 < hx + hw + 44; px2 += 8) rect(mx, px2, 54, 4, 46, '#46525f');
+    rect(mx, hx - 46, 96, hw + 92, 5, '#e8c86a');
+    // the big red lantern hanging in the gate
+    rect(mx, 596, 100, 2, 22, '#2a2028');
+    const lg = propCanvas('lantern2', 1); mx.drawImage(lg, 572, 120, 48, 72);
+    // stone lanterns and a pair of torii either side
+    mx.drawImage(landmarkCanvas('torii'), 140, 96, 90, 102);
+    mx.drawImage(landmarkCanvas('torii'), 1080, 104, 75, 85);
+    for (const sx of [320, 940]) { rect(mx, sx, 196, 16, 30, '#9a968c'); rect(mx, sx - 4, 186, 24, 10, '#a8a49a'); rect(mx, sx - 2, 180, 20, 6, '#8e8a80'); }
+    // an incense burner, smoking
+    rect(mx, 700, 200, 44, 24, '#5a5048'); rect(mx, 700, 196, 44, 5, '#7a7066');
+    for (let i = 0; i < 5; i++) { mx.globalAlpha = 0.18; circle(mx, 716 + i * 3, 188 - i * 9, 5 + i * 2, '#e8e4dc'); mx.globalAlpha = 1; }
   } else if (venue.kind === 'pier') {
     rect(mx, 0, 0, W + 260, 176, '#3a6a9a'); for (let y = 8; y < 174; y += 7) for (let x = (y * 7) % 28; x < W + 260; x += 28) rect(mx, x, y, 12, 2, '#5a8ab8');
     mx.drawImage(propCanvas('boat'), 180, 86, 45, 18); mx.drawImage(propCanvas('sailboat'), 700, 56, 24, 27); mx.drawImage(propCanvas('sailboat'), 1020, 100, 24, 27);
@@ -5980,7 +6377,7 @@ class ShopScene {
   constructor(node) {
     this.node = node; const r = Game.run; this.t = 0;
     if (!node.stock) { node.rerolls = 0; this.restock(); }
-    this.sel = 0; this.msg = 'Welcome to Weevil\'s. Everything is slightly overpriced. It is San Francisco.';
+    this.sel = 0; this.msg = 'Irasshaimase. Everything here is slightly overpriced. It is Tokyo.';
     this.buttons = [];
   }
   restock() {
@@ -6219,7 +6616,7 @@ class RestScene {
     const r = Game.run; this.t = 0; this.log = null;
     this.menu = new Menu([
       { label: 'Nap: +45 stamina for all', icon: 'rest', onSelect: () => { r.members.forEach(m => m.stamina = Math.min(100, m.stamina + 45)); this.finish('EVERYONE IS RESTED'); } },
-      { label: 'Call an Uber: +2 tickets', icon: 'phone', onSelect: () => { r.tickets += 2; this.finish('+2 UBER TICKETS'); } },
+      { label: 'Top up the train pass: +2 rides', icon: 'phone', onSelect: () => { r.tickets += 2; this.finish('+2 TRAIN RIDES'); } },
       { label: 'Jam: +1 skill to your weakest', icon: 'metronome', onSelect: () => { const m = r.members.slice().sort((a, b) => a.skill - b.skill)[0]; m.skill = Math.min(10, m.skill + 1); r.members.forEach(x => x.stamina = Math.max(0, x.stamina - 10)); Audio.ui('levelup'); this.finish(m.name.toUpperCase() + ' LEVELLED UP'); } },
     ]);
   }
@@ -6489,7 +6886,7 @@ function drawHelp(ctx) {
     ['star', 'STARS', 'Gold notes pay triple.'], ['fire', 'BOMBS', 'Red notes: do not touch.'],
     ['note', 'BAND', 'Tap the closing ring when a bandmate solos.'],
     ['chips', 'SCORE', 'Applause x Mult = cash.'],
-    ['phone', 'TRAVEL', 'Every move on the map costs an Uber ticket.'],
+    ['phone', 'TRAVEL', 'Every move on the map costs a ride off your train pass.'],
     ['food', 'DINNER', 'Feed every bug at night or they leave.'],
     ['star', 'ABILITIES', 'Draft one new ability after every set.'],
   ];
@@ -6892,18 +7289,34 @@ class ConcertScene {
     if (this.phase === 'rise' || this.phase === 'hello') {
       const k = clamp(this.phaseT / 1.1, 0, 1), pop = popIn(this.phaseT - 0.3, 0.5);
       ctx.globalAlpha = clamp(k, 0, 1);
-      // the card sits above the backdrop rather than across it, on a band of
-      // shadow so gold type never fights the lit letters behind it
-      const tw = textWidth(OPERA.title, { scale: 6 }) + 60;
-      ctx.globalAlpha = clamp(k, 0, 1) * 0.72;
-      rect(ctx, W / 2 - tw / 2, 58, tw, 66, '#07060f');
+      // ---- the title card, built like a Japanese tour poster: a black band
+      // across the frame, the band name set huge, a vertical strip of the
+      // venue down one side, and a red seal stamped over the corner.
+      const tw = textWidth(OPERA.title, { scale: 5 }) + 150;
+      const cardW = Math.min(W - 40, Math.max(tw, 640)), cardX = Math.round(W / 2 - cardW / 2), cardY = 52;
       ctx.globalAlpha = clamp(k, 0, 1);
-      rect(ctx, W / 2 - tw / 2, 58, tw, 1, '#4a3a6a'); rect(ctx, W / 2 - tw / 2, 123, tw, 1, '#4a3a6a');
-      ctx.save(); ctx.translate(W / 2, 96); ctx.scale(pop, pop);
-      drawText(ctx, OPERA.title, 0, -26, '#ffd24a', { align: 'center', scale: 6, outline: '#4a1e08' });
+      // the band itself, with a hard rule top and bottom
+      rect(ctx, cardX, cardY, cardW, 92, '#0a0810');
+      rect(ctx, cardX, cardY, cardW, 2, '#e03a4a');
+      rect(ctx, cardX, cardY + 90, cardW, 2, '#e03a4a');
+      halftone(ctx, cardX, cardY + 2, cardW, 88, '#e03a4a', 6, 0.1);
+      // a vertical strip down the left, the way a poster carries the venue
+      rect(ctx, cardX + 8, cardY + 8, 16, 76, '#e03a4a');
+      for (let i = 0; i < 5; i++) rect(ctx, cardX + 11, cardY + 14 + i * 14, 10, 9, '#0a0810');
+      // the name, with a red shadow behind it so it sits off the black
+      ctx.save(); ctx.translate(cardX + 34 + (cardW - 70) / 2, cardY + 22); ctx.scale(pop, pop);
+      drawText(ctx, OPERA.title, 3, 3, '#7a1420', { align: 'center', scale: 5 });
+      drawText(ctx, OPERA.title, 0, 0, '#f6efe2', { align: 'center', scale: 5 });
       ctx.restore();
-      uiRibbon(ctx, W / 2, 136, OPERA.subtitle + '  -  SOLD OUT', { scale: 3, color: '#7a1a4a' });
-      ctx.globalAlpha = 1;
+      drawText(ctx, OPERA.venueName + '   ' + OPERA.seats, cardX + 34 + (cardW - 70) / 2, cardY + 64, '#e0a0a8', { align: 'center' });
+      // the seal, stamped over the corner at an angle
+      ctx.save(); ctx.translate(cardX + cardW - 28, cardY + 68); ctx.rotate(-0.12);
+      ellipsePx(ctx, 0, 0, 20, 20, '#c8283a');
+      ellipsePx(ctx, 0, 0, 17, 17, '#0a0810');
+      ellipsePx(ctx, 0, 0, 15, 15, '#c8283a');
+      for (let i = 0; i < 3; i++) rect(ctx, -8, -8 + i * 6, 16, 4, '#f6e6e8');
+      ctx.restore();
+      uiRibbon(ctx, W / 2, cardY + 100, OPERA.subtitle, { scale: 3, color: '#7a1a2a' });      ctx.globalAlpha = 1;
       if (this.phase === 'hello') bubble(ctx, W / 2 + 170, 300, this.beats[0].text, { dark: true, color: '#8a2a5a' });
       ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.t * 4);
       drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W / 2, H - 54, '#cfc9e6', { align: 'center', scale: 2 });
@@ -7322,7 +7735,7 @@ class FlightScene {
 }
 
 // ===== js/scenes/city.js =====
-// ---------- San Francisco: a living map, travelled with Uber tickets ----------
+// ---------- Tokyo: a living map, travelled on a train pass ----------
 'use strict';
 const MAP_C = { land: '#f3efe4', landHi: '#faf7ee', park: '#c9e6b0', parkDk: '#b2d795', water: '#a6d0ee', waterDk: '#8fc0e4',
   road: '#ffffff', roadBig: '#ffe9a8', roadEdge: '#ddd7c8', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#5d6a5d', inkSoft: '#8a927f', hill: '#eae3d0' };
@@ -7566,7 +7979,7 @@ class CityScene {
         done[n.id] = r.day;
         const roll = r.rng();
         if (roll < 0.4) { const c = 6 + r.day * 3; r.money += c; this.flash('FOUND ' + fmtMoney(c)); Audio.ui('coin'); }
-        else if (roll < 0.7) { r.tickets += 2; this.flash('+2 UBER TICKETS'); Audio.ui('select'); }
+        else if (roll < 0.7) { r.tickets += 2; this.flash('+2 TRAIN RIDES'); Audio.ui('select'); }
         else if (roll < 0.88) { const k = r.rng.pick(CONSUMABLE_KEYS); if (r.consumables.length < 6) { r.consumables.push(k); this.flash('FOUND ' + CONSUMABLES[k].name.toUpperCase()); } else { r.money += 8; this.flash('POCKETS FULL. +$8'); } Audio.ui('coin'); }
         else { const k = r.randomCharm(); if (k && r.addCharm(k)) { this.flash('FOUND ' + CHARMS[k].name.toUpperCase()); Audio.ui('fanfare'); } else { r.money += 12; this.flash('+$12'); } }
         this.refresh(); r.save(); break;
@@ -8172,8 +8585,8 @@ class RecruitScene {
 'use strict';
 class GigScene {
   constructor(node) {
-    const r = Game.run; this.node = node; this.venue = VENUES[node.venue] || VENUES.corner; this.t = 0; this.phase = 'prep';
-    this.mode = node.icon === 'elite' ? 'elite' : node.venue === 'bridge' ? 'boss' : 'gig';
+    const r = Game.run; this.node = node; this.venue = VENUES[node.venue] || VENUES.shotengai; this.t = 0; this.phase = 'prep';
+    this.mode = node.icon === 'elite' ? 'elite' : (node.icon === 'boss' || node.venue === 'skytree') ? 'boss' : 'gig';
     this.bossMod = this.mode !== 'gig' ? (node.bossMod || (node.bossMod = r.rng.pick(BOSS_MOD_KEYS))) : null;
     this.difficulty = clamp(Math.round(1 + r.day * 0.8 + (this.mode === 'elite' ? 1 : 0) + (this.mode === 'boss' ? 2 : 0)), 1, 7);
     const leader = r.members[0], fam = INSTRUMENTS[leader.instrument].family;
@@ -8193,6 +8606,12 @@ class GigScene {
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
     this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
     this.cam = new Camera(); this.cutIn = null; this.haze = new Haze(6, hashStr(node.id) & 63);
+    // ---- the duel. Favour runs 0..1; you start level and the crowd decides.
+    if (this.mode === 'boss') {
+      this.rival = { favour: 0.5, phase: 0, spec: HERO_PRESETS.smoke || randomBugSpec(makeRng(99)),
+                     tauntT: 0, taunt: null, hurt: 0, flash: 0, downed: false };
+      this.bossMod = RIVAL.phases[0].mod;
+    }
     this.train = { x: -700, t: r.rng.range(4, 9) };
   }
   // Point the scene at one tune: everything downstream reads this.song.
@@ -8287,7 +8706,7 @@ class GigScene {
       this.rhythm.instr = lInstr; this.rhythm.instrKey = leader.instrument; this.rhythm.member = leader;
       this.earMode = true;
     } else this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
-      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); },
+      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); this.duelJudge(j); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
@@ -8319,7 +8738,7 @@ class GigScene {
     if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
-      this.backing.update(); this.rhythm.update(dt);
+      this.backing.update(); this.rhythm.update(dt); this.updateDuel(dt);
       this.cam.update(dt);
       if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
       // ---- the camera works the set like a crew would
@@ -8395,6 +8814,13 @@ class GigScene {
     res.total = res.perfect + res.great + res.good + res.miss;
     res.acc = res.total ? (res.perfect + res.great * 0.75 + res.good * 0.4) / res.total : 0;
     this.res = res;
+    // Winning the room off her is the whole point of the finale, so it has to
+    // be settled before the tally is run, not after it has already paid out.
+    if (this.rival) {
+      this.duelWon = this.rival.favour >= 0.75;
+      if (this.duelWon) { this.S.addCash(60, 'You took the room from ' + RIVAL.name); this.S.timesMult(1.5, 'Headliner'); }
+      else this.S.steps.push({ kind: 'note', label: RIVAL.name + ' kept the crowd (needed 75%)' });
+    }
     const total = this.S.finish({ combo: this.rhythm.combo, maxCombo: res.maxCombo, misses: res.miss, watchers: this.crowd.watchers.length, hype: this.rhythm.hype, acc: res.acc });
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
@@ -8537,6 +8963,83 @@ class GigScene {
     drawText(ctx, t2.composer.toUpperCase(), W / 2, cy + 92 + slide, '#b8aed0', { align: 'center' });
     if (b.t > 1.5) { ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6); drawText(ctx, 'COUNTING IN', W / 2, cy + 114 + slide, '#6be585', { align: 'center' }); ctx.globalAlpha = 1; }
     this.fx.draw(ctx);
+  }
+  // ---------- The duel ----------
+  // Every judgement moves the crowd. Land them and the favour swings to you;
+  // drop them and she takes it back. Crossing a third of the bar flips her
+  // into the next phase, which changes what she is doing to you.
+  duelJudge(j) {
+    const R = this.rival; if (!R || R.downed) return;
+    const d = j === 'perfect' ? 0.022 : j === 'great' ? 0.013 : j === 'good' ? 0.004 : -0.028;
+    R.favour = clamp(R.favour + d, 0, 1);
+    if (d > 0) { R.hurt = Math.min(1, R.hurt + 0.5); R.flash = 0.2; }
+    // she answers when you take a chunk off her
+    const want = R.favour > 0.66 ? 2 : R.favour > 0.33 ? 1 : 0;
+    const next = Math.max(R.phase, want);
+    if (next !== R.phase) {
+      R.phase = next;
+      this.bossMod = RIVAL.phases[next].mod;
+      if (this.rhythm && this.rhythm.mods) this.rhythm.mods.bossMod = this.bossMod;
+      R.taunt = RIVAL.taunts[next]; R.tauntT = 3;
+      this.cam.hit(5); Game.shake.hit(6, 0.4); Audio.ui('boo');
+      this.fx.burst(W * 0.78, this.L.groundY - 40, 26, { color: [RIVAL.phases[next].color, '#fff'], speed: 130, life: 0.8, kind: 'spark', gravity: 40, size: 2 });
+    }
+    if (R.favour >= 1 && !R.downed) { R.downed = true; R.taunt = 'Then it is yours.'; R.tauntT = 4; Audio.ui('fanfare'); Game.shake.hit(9, 0.6); }
+  }
+  updateDuel(dt) {
+    const R = this.rival; if (!R) return;
+    R.tauntT = Math.max(0, R.tauntT - dt);
+    R.hurt = Math.max(0, R.hurt - dt * 1.6);
+    R.flash = Math.max(0, R.flash - dt * 4);
+    // she works the crowd back while you are not scoring
+    if (!R.downed && this.rhythm && this.rhythm.now > 0) R.favour = clamp(R.favour - dt * 0.012, 0, 1);
+  }
+  // Her side of the stage, and the bar that says who the room belongs to.
+  drawDuel(ctx) {
+    const R = this.rival; if (!R) return;
+    const L = this.L, gy = L.groundY, rx = Math.round(W * 0.8);
+    // the rival, lit from behind, sagging as she loses the room
+    const slump = R.downed ? 10 : Math.round(R.favour * 8);
+    drawShadow(ctx, rx, gy + slump, 46, 0.32);
+    ctx.globalAlpha = R.downed ? 0.6 : 1;
+    lightPool(ctx, rx, gy - 40, 90, RIVAL.phases[R.phase].color, 0.18);
+    drawBugAt(ctx, R.spec, rx, gy + slump, {
+      pose: R.downed ? 'sad' : (Math.floor(this.t * 4) % 2 ? 'play' : 'play2'),
+      expr: R.downed ? 'sad' : R.hurt > 0.3 ? 'shock' : 'angry',
+      scale: 2.1, rate: 3.4, bounce: R.downed ? 0.3 : 1.6,
+    });
+    ctx.globalAlpha = 1;
+    if (R.flash > 0) { ctx.globalAlpha = R.flash; ellipsePx(ctx, rx, gy - 34, 40, 44, '#ffffff'); ctx.globalAlpha = 1; }
+    // her name plate
+    const nm = RIVAL.name, nw = textWidth(nm) + 16;
+    rect(ctx, rx - nw / 2, gy + 10, nw, 13, '#1a1420');
+    frame(ctx, rx - nw / 2, gy + 10, nw, 13, RIVAL.phases[R.phase].color);
+    drawText(ctx, nm, rx, gy + 13, RIVAL.phases[R.phase].color, { align: 'center' });
+    // ---- the favour bar, across the top: her side against yours
+    const bw = 420, bx = Math.round(W / 2 - bw / 2), by = 40;
+    rect(ctx, bx - 3, by - 3, bw + 6, 20, '#15121c');
+    frame(ctx, bx - 3, by - 3, bw + 6, 20, '#6a5f8a');
+    rect(ctx, bx, by, bw, 14, '#2a2036');
+    const mine = Math.round(bw * R.favour);
+    for (let i = 0; i < mine; i++) rect(ctx, bx + i, by, 1, 14, i > mine - 4 ? '#fff6d0' : mixColor('#e8563f', '#ffd24a', i / bw));
+    rect(ctx, bx + mine, by, bw - mine, 14, RIVAL.phases[R.phase].color);
+    ctx.globalAlpha = 0.25; halftone(ctx, bx + mine, by, bw - mine, 14, '#000000', 4, 1); ctx.globalAlpha = 1;
+    // the marker where the room currently stands
+    rect(ctx, bx + mine - 1, by - 4, 3, 22, '#ffffff');
+    drawText(ctx, 'YOU', bx + 4, by + 4, '#fff6d0', { font: 'small' });
+    drawText(ctx, RIVAL.title, bx + bw - 4, by + 4, '#1a1420', { align: 'right', font: 'small' });
+    // which phase she is in
+    const ph = RIVAL.phases[R.phase];
+    drawText(ctx, 'PHASE ' + (R.phase + 1) + '  ' + ph.name + '  -  ' + ph.desc, W / 2, by + 22, ph.color, { align: 'center', font: 'small' });
+    // and what she has to say about it
+    if (R.tauntT > 0 && R.taunt) {
+      ctx.globalAlpha = clamp(R.tauntT, 0, 1);
+      const tw = textWidth(R.taunt) + 20;
+      rect(ctx, rx - tw / 2, gy - 104, tw, 18, 'rgba(14,10,20,0.88)');
+      frame(ctx, rx - tw / 2, gy - 104, tw, 18, ph.color);
+      drawText(ctx, R.taunt, rx, gy - 99, '#f0e8ff', { align: 'center' });
+      ctx.globalAlpha = 1;
+    }
   }
   // The set read-outs live outside the camera: the shot moves, the HUD does not.
   drawSetHud(ctx) {
@@ -8699,6 +9202,7 @@ class GigScene {
         this.cam.done(ctx);
       }
       this.drawSetHud(ctx);
+      if (this.rival) this.drawDuel(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
       const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
       const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);
@@ -8858,7 +9362,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'mission'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -8868,7 +9372,7 @@ class RunState {
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
-    s.pos = 'mission'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
+    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
     s.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; s.goals = rollGoals(s);
     return s;
   }

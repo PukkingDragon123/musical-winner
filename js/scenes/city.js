@@ -1,4 +1,4 @@
-// ---------- San Francisco: a living map, travelled with Uber tickets ----------
+// ---------- Tokyo: a living map, travelled on a train pass ----------
 'use strict';
 const MAP_C = { land: '#f3efe4', landHi: '#faf7ee', park: '#c9e6b0', parkDk: '#b2d795', water: '#a6d0ee', waterDk: '#8fc0e4',
   road: '#ffffff', roadBig: '#ffe9a8', roadEdge: '#ddd7c8', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#5d6a5d', inkSoft: '#8a927f', hill: '#eae3d0' };
@@ -242,7 +242,7 @@ class CityScene {
         done[n.id] = r.day;
         const roll = r.rng();
         if (roll < 0.4) { const c = 6 + r.day * 3; r.money += c; this.flash('FOUND ' + fmtMoney(c)); Audio.ui('coin'); }
-        else if (roll < 0.7) { r.tickets += 2; this.flash('+2 UBER TICKETS'); Audio.ui('select'); }
+        else if (roll < 0.7) { r.tickets += 2; this.flash('+2 TRAIN RIDES'); Audio.ui('select'); }
         else if (roll < 0.88) { const k = r.rng.pick(CONSUMABLE_KEYS); if (r.consumables.length < 6) { r.consumables.push(k); this.flash('FOUND ' + CONSUMABLES[k].name.toUpperCase()); } else { r.money += 8; this.flash('POCKETS FULL. +$8'); } Audio.ui('coin'); }
         else { const k = r.randomCharm(); if (k && r.addCharm(k)) { this.flash('FOUND ' + CHARMS[k].name.toUpperCase()); Audio.ui('fanfare'); } else { r.money += 12; this.flash('+$12'); } }
         this.refresh(); r.save(); break;

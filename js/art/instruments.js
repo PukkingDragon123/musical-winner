@@ -101,18 +101,54 @@ function drawKeyboard(ctx, hw, R, opts = {}) {
   rect(ctx, A.x, A.y + A.h - 4, A.w, 4, '#3a2a2a');
 }
 // ---------- TAIKO drum body ----------
+// A proper odaiko: a barrel of hollowed wood, a tacked hide head, and the
+// lacquered X-stand it sits in. The centre is the skin, the ring is the rim,
+// and the two sound nothing like each other.
 function drawTaikoDrum(ctx, x, y, r, hitDon, hitKa, t) {
-  const sq = hitDon > 0 || hitKa > 0 ? 1 + Math.max(hitDon, hitKa) * 0.12 : 1;
+  const sq = hitDon > 0 || hitKa > 0 ? 1 + Math.max(hitDon, hitKa) * 0.1 : 1;
   const rr = Math.round(r * sq);
-  circle(ctx, x, y + 3, rr + 6, '#2a1a10');
-  circle(ctx, x, y, rr + 6, '#6a3a1e'); circle(ctx, x, y, rr + 5, '#8a5228'); circle(ctx, x, y, rr + 3, '#5a3018');
-  circle(ctx, x, y, rr, hitDon > 0 ? '#ffd8b0' : hitKa > 0 ? '#d8e8ff' : '#f2e6d0');
-  circle(ctx, x, y, rr - 1, hitDon > 0 ? '#ffeede' : hitKa > 0 ? '#eef4ff' : '#f8f0e0');
-  ctx.globalAlpha = 0.25; circle(ctx, x - rr / 3, y - rr / 3, Math.round(rr / 2), '#ffffff'); ctx.globalAlpha = 1;
-  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + 0.3; px(ctx, x + Math.cos(a) * (rr + 4), y + Math.sin(a) * (rr + 4), '#e0b040'); }
-  // sticks
+  x = Math.round(x); y = Math.round(y);
+  // the stand behind it: two lacquered legs and a crossbar
+  for (const d of [-1, 1]) {
+    line(ctx, x + d * (rr + 4), y + rr - 4, x + d * (rr + 20), y + rr + 26, '#2e1a14');
+    line(ctx, x + d * (rr + 5), y + rr - 4, x + d * (rr + 21), y + rr + 26, '#4a2c20');
+  }
+  rect(ctx, x - rr - 16, y + rr + 22, (rr + 16) * 2, 3, '#3a2218');
+  rect(ctx, x - rr - 16, y + rr + 22, (rr + 16) * 2, 1, '#5e3a28');
+  // the shell, a barrel seen end-on
+  ellipsePx(ctx, x, y + 4, rr + 9, rr + 9, '#241209');
+  ellipsePx(ctx, x, y, rr + 9, rr + 9, '#6a3a1e');
+  ellipsePx(ctx, x, y, rr + 8, rr + 8, '#8a5228');
+  // the grain of the wood around the rim
+  for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2; const c = (i % 3) ? '#7a4622' : '#96602f';
+    ellipseRingPx(ctx, x, y, rr + 7 - (i % 2), rr + 7 - (i % 2), null);
+    px(ctx, Math.round(x + Math.cos(a) * (rr + 6)), Math.round(y + Math.sin(a) * (rr + 6)), c); }
+  ellipsePx(ctx, x, y, rr + 4, rr + 4, '#5a3018');
+  // the hide head, pale and slightly warm, darkening where it is struck
+  const headCol = hitDon > 0 ? '#fff0d4' : '#f2e6d0';
+  ellipsePx(ctx, x, y, rr, rr, headCol);
+  ellipsePx(ctx, x, y, rr - 1, rr - 1, hitDon > 0 ? '#fff8ea' : '#f8f0e0');
+  // the worn spot in the middle where every stroke lands
+  ellipsePx(ctx, x, y, Math.round(rr * 0.44), Math.round(rr * 0.44), hitDon > 0 ? '#ffeab8' : '#eee0c6');
+  ctx.globalAlpha = 0.22; ellipsePx(ctx, x - rr / 3, y - rr / 3, Math.round(rr / 2), Math.round(rr / 2.4), '#ffffff'); ctx.globalAlpha = 1;
+  // the tacks that hold the hide on, all the way round
+  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2 + 0.17;
+    const tx = Math.round(x + Math.cos(a) * (rr + 2)), ty = Math.round(y + Math.sin(a) * (rr + 2));
+    px(ctx, tx, ty, hitKa > 0 ? '#fff4c8' : '#e0b040'); px(ctx, tx, ty + 1, '#8a6420'); }
+  // the rim itself lights when you hit the edge
+  if (hitKa > 0) { ctx.globalAlpha = clamp(hitKa * 3, 0, 1); ellipseRingPx(ctx, x, y, rr + 5, rr + 5, '#d8e8ff'); ellipseRingPx(ctx, x, y, rr + 6, rr + 6, '#8ab8f0'); ctx.globalAlpha = 1; }
+  if (hitDon > 0) { ctx.globalAlpha = clamp(hitDon * 2.2, 0, 1); ellipseRingPx(ctx, x, y, Math.round(rr * 0.6), Math.round(rr * 0.6), '#ffd8a0'); ctx.globalAlpha = 1; }
+  // a pair of bachi, thick and tapered, resting either side
   const sw = Math.sin(t * 9) * 3;
-  for (const s of [-1, 1]) { const bx = x + s * (rr + 14), by = y + 10 + (s > 0 ? sw : -sw); line(ctx, bx, by + 12, bx - s * 8, by - 6, '#e8d0a0'); line(ctx, bx + 1, by + 12, bx + 1 - s * 8, by - 6, '#c8a870'); }
+  for (const s of [-1, 1]) {
+    const bx = x + s * (rr + 17), by = y + 8 + (s > 0 ? sw : -sw);
+    for (let i = 0; i < 20; i++) {
+      const px2 = Math.round(bx - s * i * 0.4), py2 = Math.round(by + 12 - i * 0.9);
+      const thick = i > 12 ? 3 : 2;
+      rect(ctx, px2, py2, thick, 2, i > 15 ? '#f0e2c0' : '#ddc79a');
+      rect(ctx, px2, py2 + 2, thick, 1, '#a8895e');
+    }
+  }
 }
 // ---------- SAX / TRUMPET / VIOLIN bodies ----------
 function drawSaxBody(ctx, x, y, breath, playing, t) {
