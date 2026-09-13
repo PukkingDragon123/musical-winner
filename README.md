@@ -70,10 +70,18 @@ then a real kick and snare, a hi-hat, a rack tom, a crash — until you are sitt
 five-piece on a proper rug and the charts finally use all of it. The junk pieces sound like junk
 too: the bucket thumps, the pot rings and rattles for half a second.
 
-**Drums are about the beat, and forgiving about the rest.** The timing windows on a kit are half
-again as wide as anywhere else, and if you hit the beat on the wrong drum it still counts — you
-played the beat, just not the piece the chart asked for, so it caps at GREAT, the drum under your
-hand is the one that sounds, and the judgement says `(ANY DRUM)` so you know what happened. A
+**A kit plays a groove, not the tune.** Charting drums off the melody meant a fast song asked for
+almost four taps a second on day one, which is why it felt brutal. Kits get their own pattern
+instead: the low piece on one and three, the backbeat on two and four, everything quantised to a
+beat or an eighth so it always lands where the count is. Density grows with the run — eighths
+between the beats, a crash riding a downbeat, a fill across the last bar of a phrase — from about
+one and a half notes a second on your first night to under three at the top.
+
+**Drums are about the beat, and forgiving about the rest.** The timing windows on a kit are nearly
+twice as wide as anywhere else, if you hit the beat on the wrong drum it still counts — capped at
+GREAT, with the drum under your hand the one that sounds and the judgement reading `(ANY DRUM)` —
+and one strike resolves a whole stack, so a crash riding a kick is a flourish rather than a
+guaranteed miss for anybody playing with one hand. A
 closing ring under the preview strip beats out the count with a pip per beat of the bar, so
 landing on it is something you can see as well as hear.
 

@@ -31,7 +31,7 @@ class RhythmGame {
   begin(audioTime) { this.startTime = audioTime; }
   // A kit is forgiving on purpose: what matters is landing on the beat, so the
   // windows are wider than on an instrument where you also pick a pitch.
-  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 1.55 : 1; }
+  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 1.85 : 1; }
   win(kind) { let m = this.mods.windowMult || 1; return JUDGE[kind] * m * this.kitEase; }
   judgeDt(dt) { const a = Math.abs(dt); if (a <= this.win('perfect')) return 'perfect'; if (a <= this.win('great')) return 'great'; if (a <= this.win('good')) return this.mods.tuner ? 'great' : 'good'; return 'miss'; }
   receptorOf(note) { const r = this.receptors[note.lane != null ? note.lane : 0] || this.receptors.main || { x: 0, y: 0 }; return r; }
@@ -138,6 +138,22 @@ class RhythmGame {
       let j = this.judgeDt(this.now - n.t);
       if (offPiece && j === 'perfect') j = 'great';
       n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
+      // On a kit, two pieces asked for on the same beat is one hand movement
+      // you do not have. Striking the beat once resolves the whole stack, so a
+      // crash riding a kick reads as flourish instead of as a guaranteed miss.
+      if (instr.view === 'kit' && n.hit) {
+        for (const o of this.notes) {
+          if (o === n || o.judged || o.sec !== this.secIdx) continue;
+          if (o.type === 'roll' || o.type === 'bomb') continue;
+          if (Math.abs(o.t - n.t) > 0.012) continue;
+          o.judged = true; o.hit = true; o.judge = j;
+          this.counts[j]++; this.flashes[o.lane] = 0.2;
+          this.playHit(o, j, false);
+          const r2 = this.receptorOf(o);
+          this.fx.burst(r2.x, r2.y, 5, { color: ['#ffd24a', '#fff'], speed: 50, life: 0.35, kind: 'spark', gravity: 60, size: 2 });
+          if (this.hooks.onJudge) this.hooks.onJudge(o, j, {});
+        }
+      }
       this.applyJudge(j, n, offPiece && n.hit ? { suffix: ' (ANY DRUM)' } : {});
       if (n.hit) {
         // the drum under your hand is the one that sounds, not the charted one

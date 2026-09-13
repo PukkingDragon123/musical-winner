@@ -3858,6 +3858,57 @@ function songFromMovement(mv) {
     leadIn: 4 * beat, length: 4 * beat + bars * 4 * beat + 1.6, style: mv.style };
 }
 // ---- Chart from a melody. Lanes follow the melodic contour so the chart IS the tune.
+// ---------- Drum grooves ----------
+// A drummer does not play one hit per note of the tune — they play a groove.
+// Charting a kit off the melody meant a fast tune asked for nearly four taps a
+// second on day one, which is why it felt brutal. This lays down a real pattern
+// on the beat instead, and only thickens it as the run gets harder.
+//
+// notesPerBar by difficulty: 4, 4-5, 5-7, 6-9, 8-11. Everything sits on a beat
+// or an eighth, so it always lands where the count is.
+function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
+  const beat = song.beat, out = [];
+  const pieces = instr.pieces || instr.drumFor || ['kick', 'snare', 'hat', 'tom', 'crash'];
+  const n = pieces.length;
+  // rank the pieces you actually own from lowest to highest
+  const byPitch = pieces.map((p, i) => i).sort((a, b) => (PIECE_PITCH[pieces[a]] || 0) - (PIECE_PITCH[pieces[b]] || 0));
+  const low = byPitch[0];                                   // kick, or the bucket
+  const back = byPitch[Math.min(byPitch.length - 1, Math.max(1, Math.floor(n / 2)))];  // snare, or the pot
+  const top = byPitch[byPitch.length - 1];                  // crash / hat / pot
+  const mid = byPitch[Math.min(byPitch.length - 1, 1)];     // a tom if there is one
+  const d = clamp(difficulty, 1, 7);
+  const offChance = [0, 0, 0.07, 0.17, 0.28, 0.38, 0.48, 0.56][d];  // eighths between the beats
+  const topChance = [0, 0, 0.05, 0.12, 0.2, 0.28, 0.36, 0.44][d];   // a piece on top of a beat
+  const starRate = opts.starRate != null ? opts.starRate : 0.08;
+  const bars = sec.endBar - sec.startBar;
+  for (let bar = 0; bar < bars; bar++) {
+    const barT = song.leadIn + (sec.startBar + bar) * 4 * beat;
+    const isPhraseEnd = d >= 4 && bar % 4 === 3;
+    for (let b = 0; b < 4; b++) {
+      const t = barT + b * beat;
+      // the backbone: low piece on one and three, backbeat on two and four
+      const lane = (b === 1 || b === 3) ? back : low;
+      out.push({ t, lane, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
+      // a crash or hat riding the downbeat, once there is a kit to do it on
+      if (n >= 4 && ((bar === 0 && b === 0) || rng.chance(topChance)) && top !== lane)
+        out.push({ t, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true });
+      // an eighth between this beat and the next
+      if (rng.chance(offChance)) {
+        const offLane = d >= 5 && rng.chance(0.4) ? mid : low;
+        out.push({ t: t + beat * 0.5, lane: offLane, dur: 0, type: 'tap', midi: song.root });
+      }
+    }
+    // a fill across the last bar of a phrase, walking down the kit
+    if (isPhraseEnd && n >= 3 && rng.chance(0.45)) {
+      const order = byPitch.slice().reverse();
+      for (let i = 0; i < Math.min(3, order.length); i++)
+        out.push({ t: barT + 3 * beat + i * beat * 0.5, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
+    }
+  }
+  // two things asked for at the same instant on the same drum is not playable
+  const seen = new Set();
+  return out.filter(x => { const k = Math.round(x.t * 1000) + ':' + x.lane; if (seen.has(k)) return false; seen.add(k); return true; });
+}
 function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
   const notes = []; const beat = song.beat; const mel = song.melody;
   const pitches = mel.filter(n => n[0] > 0).map(n => n[0]);
@@ -3867,6 +3918,9 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
   for (const sec of sections) {
     const instr = sec.instr || INSTRUMENTS[sec.instrument]; const secStart = song.leadIn + sec.startBar * 4 * beat, secEnd = song.leadIn + sec.endBar * 4 * beat;
     if (sec.qte) { for (let bar = sec.startBar; bar < sec.endBar; bar++) { const barT = song.leadIn + bar * 4 * beat; const slots = difficulty >= 4 ? [0, 2] : [0]; for (const s of slots) if (rng.chance(0.9)) notes.push({ t: barT + s * beat, lane: 0, dur: 0, type: 'qte', midi: song.root + 12 }); } continue; }
+    // a kit plays a groove, not the tune, and never has bombs to dodge
+    // — reading a chart is not what this instrument is asking of you
+    if (instr.view === 'kit') { notes.push(...kitGroove(song, sec, difficulty, rng, instr, opts)); continue; }
     // walk the melody, looping it to fill the section
     let t = secStart, i = 0, lastLane = Math.floor((instr.lanes || 2) / 2), lastDir = 1, guard = 0;
     while (t < secEnd - 0.001 && guard++ < 900) {
@@ -4571,7 +4625,7 @@ class RhythmGame {
   begin(audioTime) { this.startTime = audioTime; }
   // A kit is forgiving on purpose: what matters is landing on the beat, so the
   // windows are wider than on an instrument where you also pick a pitch.
-  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 1.55 : 1; }
+  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 1.85 : 1; }
   win(kind) { let m = this.mods.windowMult || 1; return JUDGE[kind] * m * this.kitEase; }
   judgeDt(dt) { const a = Math.abs(dt); if (a <= this.win('perfect')) return 'perfect'; if (a <= this.win('great')) return 'great'; if (a <= this.win('good')) return this.mods.tuner ? 'great' : 'good'; return 'miss'; }
   receptorOf(note) { const r = this.receptors[note.lane != null ? note.lane : 0] || this.receptors.main || { x: 0, y: 0 }; return r; }
@@ -4678,6 +4732,22 @@ class RhythmGame {
       let j = this.judgeDt(this.now - n.t);
       if (offPiece && j === 'perfect') j = 'great';
       n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
+      // On a kit, two pieces asked for on the same beat is one hand movement
+      // you do not have. Striking the beat once resolves the whole stack, so a
+      // crash riding a kick reads as flourish instead of as a guaranteed miss.
+      if (instr.view === 'kit' && n.hit) {
+        for (const o of this.notes) {
+          if (o === n || o.judged || o.sec !== this.secIdx) continue;
+          if (o.type === 'roll' || o.type === 'bomb') continue;
+          if (Math.abs(o.t - n.t) > 0.012) continue;
+          o.judged = true; o.hit = true; o.judge = j;
+          this.counts[j]++; this.flashes[o.lane] = 0.2;
+          this.playHit(o, j, false);
+          const r2 = this.receptorOf(o);
+          this.fx.burst(r2.x, r2.y, 5, { color: ['#ffd24a', '#fff'], speed: 50, life: 0.35, kind: 'spark', gravity: 60, size: 2 });
+          if (this.hooks.onJudge) this.hooks.onJudge(o, j, {});
+        }
+      }
       this.applyJudge(j, n, offPiece && n.hit ? { suffix: ' (ANY DRUM)' } : {});
       if (n.hit) {
         // the drum under your hand is the one that sounds, not the charted one
