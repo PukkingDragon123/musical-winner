@@ -279,9 +279,11 @@ class EarGame {
   // strip showing the shape of the phrase you are working on.
   draw(ctx, A) {
     const isKeys = this.surface instanceof PianoSurface;
-    const kh = A.touch ? 104 : 96;
-    const ky = A.y + A.h - kh - (A.touch ? 20 : 26);
-    const kw = Math.min(A.w - 60, isKeys ? 720 : 470);
+    // The instrument sits right down on the bottom edge of the frame, the way
+    // it would if you were behind it: everything above it is the room.
+    const kh = A.touch ? 112 : 104;
+    const ky = A.y + A.h - kh - (A.touch ? 4 : 6);
+    const kw = Math.min(A.w - 60, isKeys ? 740 : 490);
     const kx = A.x + (A.w - kw) / 2;
     const g = this.surface.layout(kx, ky, kw, kh);
     // a pool of light on the instrument, so it reads as the lit thing on stage
@@ -327,7 +329,7 @@ class EarGame {
   drawPhraseStrip(ctx, A, g) {
     const ns = this.phrase.notes; if (!ns.length) return;
     const w = Math.min(A.w - 120, 400), h = 58;
-    const x = Math.round(A.x + (A.w - w) / 2), y = Math.round(g.y - h - 22);
+    const x = Math.round(A.x + (A.w - w) / 2), y = Math.round(g.y - h - 18);
     rect(ctx, x, y, w, h, 'rgba(10,8,18,0.86)');
     frame(ctx, x, y, w, h, '#6a5f9a');
     rect(ctx, x + 1, y + h - 2, w - 2, 1, '#2a2440');

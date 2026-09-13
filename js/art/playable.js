@@ -212,3 +212,44 @@ function fitToSurface(surface, notes) {
   while (hi + shift > sHi) shift -= 12;
   return shift;
 }
+
+// ---------- Shared input routing ----------
+// Any scene that hands the player an instrument routes taps the same way: the
+// note under the finger is the note that sounds. Kept here so the street set
+// and the stadium flashback cannot drift apart.
+function earNoteAt(scene, x, y) {
+  const s = scene.surface; if (!s) return null;
+  const hit = s.noteAt(x, y); if (hit == null) return null;
+  const midi = typeof hit === 'object' ? hit.m : hit;
+  let spot = null;
+  if (typeof hit === 'object') spot = s.spot(hit.str, hit.fret);
+  else { const sl = s.slotOf(midi); if (sl) spot = { x: sl.cx, y: sl.y + 16 }; }
+  return { midi, spot };
+}
+function earPointerDown(scene, x, y, id) {
+  if (!scene.earMode || !scene.surface) return false;
+  const hit = earNoteAt(scene, x, y); if (!hit) return false;
+  scene.earPointers.set(id, hit.midi);
+  scene.rhythm.press(hit.midi, hit.spot);
+  return true;
+}
+// Dragging across the keys glissandos, the way a hand across a real keyboard
+// sounds every note it passes over.
+function earPointerMove(scene, x, y, id) {
+  if (!scene.earMode || !scene.surface || !scene.earPointers.has(id)) return false;
+  const prev = scene.earPointers.get(id);
+  const hit = earNoteAt(scene, x, y);
+  const midi = hit ? hit.midi : null;
+  if (midi === prev) return true;
+  scene.rhythm.release(prev);
+  if (midi == null) scene.earPointers.delete(id);
+  else { scene.earPointers.set(id, midi); scene.rhythm.press(midi, hit.spot); }
+  return true;
+}
+function earPointerUp(scene, id) {
+  if (!scene.earPointers) return false;
+  const m = scene.earPointers.get(id);
+  if (m === undefined) return false;
+  scene.earPointers.delete(id); scene.rhythm.release(m);
+  return true;
+}

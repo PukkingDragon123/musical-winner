@@ -233,3 +233,76 @@ function comicPanel(ctx, x, y, w, h, angle, draw) {
   ctx.restore();
   ctx.restore();
 }
+
+// ---------- Atmosphere and finish ----------
+// The cheap tricks that make a lit room read as a lit room: haze for beams to
+// cut through, a wash of colour over everything the lights touch, bloom on the
+// bright bits, and a wet-looking deck that throws the whole show back at you.
+
+// Volumetric haze: drifting bands of light fog that beams can show up against.
+class Haze {
+  constructor(n = 7, seed = 3) {
+    const r = makeRng(seed); this.b = [];
+    for (let i = 0; i < n; i++) this.b.push({ x: r.range(-200, W), y: r.range(0, 1), w: r.range(160, 420), h: r.range(24, 70), v: r.range(4, 16), a: r.range(0.012, 0.032) });
+  }
+  update(dt) { for (const b of this.b) { b.x += b.v * dt; if (b.x > W + 220) b.x = -b.w - 40; } }
+  draw(ctx, x, y, w, h, color = '#c8b0ff') {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    for (const b of this.b) {
+      const by = y + b.y * h;
+      const g = ctx.createLinearGradient(0, by, 0, by + b.h);
+      g.addColorStop(0, withAlpha(color, 0)); g.addColorStop(0.5, withAlpha(color, b.a)); g.addColorStop(1, withAlpha(color, 0));
+      ctx.fillStyle = g; ctx.fillRect(b.x, by, b.w, b.h);
+    }
+    ctx.restore();
+  }
+}
+// A wash of stage colour over whatever is underneath, so the cast is lit by
+// the same lamps as the set instead of floating in front of it.
+function lightWash(ctx, x, y, w, h, color, alpha = 0.1) {
+  ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = alpha;
+  ctx.fillStyle = color; ctx.fillRect(x, y, w, h); ctx.restore();
+}
+// Bloom: take what is already on the canvas, blur it by drawing it back a few
+// times at small offsets under a lighten blend, and only the bright things
+// survive. Cheap, and it makes every lamp feel hot.
+function bloom(ctx, x, y, w, h, amount = 0.14, spread = 2) {
+  if (amount <= 0 || w <= 0 || h <= 0) return;
+  const c = _bloomBuf(w, h), b = c.getContext('2d');
+  b.clearRect(0, 0, w, h);
+  b.drawImage(ctx.canvas, x, y, w, h, 0, 0, w, h);
+  // knock out everything but the highlights
+  b.globalCompositeOperation = 'multiply'; b.drawImage(c, 0, 0);
+  b.globalCompositeOperation = 'source-over';
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = amount;
+  for (const [dx, dy] of [[-spread, 0], [spread, 0], [0, -spread], [0, spread], [-spread, -spread], [spread, spread]])
+    ctx.drawImage(c, 0, 0, w, h, x + dx, y + dy, w, h);
+  ctx.restore();
+}
+let _bb = null;
+function _bloomBuf(w, h) {
+  if (!_bb || _bb.width < w || _bb.height < h) _bb = makeCanvas(Math.max(w, _bb ? _bb.width : 0), Math.max(h, _bb ? _bb.height : 0));
+  return _bb;
+}
+// A polished deck: mirror the band down into the floor, fading and tinted, the
+// way a stage looks after it has been mopped.
+function deckReflection(ctx, srcY, srcH, floorY, depth, alpha = 0.18, tint = '#2a2038') {
+  if (depth <= 0 || srcH <= 0) return;
+  const c = _reflBuf(W, srcH), b = c.getContext('2d');
+  b.clearRect(0, 0, W, srcH);
+  b.drawImage(ctx.canvas, 0, srcY, W, srcH, 0, 0, W, srcH);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, floorY, W, depth); ctx.clip();
+  ctx.globalAlpha = alpha;
+  ctx.translate(0, floorY * 2); ctx.scale(1, -1);
+  ctx.drawImage(c, 0, 0, W, srcH, 0, floorY - srcH, W, srcH);
+  ctx.restore();
+  // fade it out with distance, and tint the whole thing toward the floor
+  const g = ctx.createLinearGradient(0, floorY, 0, floorY + depth);
+  g.addColorStop(0, withAlpha(tint, 0.15)); g.addColorStop(1, withAlpha(tint, 0.95));
+  ctx.fillStyle = g; ctx.fillRect(0, floorY, W, depth);
+  // a couple of wet streaks across it
+  for (let i = 0; i < 3; i++) { ctx.globalAlpha = 0.06; rect(ctx, 0, floorY + 4 + i * Math.round(depth / 3), W, 1, '#ffffff'); ctx.globalAlpha = 1; }
+}
+let _rb = null;
+function _reflBuf(w, h) { if (!_rb || _rb.height < h) _rb = makeCanvas(w, Math.max(h, _rb ? _rb.height : 0)); return _rb; }

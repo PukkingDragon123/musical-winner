@@ -22,7 +22,7 @@ class GigScene {
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
     this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
-    this.cam = new Camera(); this.cutIn = null;
+    this.cam = new Camera(); this.cutIn = null; this.haze = new Haze(6, hashStr(node.id) & 63);
     this.train = { x: -700, t: r.rng.range(4, 9) };
   }
   // Point the scene at one tune: everything downstream reads this.song.
@@ -145,7 +145,7 @@ class GigScene {
     this.pauseButtons = [new Btn(W / 2 - 150, 240, 140, 34, 'RESUME', () => this.togglePause(), { scale: 2 }), new Btn(W / 2 + 10, 240, 140, 34, 'BAIL OUT', () => this.quit(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 })];
   }
   update(dt) {
-    this.t += dt; this.fx.update(dt, Game.wind.px);
+    this.t += dt; this.fx.update(dt, Game.wind.px); this.haze.update(dt);
     if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
@@ -297,32 +297,13 @@ class GigScene {
     if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
     // Keys and necks are played on the instrument: the note under your finger
     // is the note that sounds, exactly as it would be in the room.
-    if (this.earMode && this.surface) {
-      const hit = this.surface.noteAt(x, y);
-      if (hit != null) {
-        const midi = typeof hit === 'object' ? hit.m : hit;
-        const sp = typeof hit === 'object' ? this.surface.spot(hit.str, hit.fret) : (() => { const sl = this.surface.slotOf(midi); return sl ? { x: sl.cx, y: sl.y + 16 } : null; })();
-        this.earPointers.set(id, midi);
-        this.rhythm.press(midi, sp);
-        return;
-      }
-    }
+    if (earPointerDown(this, x, y, id)) return;
     if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
-    if (this.earMode && this.surface && this.earPointers.has(id)) {
-      const hit = this.surface.noteAt(x, y);
-      const midi = hit == null ? null : (typeof hit === 'object' ? hit.m : hit);
-      const prevM = this.earPointers.get(id);
-      if (midi !== prevM) {
-        this.rhythm.release(prevM);
-        if (midi == null) this.earPointers.delete(id);
-        else { this.earPointers.set(id, midi); this.rhythm.press(midi, null); }
-      }
-      return;
-    }
+    if (earPointerMove(this, x, y, id)) return;
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
     if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
     if (next === prev) return;
@@ -331,7 +312,7 @@ class GigScene {
   }
   pointerUp(x, y, id) {
     const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
-    const m = this.earPointers.get(id); if (m !== undefined) { this.earPointers.delete(id); this.rhythm.release(m); }
+    earPointerUp(this, id);
   }
   hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
   toggleMember(i) {
@@ -357,6 +338,17 @@ class GigScene {
     this.fx.draw(ctx); ctx.restore();
     const wk = WEATHERS[Game.run.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
+    // ---- finish. A pavement is not a mirror, so no reflection out here: just
+    // air you can see the light hanging in, and enough bloom that the lamps
+    // and the brass glow without washing the cast out.
+    const sTop = L.stageTop, sBot = Math.min(H, L.stageBottom);
+    if (this.phase === 'play' && sBot > sTop) {
+      // haze only hangs where the light actually pools: a band just above the
+      // ground. Across a bright sky it reads as a smear, not as air.
+      const hzTop = Math.max(sTop, L.groundY - 96);
+      this.haze.draw(ctx, 0, hzTop, W, Math.max(0, L.groundY - hzTop), '#c8d4f0');
+      bloom(ctx, 0, sTop, W, sBot - sTop, 0.05, 1);
+    }
     
   }
   // Between numbers: the record you just played, and the one going on next.

@@ -44,6 +44,38 @@ function propCanvas(kind, variant = 0) {
       case 'suitcase': { P = new Pix(18, 14); const m = P.mask(); P.mRound(m, 0, 3, 18, 11, 2); P.fill(m, '#8a5a3a', { outline: OL }); const h = P.mask(); P.mRect(h, 6, 0, 6, 4); P.fill(h, '#5a3a20', { outline: OL, shade: false }); P.paint(m, (x, y) => y === 8 ? '#5a3a20' : null); break; }
       case 'seat': { P = new Pix(30, 34); const m = P.mask(); P.mRound(m, 2, 0, 26, 24, 3); P.fill(m, '#3a4a6a', { outline: OL }); const c = P.mask(); P.mRound(c, 5, 22, 20, 10, 2); P.fill(c, '#4a5a7a', { outline: OL }); P.paint(m, (x, y) => y === 4 || y === 18 ? '#2a3a5a' : null); break; }
       case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
+      // ---- stadium production: the expensive gear you had when you were somebody
+      case 'cab': { // a 4x12 guitar cabinet, tolex and grille cloth
+        P = new Pix(30, 26); const m = P.mask(); P.mRect(m, 0, 0, 30, 26);
+        P.fill(m, '#1c1a20', { outline: OL }); P.grain(m, 0.05, 3);
+        const g = P.mask(); P.mRect(g, 3, 3, 24, 20); P.fill(g, '#2a2830', { shade: false });
+        P.paint(g, (x, y) => ((x + y) % 2) ? '#221f28' : '#35323e');
+        for (const [sx, sy] of [[7, 7], [19, 7], [7, 17], [19, 17]]) { const c2 = P.mask(); P.mEllipse(c2, sx, sy, 4, 4); P.fill(c2, '#141219', { shade: false }); P.set(sx, sy, '#4a4658'); }
+        for (const cx2 of [1, 28]) for (let y = 1; y < 25; y += 3) P.set(cx2, y, '#54505e');
+        const pl = P.mask(); P.mRect(pl, 11, 0, 8, 3); P.fill(pl, '#c8b46a', { outline: OL, shade: false });
+        break; }
+      case 'wedge': { // a floor monitor, tipped up at the band
+        P = new Pix(24, 12); const m = P.mask();
+        P.mPoly(m, [[0, 11], [24, 11], [21, 2], [4, 0]]);
+        P.fill(m, '#232028', { outline: OL }); P.grain(m, 0.05, 5);
+        const g = P.mask(); P.mPoly(g, [[3, 9], [21, 9], [19, 3], [6, 2]]);
+        P.fill(g, '#32303a', { shade: false }); P.paint(g, (x, y) => (x + y) % 2 ? '#26242e' : null);
+        break; }
+      case 'case': { // a flight case with corner protectors and catches
+        P = new Pix(26, 16); const m = P.mask(); P.mRect(m, 0, 2, 26, 14);
+        P.fill(m, '#2b2b33', { outline: OL });
+        P.paint(m, (x, y) => y === 8 ? '#c0c4d0' : null);
+        for (const cx2 of [0, 22]) for (const cy2 of [2, 12]) { const c2 = P.mask(); P.mRect(c2, cx2, cy2, 4, 4); P.fill(c2, '#9aa0ac', { shade: false }); }
+        for (const cx2 of [8, 16]) { P.set(cx2, 7, '#e2e6f0'); P.set(cx2, 9, '#e2e6f0'); }
+        P.set(12, 4, '#d8483a'); P.set(13, 4, '#d8483a');
+        break; }
+      case 'par': { // a parcan on the deck, throwing a beam upward
+        P = new Pix(12, 14); const m = P.mask(); P.mRect(m, 2, 2, 8, 9); P.mRect(m, 3, 11, 6, 3);
+        P.fill(m, '#2e2c36', { outline: OL });
+        const lens = P.mask(); P.mEllipse(lens, 6, 3, 3.2, 2);
+        P.fill(lens, '#f6e8b0', { shade: false }); P.set(6, 3, '#fffdf0');
+        break; }
+      case 'laser': { P = new Pix(10, 8); const m = P.mask(); P.mRect(m, 0, 2, 10, 6); P.fill(m, '#22202a', { outline: OL }); P.set(5, 3, '#6be585'); P.set(4, 3, '#8af0a8'); break; }
       default: P = new Pix(4, 4);
     }
     // Finishing pass: a little grain and wear on every prop, so street

@@ -141,6 +141,16 @@ eyes, chunky limbs and one strong silhouette apiece: the drummer is a moose beet
 antlers are half his height, the elder carries a staff and a medallion, the firefly's abdomen
 glows. Bugs breathe, squash and bounce on a shared animation clock, and switch expression with
 what is happening: focused mid-set, grinning on a high combo, shocked on a drop, sad backstage.
+The opening show is the one night you had everything: walls of 4x12 cabinets stacked three high
+either side, a lit drum riser with a chrome five-piece on it, a two-tier keyboard rig, wedges
+along the front lip, flight cases in the wings, parcans throwing beams up through the haze, and
+cable runs across a deck polished enough to throw the whole band back at you. Everything after
+it is you trying to get back there on a paint bucket.
+
+Scenes are finished like lit rooms rather than flat drawings: drifting haze for beams to cut
+through, a wash of the stage colour over everything the lamps touch, bloom so the hot bits
+actually glow, and a mirrored deck under the band on a real stage.
+
 Materials are real: the drums carry brushed metal on the hoops and lugs, lacquered wrap dithered
 light-to-dark across the barrel, hammer marks and lathed rings on the cymbals, cream mylar heads
 with a worn patch where the stick lands. The bucket is dented galvanised steel flecked with dried

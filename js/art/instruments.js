@@ -388,9 +388,10 @@ function drawDrumKit(ctx, A, R, opts = {}) {
   // What the kit stands on says as much as the kit does: a busker on a bucket
   // works off flattened cardboard, a working band gets a proper rug.
   const junk = !!opts.junk;
+  const noMat = !!opts.noMat;
   const half = Math.max(110, Math.round(Math.max(...spots.map(s => Math.abs(s.x - cx) + s.G.w / 2)) + 22));
   const matTop = baseY + 16, matBot = baseY + (junk ? 46 : 60);
-  for (let y = matTop; y < matBot; y++) {
+  for (let y = matTop; !noMat && y < matBot; y++) {
     const k = (y - matTop) / (matBot - matTop);
     const hwid = Math.round(half * (0.84 + k * 0.24));
     for (let x = cx - hwid; x < cx + hwid; x += 1) {
@@ -399,7 +400,8 @@ function drawDrumKit(ctx, A, R, opts = {}) {
       else rect(ctx, x, y, 1, 1, k > 0.9 ? '#2a131f' : (Math.floor(y / 6) % 2 ? (w2 < 3 ? '#432030' : '#3a1c2b') : (w2 > 8 ? '#4c2537' : '#442131')));
     }
   }
-  if (junk) {
+  if (noMat) { /* a riser needs no rug */ }
+  else if (junk) {
     // creases and a torn corner, so it reads as a broken-down box
     for (const fx of [-0.42, 0.1, 0.55]) { const x = Math.round(cx + half * fx); rect(ctx, x, matTop + 2, 1, matBot - matTop - 4, '#7d5c34'); }
     rect(ctx, cx - half, matTop, half * 2, 1, '#b58c55');
@@ -434,8 +436,9 @@ function drawDrumKit(ctx, A, R, opts = {}) {
   }
   // A spare stick lying on the mat, because you only ever have the one pair.
   const sx = cx - half + 14, sy = matBot - 6;
-  for (let i = 0; i < 22; i++) { const c2 = i > 17 ? '#f0e3c4' : i < 3 ? '#a8845a' : '#d9c191'; rect(ctx, sx + i, sy - Math.round(i * 0.12), 1, 2, c2); }
-  rect(ctx, sx, sy + 2, 22, 1, 'rgba(0,0,0,0.25)');
+  if (!noMat)
+  { for (let i = 0; i < 22; i++) { const c2 = i > 17 ? '#f0e3c4' : i < 3 ? '#a8845a' : '#d9c191'; rect(ctx, sx + i, sy - Math.round(i * 0.12), 1, 2, c2); }
+    rect(ctx, sx, sy + 2, 22, 1, 'rgba(0,0,0,0.25)'); }
   return spots;
 }
 

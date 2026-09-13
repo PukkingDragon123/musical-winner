@@ -18,7 +18,9 @@ class ConcertScene {
     this.rng = makeRng(777); this.crowd = [];
     for (let i = 0; i < 260; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 4), o: this.rng.range(0, 6), lighter: this.rng.chance(0.32), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
     this.layout(); this.pyroT = 0; this.throwables = []; this.booT = 0;
+    this.haze = new Haze(8, 11);
     this.you = Game.run ? Game.run.members[0] : new Member({ name: 'STAG', presetKey: 'stag', spec: HERO_PRESETS.stag, instrument: 'guitar' });
+    this.gearQuality = 5;     // the flashback is always top of the range
     this.heroKey = Game.run ? Game.run.hero : 'stag';
     this.mates = ROSTER.filter(r => r.key !== this.heroKey).map(r => ({ key: r.key, spec: HERO_PRESETS[r.key], instrument: r.instrument, name: HERO_PRESETS[r.key].name }));
     this.singer = this.mates.find(m => m.instrument === 'piano') || this.mates[0];
@@ -26,7 +28,19 @@ class ConcertScene {
     this.beats = [{ who: 'singer', text: 'FORTY THOUSAND BUGS OUT THERE.' }];
     this.stageLights = ['#c58bff', '#5bc0ff'];
   }
-  layout() { const t = Game.touch; this.L = t ? { rhythmY: 150, rhythmH: 250, stageTop: 20, stageBottom: 148, padY: 404, padH: 130 } : { rhythmY: 16, rhythmH: 296, stageTop: 316, stageBottom: 540, padY: 0, padH: 0 }; }
+  layout() {
+    const t = Game.touch;
+    // An instrument you play by hand gets the whole stadium behind it and sits
+    // along the bottom edge; a chart still splits the screen the old way.
+    const you = Game.run ? Game.run.members[0] : null;
+    this.earLayout = you && (INSTRUMENTS[you.instrument] || {}).game === 'ear';
+    if (this.earLayout) {
+      this.L = { open: true, rhythmY: 16, rhythmH: H - 16, stageTop: 20, stageBottom: t ? 404 : 430, padY: 0, padH: 0 };
+      return;
+    }
+    this.L = t ? { rhythmY: 150, rhythmH: 250, stageTop: 20, stageBottom: 148, padY: 404, padH: 130 }
+               : { rhythmY: 16, rhythmH: 296, stageTop: 316, stageBottom: 540, padY: 0, padH: 0 };
+  }
   isPlaying() { return this.phase === 'play'; }
   get mv() { return OPERA.movements[this.moveIdx]; }
   // everything except the playable movement is framed full-screen like a film
@@ -38,6 +52,7 @@ class ConcertScene {
   }
   update(dt) {
     this.t += dt; this.phaseT += dt; this.lightT += dt; this.fx.update(dt); this.pyroT = Math.max(0, this.pyroT - dt);
+    this.haze.update(dt);
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
     if (this.phase === 'rise') { if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); } }
@@ -77,14 +92,31 @@ class ConcertScene {
   startPlay() {
     const mv = this.mv; Audio.init();
     const song = songFromMovement(mv);
-    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
+    // This is the night you were somebody. Whatever you are reduced to later,
+    // here you are behind the best money can buy: a signature instrument, a
+    // chrome five-piece, the works. The whole point is that you had it all.
+    const gear = gearInstrument(this.you.instrument, 5);
+    const sections = [{ instrument: this.you.instrument, instr: gear, startBar: 0, endBar: song.bars }];
     const diff = mv.impossible ? 7 : mv.difficulty;
     const notes = chartFromMelody(song, sections, diff, this.rng, { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6 });
     if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
     const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: mv.impossible ? 0.75 : 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
-    this.rhythm = new RhythmGame(song, sections, notes, mods, { onCheer: () => this.pyro(3) });
+    // An instrument you play by hand is played by hand here too, on a stage
+    // this size. The last movement is meant to be unplayable either way.
+    this.earMode = gear.game === 'ear';
+    if (this.earMode) {
+      this.surface = makeSurface(gear, song);
+      mods.maxPhrases = mv.impossible ? 99 : 2;
+      this.rhythm = new EarGame(song, this.surface, mods, { onMilestone: () => this.pyro(3) });
+      this.rhythm.voice = mods.voiceOverride || gear.voice;
+      this.rhythm.instr = gear; this.rhythm.instrKey = this.you.instrument; this.rhythm.member = this.you;
+      this.earPointers = new Map();
+    } else this.rhythm = new RhythmGame(song, sections, notes, mods, { onCheer: () => this.pyro(3) });
     const start = Audio.now() + 0.5 + song.leadIn; this.rhythm.begin(start);
-    this.backing = new Backing(song, start - song.leadIn, () => ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }));
+    const steps = this.earMode ? Math.ceil(this.rhythm.totalLength / (song.beat / 4)) + 32 : 0;
+    this.backing = new Backing(song, start - song.leadIn,
+      () => this.earMode && this.rhythm.phase === 'call' ? { bass: true, chords: true } : ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }),
+      this.earMode ? { loop: true, steps } : {});
     this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map();
     this.pyro(mv.pyro);
   }
@@ -107,10 +139,52 @@ class ConcertScene {
   pointerDown(x, y, id) {
     if (this.phase === 'card') { this.startPlay(); return; }
     if (this.phase === 'done') { this.doneBtn.onTap(); return; }
-    if (this.phase === 'play') { const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); } }
+    if (this.phase === 'play') {
+      const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
+      earPointerDown(this, x, y, id);
+    }
   }
-  pointerMove(x, y, id) { if (this.phase !== 'play') return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
-  pointerUp(x, y, id) { const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
+  pointerMove(x, y, id) {
+    if (this.phase !== 'play') return;
+    if (earPointerMove(this, x, y, id)) return;
+    const prev = this.padPointers.get(id); if (prev === undefined) return;
+    const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return;
+    this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
+  }
+  pointerUp(x, y, id) {
+    if (earPointerUp(this, id)) return;
+    const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
+  }
+  // A chrome five-piece on the deck, drawn with the real kit art rather than
+  // the little prop sprite, because this stage is the whole point.
+  drawBigKit(ctx, cx, baseY, beat) {
+    const stub = this._kitStub || (this._kitStub = { flashes: {}, receptors: {}, now: 0 });
+    stub.now = this.t;
+    // the kit breathes with the tune instead of sitting dead still
+    if (beat) { stub.flashes[0] = 0.12; stub.flashes[3] = 0.1; } else { stub.flashes[0] = 0; stub.flashes[3] = 0; }
+    drawDrumKit(ctx, { x: 0, y: 0, w: W, h: H }, stub,
+      { pieces: KIT_LADDER[5].pieces, cx, baseY, width: 300, chrome: true, noMat: true });
+  }
+  // A two-tier keyboard rig: a big synth on a stand with a second board over it.
+  drawRig(ctx, cx, baseY) {
+    const w = 96, h = 16, y = baseY - 34;
+    // the stand
+    for (const d of [-1, 1]) { line(ctx, cx + d * 34, y + h, cx + d * 44, baseY, '#6a6478'); line(ctx, cx + d * 34, y + h, cx + d * 22, baseY, '#565062'); }
+    rect(ctx, cx - 40, y + h + 6, 80, 2, '#4a4558');
+    // lower board
+    rect(ctx, cx - w / 2, y, w, h, '#1b1822');
+    rect(ctx, cx - w / 2 + 1, y + 1, w - 2, 4, '#312c3c');
+    for (let i = 0; i < 9; i++) rect(ctx, cx - w / 2 + 4 + i * 2, y + 2, 1, 2, i % 3 ? '#8a84a0' : '#e8c060');
+    for (let i = 0; i < Math.floor((w - 6) / 4); i++) { const kx = cx - w / 2 + 3 + i * 4; rect(ctx, kx, y + 6, 3, h - 8, '#efe9da'); rect(ctx, kx, y + 6, 3, 1, '#fffaea'); if (i % 7 !== 2 && i % 7 !== 6) rect(ctx, kx + 2, y + 6, 2, Math.round((h - 8) * 0.6), '#211d28'); }
+    // upper board, angled back on the tier
+    const y2 = y - 16;
+    rect(ctx, cx - 36, y2, 72, 12, '#221e2c');
+    rect(ctx, cx - 35, y2 + 1, 70, 3, '#3a3448');
+    for (let i = 0; i < Math.floor(68 / 3); i++) { const kx = cx - 34 + i * 3; rect(ctx, kx, y2 + 5, 2, 6, '#e6e0d2'); if (i % 7 !== 2 && i % 7 !== 6) rect(ctx, kx + 1, y2 + 5, 1, 4, '#211d28'); }
+    for (const d of [-1, 1]) rect(ctx, cx + d * 33, y2 + 12, 2, y - y2 - 12, '#5a5468');
+    // a red standby light, because every rig has one
+    rect(ctx, cx + w / 2 - 5, y + 2, 2, 2, '#e8483a');
+  }
   drawStadium(ctx) {
     const L = this.L, S = this.stageRect(), top = S.top, bottom = S.bottom, h = bottom - top;
     ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, h); ctx.clip();
@@ -124,31 +198,84 @@ class ConcertScene {
     const combo = this.rhythm ? this.rhythm.combo || 0 : 0;
     const bandExpr = dead ? 'sad' : won ? 'happy' : (this.phase === 'play' ? (combo > 20 ? 'happy' : combo === 0 && this.rhythm && this.rhythm.counts.miss > 2 ? 'shock' : null) : null);
     const bandPose = (def) => dead ? 'sad' : won ? 'cheer' : def;
-    // riser
-    rect(ctx, W / 2 + 118, floorY - 20, 150, 20, '#33293f'); rect(ctx, W / 2 + 118, floorY - 20, 150, 3, '#6a6080');
+    // ---- the production. You had money once and it is all on this stage:
+    // walls of cabinets, wedges along the lip, a riser for the drums, cases
+    // stacked in the wings, parcans on the deck and cable runs underfoot.
+    const rigY = floorY;
+    // cabinet walls either side, stacked three high and two wide
+    for (const side of [-1, 1]) {
+      const bx = side < 0 ? 64 : W - 124;
+      for (let row = 0; row < 3; row++) for (let col = 0; col < 2; col++) {
+        const cw = 30, chh = 26;
+        ctx.drawImage(propCanvas('cab'), bx + col * (cw + 1), rigY - 12 - (row + 1) * chh);
+      }
+      // a hint of the light spilling down the front of the stack
+      ctx.globalAlpha = 0.1; rect(ctx, bx, rigY - 12 - 3 * 26, 61, 3 * 26, this.stageLights[0]); ctx.globalAlpha = 1;
+    }
+    // the drum riser, with a lit skirt
+    const riX = W / 2 + 96, riW = 190, riH = 26;
+    rect(ctx, riX, rigY - riH, riW, riH, '#2a2334');
+    rect(ctx, riX, rigY - riH, riW, 3, '#6a6080');
+    rect(ctx, riX, rigY - 4, riW, 4, '#191420');
+    for (let x = riX + 4; x < riX + riW - 3; x += 9) rect(ctx, x, rigY - riH + 5, 4, riH - 11, '#211b2c');
+    ctx.globalAlpha = 0.35 + (beat ? 0.25 : 0);
+    rect(ctx, riX + 2, rigY - 8, riW - 4, 2, this.stageLights[1]); ctx.globalAlpha = 1;
+    // wedges along the front lip, aimed back at the band
+    for (let i = 0; i < 6; i++) ctx.drawImage(propCanvas('wedge'), Math.round(120 + i * ((W - 264) / 5)), rigY + 2);
+    // flight cases and parcans in the wings
+    ctx.drawImage(propCanvas('case'), 30, rigY - 18);
+    ctx.drawImage(propCanvas('case'), 36, rigY - 32);
+    ctx.drawImage(propCanvas('case'), W - 58, rigY - 18);
+    for (const px2 of [104, 250, W - 250, W - 118]) {
+      ctx.drawImage(propCanvas('par'), px2 - 6, rigY - 14);
+      // the beam it throws up into the haze
+      ctx.globalAlpha = 0.07 + (beat ? 0.05 : 0);
+      ctx.fillStyle = this.stageLights[px2 % 2]; ctx.beginPath();
+      ctx.moveTo(px2 - 4, rigY - 14); ctx.lineTo(px2 + 4, rigY - 14);
+      ctx.lineTo(px2 + 44, top + 10); ctx.lineTo(px2 - 44, top + 10); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // cable runs snaking across the deck
+    for (const [cy2, col2] of [[rigY + 7, '#161320'], [rigY + 11, '#1d1826']]) {
+      for (let x = 40; x < W - 40; x++) rect(ctx, x, cy2 + Math.round(Math.sin(x * 0.05 + cy2) * 2), 1, 2, col2);
+    }
     // the three mates
-    const spots = [{ x: W / 2 + 190, y: floorY - 22 }, { x: W / 2 + 40, y: floorY }, { x: W / 2 - 230, y: floorY }];
+    const riserTop = floorY - 26;
+    const spots = [{ x: W / 2 + 190, y: riserTop }, { x: W / 2 + 40, y: floorY }, { x: W / 2 - 230, y: floorY }];
+    // whoever is on drums goes up on the riser, behind the kit
+    const dIdx = this.mates.findIndex(m => m.instrument === 'drums');
+    if (dIdx >= 0) spots[dIdx] = { x: riX + riW / 2, y: riserTop };
     this.mates.forEach((m, i) => {
       const sp = spots[i] || spots[2]; const pose = bandPose(m.instrument === 'piano' ? 'sing' : (beat ? 'play' : 'play2'));
       if (m.instrument === 'piano') ctx.drawImage(propCanvas('micstand'), sp.x - 46, sp.y - 66, 14, 54);
       drawShadow(ctx, sp.x, sp.y, 40);
       drawBugAt(ctx, m.spec, sp.x, sp.y + (beat && !dead ? -2 : 0), { pose, instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.9, expr: bandExpr, rate: won ? 4.2 : 2.4, phase: i * 1.7, bounce: won ? 2.4 : dead ? 0.35 : 1 });
-      if (m.instrument === 'drums') ctx.drawImage(propInstrument('drums'), sp.x - 42, sp.y - 48, 84, 63);
-      if (m.instrument === 'piano') ctx.drawImage(propInstrument('piano'), sp.x - 40, sp.y - 34, 80, 43);
+      // signature gear, because this is the night before it all went
+      if (m.instrument === 'drums') this.drawBigKit(ctx, sp.x, sp.y - 30, beat);
+      if (m.instrument === 'piano') this.drawRig(ctx, sp.x, sp.y);
     });
     // you, front left
     const yx = W / 2 - 90, yy = floorY + 8;
     drawShadow(ctx, yx, yy, 46, 0.35);
     const youPose = bandPose(beat ? 'play' : 'play2');
-    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); ctx.drawImage(propInstrument('drums'), yx - 46, yy - 52, 92, 69); }
-    else if (this.you.instrument === 'piano') { ctx.drawImage(propCanvas('micstand'), yx - 52, yy - 76, 16, 62); drawBugAt(ctx, this.you.spec, yx, yy - 4, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); ctx.drawImage(propInstrument('piano'), yx - 44, yy - 38, 88, 47); }
+    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawBigKit(ctx, yx, yy - 20, beat); }
+    else if (this.you.instrument === 'piano') { ctx.drawImage(propCanvas('micstand'), yx - 52, yy - 76, 16, 62); drawBugAt(ctx, this.you.spec, yx, yy - 4, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawRig(ctx, yx, yy); }
     else drawBugAt(ctx, this.you.spec, yx, yy, { pose: youPose, instrument: this.you.instrument, scale: 2.1, expr: bandExpr, squash: beat && !dead ? 1.04 : 1, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 });
-    ctx.drawImage(propCanvas('amp'), yx - 84, yy - 24, 32, 28);
+    ctx.drawImage(propCanvas('cab'), yx - 92, yy - 26, 30, 26);
     for (const cx of [110, W - 110]) { rect(ctx, cx - 7, floorY - 12, 14, 12, '#444'); rect(ctx, cx - 4, floorY - 18, 8, 6, '#666'); if (this.pyroT > 0) circle(ctx, cx, floorY - 22, 10, '#fff4b0'); }
+    // ---- finish: the deck throws the whole show back, the lamps wash colour
+    // over everything they touch, and the hot bits bloom.
+    const deckTop = floorY, deckDepth = Math.max(0, Math.min(bottom, deckTop + 34) - deckTop);
+    if (deckDepth > 4 && !dead) deckReflection(ctx, Math.max(top, floorY - 110), Math.min(110, floorY - top), deckTop, deckDepth, 0.2, '#241c34');
+    if (!dead) {
+      lightWash(ctx, 0, top, W, floorY - top, this.stageLights[Math.floor(this.t * 0.3) % 2], 0.045 + (beat ? 0.035 : 0));
+      this.haze.draw(ctx, 0, top, W, floorY - top, this.stageLights[1]);
+    }
     drawArenaCrowd(ctx, this.crowd, this.t, bottom - Math.round(h * 0.22), bottom, dead ? 'angry' : 'happy', won ? 1.8 : 1);
     if (dead && Math.floor(this.t * 3) % 2 === 0) for (let i = 0; i < 8; i++) drawText(ctx, 'BOO', (i * 137 + 50) % W, bottom - Math.round(h * 0.22) - 10 - (i % 3) * 12, '#ff5a5a', { align: 'center' });
     for (const o of this.throwables) { const c = propCanvas(o.kind); ctx.save(); ctx.translate(Math.round(o.x), Math.round(o.y)); ctx.rotate(o.rot); ctx.drawImage(c, -c.width, -c.height, c.width * 2, c.height * 2); ctx.restore(); }
     this.fx.draw(ctx);
+    if (!dead) bloom(ctx, 0, top, W, h, 0.085, 1);
     ctx.restore();
     if (this.phase === 'play' && this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.1; rect(ctx, 0, top, W, h, '#fff'); ctx.globalAlpha = 1; }
     if (this.phase === 'rise') { ctx.globalAlpha = 1 - rise; rect(ctx, 0, top, W, h, '#000'); ctx.globalAlpha = 1; }
@@ -167,10 +294,17 @@ class ConcertScene {
     if (this.phase === 'rise' || this.phase === 'hello') {
       const k = clamp(this.phaseT / 1.1, 0, 1), pop = popIn(this.phaseT - 0.3, 0.5);
       ctx.globalAlpha = clamp(k, 0, 1);
-      ctx.save(); ctx.translate(W / 2, 118); ctx.scale(pop, pop);
+      // the card sits above the backdrop rather than across it, on a band of
+      // shadow so gold type never fights the lit letters behind it
+      const tw = textWidth(OPERA.title, { scale: 6 }) + 60;
+      ctx.globalAlpha = clamp(k, 0, 1) * 0.72;
+      rect(ctx, W / 2 - tw / 2, 58, tw, 66, '#07060f');
+      ctx.globalAlpha = clamp(k, 0, 1);
+      rect(ctx, W / 2 - tw / 2, 58, tw, 1, '#4a3a6a'); rect(ctx, W / 2 - tw / 2, 123, tw, 1, '#4a3a6a');
+      ctx.save(); ctx.translate(W / 2, 96); ctx.scale(pop, pop);
       drawText(ctx, OPERA.title, 0, -26, '#ffd24a', { align: 'center', scale: 6, outline: '#4a1e08' });
       ctx.restore();
-      uiRibbon(ctx, W / 2, 176, OPERA.subtitle + '  -  SOLD OUT', { scale: 3, color: '#7a1a4a' });
+      uiRibbon(ctx, W / 2, 136, OPERA.subtitle + '  -  SOLD OUT', { scale: 3, color: '#7a1a4a' });
       ctx.globalAlpha = 1;
       if (this.phase === 'hello') bubble(ctx, W / 2 + 170, 300, this.beats[0].text, { dark: true, color: '#8a2a5a' });
       ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.t * 4);
@@ -231,10 +365,12 @@ class ConcertScene {
     }
 
     // ---- playing
-    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads });
-    const p = clamp(this.rhythm.now / this.song.length, 0, 1);
-    rect(ctx, 0, L.rhythmY + L.rhythmH - 3, W, 3, '#241d2e'); rect(ctx, 0, L.rhythmY + L.rhythmH - 3, W * p, 3, '#ffd24a');
-    drawText(ctx, this.mv.title, 10, L.rhythmY + 8, '#ffd24a', { outline: '#1a1410' });
+    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: !!L.open });
+    const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
+    const barY = L.open ? 0 : L.rhythmY + L.rhythmH - 3;
+    rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, Math.round(W * p), 4, '#ffd24a');
+    rect(ctx, 0, barY, Math.round(W * p), 1, '#fff2b0');
+    drawText(ctx, this.mv.title, 10, barY + 8, '#ffd24a', { outline: '#1a1410' });
     if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
     if (this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.08; rect(ctx, 0, 0, W, H, '#fff'); ctx.globalAlpha = 1; }
   }
