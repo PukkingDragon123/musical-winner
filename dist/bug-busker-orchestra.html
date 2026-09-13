@@ -623,6 +623,12 @@ const Audio = {
       case 'clap': for (let i = 0; i < 3; i++) this._noise(t + i * 0.012, 0.08, 'bandpass', 1800, 1.5, vel * 0.5, dest); break;
       case 'clunk': tone(120, 60, 0.1, 'sawtooth', vel * 0.3); this._noise(t, 0.06, 'lowpass', 700, 1, vel * 0.4, dest); break;
       case 'stomp': tone(90, 40, 0.25, 'sine', vel); this._noise(t, 0.12, 'lowpass', 300, 1, vel * 0.6, dest); break;
+      // ---- the junk kit: a paint bucket, a stock pot, a milk crate
+      case 'bucket': tone(95, 62, 0.16, 'sine', vel * 0.8); this._noise(t, 0.1, 'bandpass', 420, 1.4, vel * 0.55, dest); tone(310, 180, 0.06, 'triangle', vel * 0.2); break;
+      case 'pot': tone(620, 380, 0.09, 'square', vel * 0.3); this._noise(t, 0.24, 'bandpass', 2600, 2.2, vel * 0.5, dest); this._noise(t, 0.5, 'highpass', 4200, 0.7, vel * 0.16, dest); break;
+      case 'crate': tone(180, 90, 0.1, 'square', vel * 0.35); this._noise(t, 0.12, 'bandpass', 900, 1.1, vel * 0.5, dest); break;
+      case 'floortom': tone(180, 78, 0.3, 'sine', vel * 0.9); this._noise(t, 0.07, 'lowpass', 400, 1, vel * 0.2, dest); break;
+      case 'ride': this._noise(t, 0.5, 'highpass', 6000, 0.6, vel * 0.28, dest); tone(2400, 2100, 0.12, 'square', vel * 0.07); break;
     }
   },
   ui(kind) {
@@ -673,6 +679,9 @@ class Pix {
   get(x, y) { return this.inb(x, y) ? this.d[this.idx(x, y)] : null; }
   set(x, y, c) { if (this.inb(x, y)) this.d[this.idx(x, y)] = c; }
   mask() { return new Uint8Array(this.w * this.h); }
+  // Every pixel that has been drawn: lets a finishing pass texture a whole
+  // sprite without knowing how it was built.
+  solidMask(skip) { const m = this.mask(); for (let i = 0; i < m.length; i++) if (this.d[i] != null && this.d[i] !== skip) m[i] = 1; return m; }
   mEllipse(m, cx, cy, rx, ry) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
       const dx = (x - cx) / (rx + 0.5), dy = (y - cy) / (ry + 0.5);
@@ -739,6 +748,85 @@ class Pix {
   }
   // replace colors inside mask by pattern function (x,y)=>color|null
   paint(m, fn) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { const c = fn(x, y); if (c) this.d[y * this.w + x] = c; } }
+  // ---------- Material textures ----------
+  // Everything below works on whatever colour is already under the mask, so a
+  // texture can be layered onto a shaded fill without flattening it.
+  _shift(x, y, amt, sat = 0) { const c = this.get(x, y); if (c == null) return; this.set(x, y, amt >= 0 ? lighten(c, amt) : darken(c, -amt)); }
+  // Fine grain: a hash-driven speckle, the cheapest way to stop a flat fill
+  // reading as plastic. `amt` is how far each pixel is nudged.
+  grain(m, amt = 0.05, seed = 1) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const n = ((Math.imul(x + seed * 71, 0x9E3779B1) ^ Math.imul(y + seed * 131, 0x85EBCA77)) >>> 24) / 255;
+      if (n < 0.34) this._shift(x, y, amt);
+      else if (n > 0.72) this._shift(x, y, -amt);
+    }
+  }
+  // Ordered 4x4 dither between the colour underneath and a target, weighted by
+  // a 0..1 field. Gives a gradient that still looks hand-placed.
+  ditherTo(m, color, field, strength = 1) {
+    const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const k = clamp(field(x, y) * strength, 0, 1);
+      if (k * 16 > B[(y & 3) * 4 + (x & 3)]) this.set(x, y, color);
+    }
+  }
+  // Horizontal wood grain: long wavering lines plus the odd knot.
+  wood(m, seed = 1, amt = 0.09) {
+    const r = makeRng(hashStr('wood' + seed));
+    const lines = []; for (let i = 0; i < Math.ceil(this.h / 3); i++) lines.push({ y: r.range(0, this.h), a: r.range(0, 6.3), f: r.range(0.1, 0.3), d: r.chance(0.5) ? amt : -amt });
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      for (const l of lines) if (Math.abs(y - (l.y + Math.sin(x * l.f + l.a) * 1.6)) < 0.6) { this._shift(x, y, l.d); break; }
+    }
+  }
+  // Brushed metal: vertical streaks and a bright specular band.
+  metal(m, seed = 1, amt = 0.1) {
+    const r = makeRng(hashStr('metal' + seed));
+    const cols = []; for (let x = 0; x < this.w; x++) cols.push(r.chance(0.3) ? (r.chance(0.5) ? amt : -amt) : 0);
+    let top = this.h, bot = -1;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { if (y < top) top = y; if (y > bot) bot = y; }
+    const band = top + (bot - top) * 0.3;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      if (cols[x]) this._shift(x, y, cols[x]);
+      if (Math.abs(y - band) < 1.2) this._shift(x, y, amt * 1.6);
+    }
+  }
+  // Woven cloth: a two-pixel checker, very subtle.
+  cloth(m, amt = 0.05) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      if (((x >> 1) + (y >> 1)) & 1) this._shift(x, y, -amt); else this._shift(x, y, amt * 0.6);
+    }
+  }
+  // Scratches and dents: short strokes, biased toward the edges of the shape.
+  scuff(m, seed = 1, n = 6, amt = 0.16) {
+    const r = makeRng(hashStr('scuff' + seed));
+    for (let i = 0; i < n; i++) {
+      const x0 = r.int(0, this.w - 1), y0 = r.int(0, this.h - 1);
+      const len = r.int(2, 5), dx = r.pick([-1, 0, 1]), dy = r.pick([-1, 0, 1]);
+      const up = r.chance(0.55);
+      for (let k = 0; k < len; k++) { const x = x0 + dx * k, y = y0 + dy * k; if (this.inb(x, y) && m[y * this.w + x]) this._shift(x, y, up ? amt : -amt); }
+    }
+  }
+  // Rust and grime creeping in from the bottom edge.
+  rust(m, seed = 1, color = '#7a4a22', density = 0.3) {
+    const r = makeRng(hashStr('rust' + seed));
+    let top = this.h, bot = -1;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { if (y < top) top = y; if (y > bot) bot = y; }
+    const span = Math.max(1, bot - top);
+    for (let y = top; y <= bot; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const k = (y - top) / span;
+      if (r() < density * k * k) this.set(x, y, r.chance(0.4) ? darken(color, 0.12) : color);
+    }
+  }
+  // A row of rivets or lugs around a rectangle edge.
+  studs(x0, y0, w, h, step, color, hiColor) {
+    for (let x = x0; x < x0 + w; x += step) { this.set(x, y0, hiColor || lighten(color, 0.3)); this.set(x, y0 + 1, color); this.set(x, y0 + h - 1, color); }
+  }
   outlineAll(color) {
     const w = this.w, h = this.h, src = this.d.slice();
     const has = (x, y) => x >= 0 && y >= 0 && x < w && y < h && src[y * w + x] != null;
@@ -1518,7 +1606,15 @@ const IOL = '#231a16';           // shared item outline: warm near-black
 
 // Every item is a Pix of ITEM_PX square, drawn once and cached.
 function itemCanvas(kind) {
-  return cached('item32|' + kind, () => buildItem(kind).toCanvas());
+  return cached('item32|' + kind, () => {
+    const P = buildItem(kind);
+    // A finishing pass over every item: fine grain so no face is dead flat,
+    // and a few scratches so the thing looks like it has been carried around.
+    const body = P.solidMask(IOL);
+    P.grain(body, 0.05, hashStr(kind) & 63);
+    P.scuff(body, hashStr(kind) & 31, 4, 0.12);
+    return P.toCanvas();
+  });
 }
 function buildItem(kind) {
   const P = new Pix(ITEM_PX, ITEM_PX);
@@ -1991,6 +2087,9 @@ function propCanvas(kind, variant = 0) {
       case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
       default: P = new Pix(4, 4);
     }
+    // Finishing pass: a little grain and wear on every prop, so street
+    // furniture reads as something that has stood outside for years.
+    if (P.w > 4) { const body = P.solidMask(OL); P.grain(body, 0.045, hashStr(kind + variant) & 63); P.scuff(body, hashStr(kind) & 31, 3, 0.1); }
     return P.toCanvas();
   });
 }
@@ -2323,113 +2422,415 @@ function drawViolinBody(ctx, x, y, dir, hold, t) {
 // Each lane's receptor IS a drum, so hitting a note means hitting that drum.
 // Each drum is a cached pixel sprite at its final size, so the kit is always
 // drawn 1:1 and never scales into a blurry or oversized mess.
-const KIT_SIZE = {
-  kick:   { w: 74, h: 58, headH: 18 },
-  tom:    { w: 56, h: 44, headH: 15 },
-  cymbal: { w: 78, h: 22, headH: 22 },
+// ---------- The kit ----------
+// Every piece is its own pixel sprite, built at final size and drawn 1:1, with
+// a real material on it: dented galvanised steel on the bucket, battered
+// aluminium on the pot, wrapped ply on a proper shell, hammered brass on the
+// cymbals. `surf` is where the playing surface sits inside the sprite and
+// `grab` is how far from it a tap still counts, so the whole thing is one
+// clickable object rather than a button with a picture on it.
+const PIECE_GEO = {
+  bucket: { w: 46, h: 56, surf: 10, grab: 25 },
+  pot:    { w: 44, h: 38, surf: 9,  grab: 23 },
+  crate:  { w: 50, h: 42, surf: 9,  grab: 25 },
+  kick:   { w: 78, h: 62, surf: 11, grab: 36 },
+  snare:  { w: 56, h: 40, surf: 9,  grab: 27 },
+  tom:    { w: 48, h: 38, surf: 8,  grab: 24 },
+  hat:    { w: 54, h: 32, surf: 13, grab: 26 },
+  crash:  { w: 70, h: 22, surf: 11, grab: 33 },
+  ride:   { w: 76, h: 22, surf: 11, grab: 36 },
+  floor:  { w: 60, h: 54, surf: 10, grab: 29 },
+  pan:    { w: 42, h: 28, surf: 8,  grab: 21 },
 };
-function drumSprite(kind, col, lit) {
-  return cached('drum2|' + kind + '|' + col + '|' + lit, () => {
-    const OLD = '#1d1620', S = KIT_SIZE[kind] || KIT_SIZE.tom;
-    const W2 = S.w, H2 = S.h, rx = W2 / 2 - 1, ry = S.headH / 2;
-    const P = new Pix(W2, H2);
-    if (kind === 'cymbal') {
-      const m = P.mask(); P.mEllipse(m, W2 / 2, H2 / 2, rx, ry - 2);
-      P.fill(m, lit ? lighten(col, 0.35) : col, { outline: OLD, shade: false });
-      P.paint(m, (x, y) => y > H2 / 2 + 1 ? darken(col, 0.26) : null);
-      P.paint(m, (x, y) => y < H2 / 2 - 1 && x > 12 && x < W2 * 0.42 ? lighten(col, 0.3) : null);
-      for (let r = 8; r < rx; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - W2 / 2) - r) < 0.6 ? darken(col, 0.15) : null);
-      const b = P.mask(); P.mEllipse(b, W2 / 2, H2 / 2 - 1, 6, 2.4); P.fill(b, lighten(col, 0.24), { outline: OLD, shade: false });
-      P.set(Math.round(W2 / 2), Math.round(H2 / 2 - 1), '#6a5a2a');
-      return P.toCanvas();
+const KIT_SIZE = PIECE_GEO;   // kept under the old name for anything still asking
+
+// A struck drumhead: cream mylar with a dented rim and a worn patch where the
+// stick lands, plus a coat of arms of scratches.
+function _head(P, cx, cy, rx, ry, lit, seed) {
+  const OLD = '#1d1620';
+  const hd = P.mask(); P.mEllipse(hd, cx, cy, rx, ry);
+  P.fill(hd, lit ? '#fff8dc' : '#e4dcc8', { outline: OLD, shade: false });
+  P.ditherTo(hd, lit ? '#ffefbc' : '#cfc5ae', (x, y) => (y - (cy - ry)) / (ry * 2));
+  P.grain(hd, 0.05, seed);
+  // the worn spot, just off centre, where a stick actually lands
+  const wr = P.mask(); P.mEllipse(wr, cx + rx * 0.12, cy, rx * 0.34, ry * 0.42);
+  P.paint(wr, () => lit ? '#fff2c8' : '#e4dbc6');
+  P.scuff(hd, seed + 3, 5, 0.08);
+  // counter-hoop around the edge
+  const rim = P.mask(); P.mEllipse(rim, cx, cy, rx, ry);
+  const in2 = P.mask(); P.mEllipse(in2, cx, cy, rx - 3, ry - 2);
+  P.mSub(rim, in2); P.fill(rim, '#c2c6d2', { shade: false }); P.metal(rim, seed, 0.12);
+  return hd;
+}
+
+function pieceSprite(piece, col, lit, chrome) {
+  return cached('piece|' + piece + '|' + col + '|' + lit + '|' + !!chrome, () => {
+    const OLD = '#1d1620', G = PIECE_GEO[piece] || PIECE_GEO.tom;
+    const W2 = G.w, H2 = G.h, P = new Pix(W2, H2);
+    const cx = W2 / 2, seed = hashStr(piece) & 255;
+    const base = lit ? lighten(col, 0.2) : col;
+
+    switch (piece) {
+      // ---- a five-gallon paint bucket, upturned. Dented, paint-flecked.
+      case 'bucket': {
+        const top = G.surf, bot = H2 - 3;
+        const body = P.mask();
+        P.mPoly(body, [[cx - 16, top], [cx + 16, top], [cx + 20, bot], [cx - 20, bot]]);
+        P.mEllipse(body, cx, bot, 20, 5);
+        P.fill(body, base, { outline: OLD, shade: false });
+        P.ditherTo(body, darken(base, 0.2), (x, y) => (y - top) / (bot - top) * 0.9);
+        P.paint(body, (x) => x < cx - 11 ? lighten(base, 0.22) : x > cx + 12 ? darken(base, 0.2) : null);
+        // moulded ribs around the body
+        for (const ry2 of [top + 10, top + 20, top + 30, top + 40]) P.paint(body, (x, y) => y === Math.round(ry2) ? darken(base, 0.24) : y === Math.round(ry2) + 1 ? lighten(base, 0.16) : null);
+        P.grain(body, 0.06, seed); P.scuff(body, seed, 9, 0.2);
+        // splashes of dried paint down one side
+        const sp = makeRng(seed + 9);
+        for (let i = 0; i < 9; i++) { const x = Math.round(cx + sp.range(-17, 17)), y = Math.round(sp.range(top + 6, bot - 4)); const c2 = sp.pick(['#c8453a', '#3a6ec2', '#e8c23a']); for (let k = 0; k < sp.int(2, 5); k++) P.set(x, y + k, k ? darken(c2, 0.15) : c2); }
+        // the base, which is now the top, is what you hit
+        _head(P, cx, top, 16, G.surf - 2, lit, seed);
+        // wire handle looped over the side
+        for (let i = -1; i <= 1; i++) P.set(cx - 18 + i, top + 14, '#8a8a96');
+        P.mLine(P.mask(), 0, 0, 0, 0);
+        const hl = P.mask(); P.mLine(hl, cx - 19, top + 13, cx - 23, top + 25); P.mLine(hl, cx - 23, top + 25, cx - 20, top + 36);
+        P.fill(hl, '#9a9aa6', { outline: OLD, shade: false });
+        break;
+      }
+      // ---- a stock pot flipped over: dull aluminium, one big dent, two lugs
+      case 'pot': {
+        const top = G.surf, bot = H2 - 3;
+        const body = P.mask();
+        P.mPoly(body, [[cx - 18, top], [cx + 18, top], [cx + 15, bot], [cx - 15, bot]]);
+        P.fill(body, base, { outline: OLD, shade: false });
+        P.metal(body, seed, 0.14);
+        P.ditherTo(body, darken(base, 0.24), (x, y) => (y - top) / (bot - top));
+        P.paint(body, (x) => x < cx - 13 ? lighten(base, 0.26) : x > cx + 10 ? darken(base, 0.22) : null);
+        // soot up the sides, because it has been on a stove
+        P.ditherTo(body, '#3a3238', (x, y) => clamp((y - top - 11) / 20, 0, 1) * 0.5);
+        P.scuff(body, seed, 10, 0.2);
+        // a proper dent
+        const dn = P.mask(); P.mEllipse(dn, cx + 9, top + 15, 5, 4); P.paint(dn, () => darken(base, 0.3));
+        P.paint(dn, (x, y) => y === top + 11 ? lighten(base, 0.2) : null);
+        // side lugs where the handles bolt on
+        for (const lx of [cx - 18, cx + 16]) { const lg = P.mask(); P.mRect(lg, Math.round(lx), top + 8, 3, 5); P.fill(lg, '#7a7e88', { outline: OLD, shade: false }); }
+        _head(P, cx, top, 18, G.surf - 2, lit, seed + 1);
+        break;
+      }
+      // ---- a milk crate on its side: moulded plastic lattice
+      case 'crate': {
+        const top = G.surf, bot = H2 - 3;
+        const body = P.mask(); P.mRound(body, Math.round(cx - 23), top, 46, bot - top, 3);
+        P.fill(body, base, { outline: OLD, shade: false });
+        P.ditherTo(body, darken(base, 0.22), (x, y) => (y - top) / (bot - top) * 0.8);
+        // the lattice: square holes with a lip of shadow under each
+        for (let gy = top + 5; gy < bot - 5; gy += 9) for (let gx = Math.round(cx - 19); gx < cx + 16; gx += 9) {
+          for (let y = gy; y < gy + 5; y++) for (let x = gx; x < gx + 5; x++) P.set(x, y, y === gy ? darken(base, 0.42) : '#1f1a18');
+          for (let x = gx; x < gx + 5; x++) P.set(x, gy + 5, lighten(base, 0.18));
+        }
+        P.grain(body, 0.05, seed); P.scuff(body, seed, 6, 0.14);
+        _head(P, cx, top, 23, G.surf - 2, lit, seed + 2);
+        break;
+      }
+      // ---- cymbals: hammered brass, lathed rings, a bell in the middle
+      case 'crash': case 'ride': case 'hat': {
+        const ry = G.surf - 2, rx = W2 / 2 - 2;
+        const m = P.mask(); P.mEllipse(m, cx, G.surf, rx, ry);
+        P.fill(m, chrome ? lighten(base, 0.14) : base, { outline: OLD, shade: false });
+        // lathing: concentric grooves turned on a lathe
+        for (let r = 8; r < rx; r += 5) P.paint(m, (x, y) => Math.abs(Math.abs(x - cx) - r) < 0.6 ? darken(base, 0.16) : Math.abs(Math.abs(x - cx) - r - 1) < 0.6 ? lighten(base, 0.2) : null);
+        // hammer marks
+        const hr = makeRng(seed + 5);
+        for (let i = 0; i < Math.round(rx * ry * 0.55); i++) { const x = Math.round(cx + hr.range(-rx, rx)), y = Math.round(G.surf + hr.range(-ry, ry)); if (P.get(x, y)) P.set(x, y, hr.chance(0.5) ? lighten(base, 0.24) : darken(base, 0.18)); }
+        P.paint(m, (x, y) => y > G.surf + 1 ? darken(base, 0.34) : null);
+        P.paint(m, (x, y) => y === G.surf + ry || y === G.surf + ry - 1 ? darken(base, 0.5) : null);
+        P.paint(m, (x, y) => y < G.surf - 1 && x > cx - rx * 0.6 && x < cx - rx * 0.1 ? lighten(base, 0.3) : null);
+        // the bell
+        const b = P.mask(); P.mEllipse(b, cx, G.surf - 1, 6, 2.6);
+        P.fill(b, lighten(base, 0.26), { outline: OLD, shade: false });
+        P.set(Math.round(cx), Math.round(G.surf - 1), '#6a5a2a');
+        if (piece === 'hat') {
+          // the bottom cymbal peeking out underneath
+          const b2 = P.mask(); P.mEllipse(b2, cx, G.surf + 7, rx - 3, ry - 1);
+          P.fill(b2, darken(base, 0.24), { outline: OLD, shade: false });
+          P.metal(b2, seed, 0.1);
+        }
+        break;
+      }
+      // ---- proper shells: wrapped ply, chrome hoops, lugs, tension rods
+      default: {
+        const isKick = piece === 'kick', isFloor = piece === 'floor';
+        const rx = W2 / 2 - 2, ry = G.surf - 1;
+        const headY = G.surf, depth = H2 - headY - 4;
+        const sh = P.mask();
+        P.mRect(sh, Math.round(cx - rx), headY, Math.round(rx * 2), depth);
+        P.mEllipse(sh, cx, headY + depth, rx, ry * 0.7);
+        P.fill(sh, base, { outline: OLD, shade: false });
+        // a lacquered barrel: light down the left, dark to the right
+        P.ditherTo(sh, lighten(base, 0.22), (x) => clamp(1 - (x - (cx - rx)) / (rx * 0.55), 0, 1) * 0.75);
+        P.ditherTo(sh, darken(base, 0.32), (x) => clamp((x - cx * 1.0) / (rx * 0.85), 0, 1) * 0.95);
+        if (chrome) P.metal(sh, seed, 0.16); else P.wood(sh, seed, 0.07);
+        P.grain(sh, 0.04, seed);
+        P.scuff(sh, seed, isKick ? 8 : 5, 0.14);
+        // hoops top and bottom
+        const hoop = P.mask();
+        P.mRect(hoop, Math.round(cx - rx), headY - 1, Math.round(rx * 2), 3);
+        P.mRect(hoop, Math.round(cx - rx), headY + depth - 4, Math.round(rx * 2), 3);
+        P.fill(hoop, chrome ? '#dfe4ee' : '#d9c37a', { outline: OLD, shade: false });
+        P.metal(hoop, seed + 1, 0.18);
+        // lugs, each with a tension rod above and below
+        const lugs = isKick ? 5 : 3;
+        for (let i = 0; i < lugs; i++) {
+          const lx = Math.round(cx - rx + 5 + i * ((rx * 2 - 13) / (lugs - 1)));
+          const lg = P.mask(); P.mRound(lg, lx, headY + Math.round(depth * 0.22), 3, Math.round(depth * 0.56), 1);
+          P.fill(lg, '#8f94a4', { outline: OLD, shade: false }); P.metal(lg, seed + i, 0.22);
+          P.set(lx + 1, headY + 3, '#d6dae6'); P.set(lx + 1, headY + depth - 6, '#d6dae6');
+        }
+        // a strip of badge on the kick
+        if (isKick) { const bd = P.mask(); P.mRound(bd, Math.round(cx - 10), headY + Math.round(depth * 0.45), 20, 10, 2); P.fill(bd, '#2a2230', { outline: OLD, shade: false }); P.paint(bd, (x, y) => (x + y) % 3 === 0 ? '#c8a94a' : null); }
+        if (isFloor) for (const lx of [cx - rx - 1, cx + rx - 1]) { const lg = P.mask(); P.mRect(lg, Math.round(lx), headY + 4, 2, depth + 2); P.fill(lg, '#c0c4d0', { outline: OLD, shade: false }); }
+        _head(P, cx, headY, rx, ry, lit, seed);
+        // the beater patch on a kick head
+        if (isKick) { const pd = P.mask(); P.mEllipse(pd, cx, headY + 1, 9, 3); P.fill(pd, '#2e2a36', { shade: false }); P.grain(pd, 0.1, seed); }
+        // snares, stretched under the shell
+        if (piece === 'snare') for (let i = 0; i < 8; i++) P.set(Math.round(cx - 11 + i * 3), headY + depth - 1, '#d8dce6');
+        break;
+      }
     }
-    const headY = ry + 1, depth = H2 - headY - 3;
-    // shell, with a rounded bottom
-    const sh = P.mask();
-    P.mRect(sh, 1, headY, W2 - 2, depth);
-    P.mEllipse(sh, W2 / 2, headY + depth, rx, ry * 0.72);
-    P.fill(sh, lit ? lighten(col, 0.18) : col, { outline: OLD, shade: false });
-    P.paint(sh, (x, y) => x < 5 ? lighten(col, 0.26) : x > W2 - 7 ? darken(col, 0.22) : null);
-    P.paint(sh, (x, y) => y > headY + depth - 4 ? darken(col, 0.3) : null);
-    // hoops top and bottom, and vertical lugs between them
-    const hoop = P.mask(); P.mRect(hoop, 1, headY - 1, W2 - 2, 3); P.mRect(hoop, 1, headY + depth - 4, W2 - 2, 3);
-    P.fill(hoop, '#d9c37a', { outline: OLD, shade: false });
-    const lugs = kind === 'kick' ? 5 : 4;
-    for (let i = 0; i < lugs; i++) { const lx = Math.round(7 + i * ((W2 - 16) / (lugs - 1))); const lg = P.mask(); P.mRect(lg, lx, headY + 3, 3, depth - 8); P.fill(lg, '#b9bcc8', { outline: OLD, shade: false }); }
-    // head on top: this is the surface the note lands on
-    const hd = P.mask(); P.mEllipse(hd, W2 / 2, headY, rx, ry);
-    P.fill(hd, lit ? '#fffbe8' : '#efe9da', { outline: OLD, shade: false });
-    P.paint(hd, (x, y) => y < headY - 2 ? '#fdf8ec' : y > headY + 2 ? '#dcd4c0' : null);
-    const rim = P.mask(); P.mEllipse(rim, W2 / 2, headY, rx, ry);
-    const in2 = P.mask(); P.mEllipse(in2, W2 / 2, headY, rx - 3, ry - 2);
-    P.mSub(rim, in2); P.fill(rim, '#c8ccd8', { shade: false });
-    if (kind === 'kick') { const pd = P.mask(); P.mEllipse(pd, W2 / 2, headY + 1, 8, 3); P.fill(pd, '#2e2a36', { shade: false }); }
     return P.toCanvas();
   });
 }
-// A real drum kit stood at the near end of the highway. Every head sits on
-// the receptor line, so hitting the note is hitting that drum.
-function drawDrumKit(ctx, hw, R, opts) {
-  const L = hw.L || 4;
-  const names = (opts.padNames && opts.padNames.length === L) ? opts.padNames : ['KICK', 'TOM', 'SNARE', 'CRASH'].slice(0, L);
-  const palette = opts.colors || ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];
-  const cols = []; for (let i = 0; i < L; i++) cols.push(palette[Math.round(i * (palette.length - 1) / Math.max(1, L - 1))]);
-  const baseY = Math.round(hw.nearY);
-  // the rug, wide enough to hold the whole kit
-  const first = hw.pos(0, 0).x, last = hw.pos(L - 1, 0).x;
-  const rugHalf = Math.max(100, Math.round((last - first) / 2 + 62));
-  const rugTop = baseY + 8, rugBot = baseY + 58;
-  for (let y = rugTop; y < rugBot; y++) {
-    const k = (y - rugTop) / (rugBot - rugTop);
-    const hwid = Math.round(rugHalf * (0.86 + k * 0.2));
-    rect(ctx, hw.cx - hwid, y, hwid * 2, 1, k > 0.9 ? '#2e1521' : (Math.floor(y / 7) % 2 ? '#3a1c2b' : '#442131'));
-  }
-  rect(ctx, hw.cx - Math.round(rugHalf * 1.06), rugBot - 3, Math.round(rugHalf * 2.12), 3, '#5e2c44');
-  for (let l = 0; l < L; l++) {
-    const p = hw.pos(l, 0), cx = Math.round(p.x);
-    const flash = R.flashes[l] || 0, lit = flash > 0.02;
-    R.receptors[l] = { x: cx, y: baseY };
-    const isCymbal = names[l] === 'CRASH' || (L > 1 && l === L - 1 && names[l] !== 'KICK');
-    const kind = isCymbal ? 'cymbal' : names[l] === 'KICK' ? 'kick' : 'tom';
-    const S = KIT_SIZE[kind], c = drumSprite(kind, cols[l], lit);
-    if (isCymbal) {
-      const tilt = lit ? Math.round(Math.sin(R.now * 40) * 2) : 0;
-      rect(ctx, cx - 1, baseY, 2, 52, '#8a8a98'); rect(ctx, cx - 1, baseY, 1, 52, '#b0b0be');
-      rect(ctx, cx - 10, baseY + 50, 20, 3, '#6a6a78');
-      ctx.drawImage(c, cx - S.w / 2, baseY - S.h / 2 + tilt);
-      if (lit) { ctx.globalAlpha = flash * 0.5; ellipsePx(ctx, cx, baseY + tilt, S.w * 0.5, 5, '#fff6c0'); ctx.globalAlpha = 1; }
-    } else {
-      // the head is at headH/2 down the sprite; put that on the receptor line
-      const squash = lit ? Math.round(flash * 3) : 0;
-      ctx.drawImage(c, cx - S.w / 2, baseY - Math.round(S.headH / 2) + 1 + squash);
-      if (lit) { ctx.globalAlpha = flash * 0.7; ellipsePx(ctx, cx, baseY + squash, S.w * 0.44, 4, '#fff6c0'); ctx.globalAlpha = 1; }
+
+// Lay the kit out the way a drummer sees it: the low pieces in front, the
+// cymbals up and out to the sides. Returns a hit target per piece so a tap
+// lands on the drum itself and there is no button anywhere.
+function kitLayout(pieces, cx, baseY, width) {
+  const n = pieces.length;
+  // Where each piece stands, as a fraction of the half-spread, and how high it
+  // rides. Laid out the way a kit actually is: kick in front on the floor,
+  // snare to the left under your hand, tom mounted above, cymbals up and out.
+  const SPOT = {
+    kick:  { x:  0.00, y:  16, z: 0 }, bucket: { x: -0.30, y: 14, z: 1 },
+    pot:   { x:  0.34, y:  -4, z: 1 }, crate:  { x:  0.02, y: 14, z: 0 },
+    snare: { x: -0.46, y:  -2, z: 1 }, tom:    { x:  0.31, y: -26, z: 2 },
+    floor: { x:  0.62, y:   8, z: 1 }, hat:    { x: -0.94, y: -34, z: 3 },
+    crash: { x:  0.93, y: -44, z: 3 }, ride:   { x:  0.95, y: -32, z: 3 },
+    pan:   { x: -0.66, y: -14, z: 2 },
+  };
+  const spread = clamp(width * 0.28, 120, 178);
+  const out = pieces.map((p, i) => {
+    const G = PIECE_GEO[p] || PIECE_GEO.tom;
+    const s = SPOT[p] || { x: (i / Math.max(1, n - 1) - 0.5) * 1.6, y: 0, z: 1 };
+    // Two or three pieces of junk get fanned evenly instead: a bucket and a
+    // pot standing in a real kit's footprint would just sit far apart.
+    const fx = n <= 3 ? (n === 1 ? 0 : (i / (n - 1) - 0.5) * 1.15) : s.x;
+    const fy = n <= 3 ? (i % 2 ? -6 : 10) : s.y;
+    return { piece: p, i, G, x: Math.round(cx + fx * spread), y: Math.round(baseY + fy), z: s.z };
+  });
+  // Nudge anything that would sit on top of its neighbour.
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      const a = out[i], b = out[j];
+      if (Math.abs(a.y - b.y) > 26) continue;
+      const need = (a.G.w + b.G.w) / 2 - 8, gap = Math.abs(a.x - b.x);
+      if (gap >= need) continue;
+      const push = Math.ceil((need - gap) / 2), dir = a.x <= b.x ? -1 : 1;
+      a.x += push * dir; b.x -= push * dir;
     }
-    // name plate, clear of the shell
-    const nw = textWidth(names[l], { font: 'small' }) + 8;
-    const ny = baseY + (isCymbal ? 34 : S.h - Math.round(S.headH / 2) + 4);
-    rect(ctx, cx - nw / 2, ny, nw, 9, lit ? '#5a4a20' : '#231c30');
-    rect(ctx, cx - nw / 2, ny, nw, 1, lit ? '#8a7430' : '#3a3048');
-    drawText(ctx, names[l], cx, ny + 2, lit ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
   }
+  out.sort((a, b) => b.z - a.z || a.y - b.y);   // far pieces drawn first
+  return out;
+}
+// Is (px,py) on this piece's playing surface?
+function kitHit(spot, px2, py) {
+  const dx = (px2 - spot.x) / spot.G.grab, dy = (py - spot.y) / (spot.G.grab * 0.62);
+  return dx * dx + dy * dy <= 1;
+}
+// Draw the kit. `R` supplies flashes and receptors; returns the layout so the
+// scene can route pointer taps to the right drum.
+function drawDrumKit(ctx, A, R, opts = {}) {
+  const pieces = opts.pieces || ['kick', 'snare', 'hat', 'tom', 'crash'];
+  const cx = opts.cx != null ? opts.cx : A.x + A.w / 2;
+  const baseY = opts.baseY != null ? opts.baseY : A.y + A.h - 70;
+  const spots = kitLayout(pieces, cx, baseY, opts.width || A.w);
+  const chrome = !!opts.chrome;
+  // What the kit stands on says as much as the kit does: a busker on a bucket
+  // works off flattened cardboard, a working band gets a proper rug.
+  const junk = !!opts.junk;
+  const half = Math.max(110, Math.round(Math.max(...spots.map(s => Math.abs(s.x - cx) + s.G.w / 2)) + 22));
+  const matTop = baseY + 16, matBot = baseY + (junk ? 46 : 60);
+  for (let y = matTop; y < matBot; y++) {
+    const k = (y - matTop) / (matBot - matTop);
+    const hwid = Math.round(half * (0.84 + k * 0.24));
+    for (let x = cx - hwid; x < cx + hwid; x += 1) {
+      const w2 = ((x * 7 + y * 13) >>> 0) % 11;
+      if (junk) rect(ctx, x, y, 1, 1, k > 0.88 ? '#6a4a2c' : (w2 < 2 ? '#a8814e' : w2 > 8 ? '#957141' : '#9c7745'));
+      else rect(ctx, x, y, 1, 1, k > 0.9 ? '#2a131f' : (Math.floor(y / 6) % 2 ? (w2 < 3 ? '#432030' : '#3a1c2b') : (w2 > 8 ? '#4c2537' : '#442131')));
+    }
+  }
+  if (junk) {
+    // creases and a torn corner, so it reads as a broken-down box
+    for (const fx of [-0.42, 0.1, 0.55]) { const x = Math.round(cx + half * fx); rect(ctx, x, matTop + 2, 1, matBot - matTop - 4, '#7d5c34'); }
+    rect(ctx, cx - half, matTop, half * 2, 1, '#b58c55');
+    for (let x = cx - Math.round(half * 0.9); x < cx + half * 0.9; x += 5) rect(ctx, x, matBot, 3, 1, '#5e4126');
+  } else {
+    for (let x = cx - Math.round(half * 1.08); x < cx + half * 1.08; x += 3) rect(ctx, x, matBot, 2, 3, '#6a3550');
+  }
+  // each piece, with its stand
+  for (const sp of spots) {
+    const flash = R.flashes[sp.i] || 0, lit = flash > 0.02;
+    const col = PIECE_COLORS[sp.piece] || '#c2c8d6';
+    const isCym = sp.piece === 'crash' || sp.piece === 'ride' || sp.piece === 'hat';
+    const c = pieceSprite(sp.piece, col, lit, chrome);
+    const wob = lit ? Math.round(Math.sin(R.now * 44) * (isCym ? 2 : 0)) : 0;
+    const squash = lit && !isCym ? Math.round(flash * 3) : 0;
+    // stands: a tube down to the rug with a tripod foot
+    if (isCym || sp.piece === 'snare' || sp.piece === 'tom' || sp.piece === 'pot') {
+      const legTop = sp.y + sp.G.surf + (isCym ? 2 : sp.G.h - sp.G.surf - 2);
+      const legBot = matTop + 10;
+      if (legBot > legTop) {
+        rect(ctx, sp.x - 1, legTop, 3, legBot - legTop, '#6e7280');
+        rect(ctx, sp.x - 1, legTop, 1, legBot - legTop, '#a2a6b4');
+        for (const d of [-1, 1]) line(ctx, sp.x, legBot - 2, sp.x + d * 11, legBot + 8, '#5e626e');
+        line(ctx, sp.x, legBot - 2, sp.x, legBot + 9, '#5e626e');
+      }
+    }
+    ctx.drawImage(c, Math.round(sp.x - sp.G.w / 2), Math.round(sp.y - sp.G.surf + squash + wob));
+    // the receptor is the playing surface itself
+    R.receptors[sp.i] = { x: sp.x, y: sp.y + squash };
+    sp.hx = sp.x; sp.hy = sp.y;
+    if (lit) { ctx.globalAlpha = flash * 0.75; ellipsePx(ctx, sp.x, sp.y + squash, sp.G.grab * 0.8, sp.G.grab * 0.36, lighten(col, 0.4)); ctx.globalAlpha = 1; }
+  }
+  // A spare stick lying on the mat, because you only ever have the one pair.
+  const sx = cx - half + 14, sy = matBot - 6;
+  for (let i = 0; i < 22; i++) { const c2 = i > 17 ? '#f0e3c4' : i < 3 ? '#a8845a' : '#d9c191'; rect(ctx, sx + i, sy - Math.round(i * 0.12), 1, 2, c2); }
+  rect(ctx, sx, sy + 2, 22, 1, 'rgba(0,0,0,0.25)');
+  return spots;
+}
+
+// ---------- SHEET MUSIC ----------
+// For the players who read: a real stave on real paper, scrolling right to
+// left past a playhead. No highway, no perspective, no falling gems.
+const CLEF_G = [
+  '...##...', '..#..#..', '..#..#..', '..#.##..', '.###....', '#..#....',
+  '#..#....', '.#.#....', '..###...', '...#....', '...#....', '.#.#....',
+  '..#.....',
+];
+function staveSprite(w, h, seed) {
+  return cached('stave|' + w + '|' + h + '|' + seed, () => {
+    const P = new Pix(w, h);
+    // aged paper with a little fibre and a couple of foxing spots
+    const m = P.mask(); P.mRect(m, 0, 0, w, h);
+    P.fill(m, '#efe3c2', { shade: false });
+    P.ditherTo(m, '#e2d3ad', (x, y) => clamp((y / h) * 0.8 + 0.1, 0, 1) * 0.5);
+    P.grain(m, 0.035, seed);
+    const r = makeRng(hashStr('paper' + seed));
+    for (let i = 0; i < 7; i++) { const sx = r.int(0, w - 4), sy = r.int(0, h - 4); const sp = P.mask(); P.mEllipse(sp, sx, sy, r.range(1, 3), r.range(1, 2.4)); P.paint(sp, () => '#ddc9a0'); }
+    // a soft shadow down each long edge, like a page lifting
+    P.paint(m, (x, y) => y < 2 ? '#f6ecd2' : y > h - 3 ? '#d4c299' : null);
+    return P.toCanvas();
+  });
+}
+// Draw the five-line stave and return the geometry the notes need.
+function drawStave(ctx, x, y, w, h, opts = {}) {
+  const paper = staveSprite(Math.round(w), Math.round(h), opts.seed || 1);
+  ctx.drawImage(paper, Math.round(x), Math.round(y));
+  rect(ctx, x, y, w, 1, '#c3ae84'); rect(ctx, x, y + h - 1, w, 1, '#b09b74');
+  // Five lines, spaced so the whole stave sits in the middle half of the page
+  // and there is room above and below for ledger lines.
+  const step = clamp(Math.round(h * 0.062), 5, 10);     // one step = half a space
+  const midY = Math.round(y + h * 0.5);
+  const lines = [];
+  for (let i = -2; i <= 2; i++) { const ly = midY + i * step * 2; lines.push(ly); rect(ctx, x + 4, ly, w - 8, 1, '#4a4038'); }
+  // clef, drawn as pixels rather than a glyph, scaled to the stave
+  const cs = Math.max(1, Math.round(step * 2 / 3.2));
+  const cx0 = Math.round(x + 28), cy0 = Math.round(midY - CLEF_G.length * cs / 2);
+  CLEF_G.forEach((row, ry) => { for (let rx = 0; rx < row.length; rx++) if (row[rx] === '#') rect(ctx, cx0 + rx * cs, cy0 + ry * cs, cs, cs, '#33291f'); });
+  // time signature
+  const tsx = cx0 + 8 * cs + 6;
+  drawText(ctx, '4', tsx, midY - step * 2 - 2, '#33291f', { scale: 2 });
+  drawText(ctx, '4', tsx, midY + 2, '#33291f', { scale: 2 });
+  return { step, midY, lines, top: lines[0], bot: lines[4], left: x, right: x + w, padLeft: tsx + 18 };
+}
+// Where on the stave does this note sit? Lane 0 is the bottom line.
+// Where on the stave does this note sit? Lane 0 sits low, the top lane high,
+// spread over the stave plus a ledger line either side.
+function stavePos(S, lane, lanes) {
+  const spread = Math.max(1, lanes - 1);
+  const steps = Math.round((lane / spread) * 10) - 5;   // -5..+5 half-spaces
+  return Math.round(S.midY - steps * S.step);
+}
+// One notehead with its stem, plus ledger lines when it runs off the stave.
+function drawNotehead(ctx, S, x, ny, col, opts = {}) {
+  x = Math.round(x); ny = Math.round(ny);
+  const filled = opts.hold !== true;
+  // ledger lines above and below the stave
+  for (let ly = S.top - S.step * 2; ly >= ny - 1; ly -= S.step * 2) rect(ctx, x - 7, ly, 15, 1, '#4a4038');
+  for (let ly = S.bot + S.step * 2; ly <= ny + 1; ly += S.step * 2) rect(ctx, x - 7, ly, 15, 1, '#4a4038');
+  // the head, tipped the way a written note is
+  const dark = opts.judged ? '#8a8078' : '#2a2118';
+  ellipsePx(ctx, x, ny, 5, 3.4, dark);
+  ellipsePx(ctx, x, ny, 4, 2.6, filled ? col : '#f2e8cc');
+  if (filled) ellipsePx(ctx, x - 1, ny - 1, 2, 1.2, lighten(col, 0.35));
+  // stem: up if the note sits low, down if it sits high, like real notation
+  const up = ny > S.midY;
+  const sx = up ? x + 4 : x - 5, sy = up ? ny - 3 : ny + 3, len = S.step * 7;
+  rect(ctx, sx, up ? sy - len : sy, 1, len, dark);
+  if (opts.flag) { const fy = up ? sy - len : sy + len - 5; for (let i = 0; i < 5; i++) rect(ctx, sx + (up ? 1 : 1), fy + (up ? i : -i), Math.max(1, 4 - Math.floor(i / 2)), 1, dark); }
+  if (opts.star) { drawText(ctx, '★', x, ny - S.step * 2 - 6, '#d9a520', { align: 'center', outline: '#f2e8cc' }); }
 }
 
 // ===== js/data/instruments.js =====
 // ---------- Instruments ----------
 'use strict';
 const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
-const KIT_COLORS = ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];   // kick, tom, snare, crash
+// Colour per kit piece, keyed by piece name rather than by lane, because how
+// many pieces you own changes as you climb the ladder.
+const PIECE_COLORS = {
+  bucket: '#c9c2b0', pot: '#9aa2ab', pan: '#6e7178', crate: '#a8783f',
+  kick: '#e0563f', tom: '#e0563f', floor: '#c14a35', snare: '#c2c8d6',
+  hat: '#d8c060', crash: '#f2cf4a', ride: '#e8bf46',
+};
+// What each piece actually sounds like.
+const PIECE_VOICE = {
+  bucket: 'bucket', pot: 'pot', pan: 'ka', crate: 'crate',
+  kick: 'bigkick', tom: 'tom', floor: 'floortom', snare: 'snare',
+  hat: 'hat', crash: 'crash', ride: 'ride',
+};
+// Roughly where each piece sits in pitch, so a melody contour can be mapped
+// onto whatever pieces you happen to own.
+const PIECE_PITCH = {
+  kick: 0, bucket: 0, floor: 1, crate: 1, tom: 2, pot: 3, snare: 3, pan: 4, hat: 4, ride: 5, crash: 6,
+};
+const PIECE_LABEL = {
+  bucket: 'BUCKET', pot: 'POT', pan: 'PAN', crate: 'CRATE',
+  kick: 'KICK', tom: 'TOM', floor: 'FLOOR', snare: 'SNARE',
+  hat: 'HAT', crash: 'CRASH', ride: 'RIDE',
+};
+// ---------- The kit ladder ----------
+// Busking on day one is a paint bucket, a stock pot and one stick. Two things
+// to hit. Every tier bolts on another piece until, at the top, you are sitting
+// behind a real five-piece and the charts finally use all of it.
+const KIT_LADDER = [
+  null,
+  { pieces: ['bucket', 'pot'],                            name: 'BUCKET & POT',  junk: true },
+  { pieces: ['bucket', 'pot', 'crate'],                   name: 'STREET KIT',    junk: true },
+  { pieces: ['kick', 'snare', 'hat', 'tom'],              name: 'WORKING KIT' },
+  { pieces: ['kick', 'snare', 'hat', 'tom', 'crash'],     name: 'STAGE KIT' },
+  { pieces: ['kick', 'snare', 'hat', 'tom', 'crash'],     name: 'SIGNATURE KIT', chrome: true },
+];
+const KIT_COLORS = KIT_LADDER[4].pieces.map(p => PIECE_COLORS[p]);
 const INSTRUMENTS = {
   guitar:     { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'], voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
                 desc: 'Four lanes of falling notes. Hold the long ones, catch the gold stars, dodge the bombs.' },
   bass:       { name: 'Bass', game: 'lanes', lanes: 2, keys: ['KeyF', 'KeyJ'], keyNames: ['F', 'J'], voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
                 desc: 'Two fat strings and long slides. Lock in with the drums.' },
-  piano:      { name: 'Keyboard', game: 'lanes', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'], voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
-                desc: 'Six lanes with two-note chords. For virtuosos.' },
+  piano:      { name: 'Keyboard', game: 'lanes', view: 'sheet', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'], voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
+                desc: 'Read it off the page. Six notes on the stave, chords and all.' },
   tambourine: { name: 'Tambourine', game: 'lanes', lanes: 1, keys: ['Space'], keyNames: ['SPACE'], voice: 'tambourine', price: 12, tipMult: 0.7, family: 'percussion',
                 desc: 'One lane. Hit the beat and shake the hold notes. Humble but honest.' },
-  drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
-                padNames: ['KICK', 'TOM', 'SNARE', 'CRASH'], drumFor: ['kick', 'tom', 'snare', 'crash'], voice: null, price: 60, tipMult: 1.1, family: 'percussion',
-                desc: 'Four pieces of a real kit. Hit the drum the note lands on, right on the beat.' },
+  drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 5, keys: ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'SP', 'J', 'K'],
+                pieces: KIT_LADDER[4].pieces, padNames: KIT_LADDER[4].pieces.map(p => PIECE_LABEL[p]), drumFor: KIT_LADDER[4].pieces,
+                voice: null, price: 60, tipMult: 1.1, family: 'percussion', noPads: true,
+                desc: 'Hit the drum itself, right on the beat. Start on a bucket and a pot; end up behind a five-piece.' },
   sax:        { name: 'Saxophone', game: 'wind', keys: ['Space'], keyNames: ['SPACE'], voice: 'sax', price: 55, tipMult: 1.15, family: 'horns',
                 desc: 'Hold SPACE through each phrase and release on the end marker. Watch your breath.' },
   trumpet:    { name: 'Trumpet', game: 'valves', keys: ['KeyJ', 'KeyK', 'KeyL'], keyNames: ['J', 'K', 'L'], voice: 'trumpet', price: 50, tipMult: 1.1, family: 'horns',
@@ -2469,6 +2870,26 @@ function gearTier(q) { return GEAR_TIERS[clamp(Math.round(q || 1), 1, 5)]; }
 function gearInstrument(kind, quality) {
   const base = INSTRUMENTS[kind]; if (!base) return INSTRUMENTS.guitar;
   const t = gearTier(quality);
+  // Drums do not lose lanes, they lose *pieces*: the ladder says exactly what
+  // you are sitting behind, from a bucket and a pot up to a full five-piece.
+  if (kind === 'drums') {
+    const q = clamp(Math.round(quality || 1), 1, 5);
+    return cached('kit|' + q, () => {
+      const rung = KIT_LADDER[q], pieces = rung.pieces;
+      const allKeys = ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'];
+      const allNames = ['D', 'F', 'SP', 'J', 'K'];
+      // fewer pieces use the middle keys, so your hands never start spread wide
+      const pick = []; const n = pieces.length;
+      for (let i = 0; i < n; i++) pick.push(Math.round((5 - n) / 2) + i);
+      return Object.assign({}, base, {
+        lanes: n, pieces, kitName: rung.name, junk: !!rung.junk, chrome: !!rung.chrome,
+        keys: pick.map(i => allKeys[i]),
+        keyNames: pick.map(i => allNames[i]),
+        padNames: pieces.map(p => PIECE_LABEL[p]),
+        drumFor: pieces.slice(),
+      });
+    });
+  }
   if (!t.laneCut || !base.lanes || base.lanes <= 2) return base;
   return cached('gear|' + kind + '|' + quality, () => {
     const lanes = Math.max(2, base.lanes - t.laneCut);
@@ -2831,12 +3252,19 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
           lastLane = lane;
           if (bomb) { notes.push({ t, lane: clamp(lane + rng.sign(), 0, L - 1), dur: 0, type: 'bomb', midi }); break; }
           if (kit) {
-            // A kit has no sustain. Downbeats land as kick, and now and then
-            // the crash rides on top of them.
+            // A kit has no sustain. The contour picks a piece by how high it
+            // sits, downbeats fall on the lowest thing you own, and the top
+            // piece rides on top of them. Works for a bucket and a pot as
+            // happily as for a full five-piece.
+            const pieces = instr.pieces || instr.drumFor || [];
+            const order = pieces.map((p, i) => i).sort((a, b) => (PIECE_PITCH[pieces[a]] || 0) - (PIECE_PITCH[pieces[b]] || 0));
+            const low = order[0], top = order[order.length - 1];
+            lane = order[clamp(Math.round(rel * (order.length - 1)), 0, order.length - 1)];
             const onBeat = Math.abs(((t - secStart) / beat) % 2) < 0.02;
-            if (onBeat && rng.chance(0.5)) lane = 0;
+            if (onBeat && rng.chance(0.5)) lane = low;
             notes.push({ t, lane, dur: 0, type: 'tap', midi, star });
-            if (onBeat && difficulty >= 3 && rng.chance(0.22) && lane !== 3) { notes.push({ t, lane: 3, dur: 0, type: 'tap', midi, chord: true }); notes[notes.length - 2].chord = true; }
+            // a two-limb accent: only once you own enough of a kit for it
+            if (onBeat && difficulty >= 3 && L >= 4 && rng.chance(0.22) && lane !== top) { notes.push({ t, lane: top, dur: 0, type: 'tap', midi, chord: true }); notes[notes.length - 2].chord = true; }
             break;
           }
           if (isLong && difficulty >= 2) { notes.push({ t, lane, dur: dur - beat * 0.15, type: 'hold', midi, star }); break; }
@@ -3551,9 +3979,10 @@ class RhythmGame {
       // each lane is a different piece of the kit, so it should sound like one
       const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
       const v = j === 'perfect' ? 0.95 : j === 'great' ? 0.8 : 0.6;
-      Audio.drum(piece === 'kick' ? 'bigkick' : piece, 0, v);
+      Audio.drum(PIECE_VOICE[piece] || piece, 0, v);
       if (piece === 'kick') Audio.drum('kick', 0, v * 0.6);
       if (piece === 'crash') Audio.drum('hat', 0, v * 0.4);
+      if (piece === 'bucket') Audio.drum('kick', 0, v * 0.35);   // a bucket still thumps
       return null;
     }
     const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
@@ -3582,7 +4011,7 @@ class RhythmGame {
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && n.lane === lane && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
       if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.5, 0, 100); this.playHit(roll, 'great'); const r = this.receptorOf(roll); this.fx.burst(r.x, r.y, 4, { color: '#ffd166', speed: 50, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0, x: r.x, y: r.y - 14 }); if (this.hooks.onRoll) this.hooks.onRoll(); this.flashes[lane] = 0.15; return; }
       const n = this.findNote(x => x.lane === lane && x.type !== 'roll');
-      if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(pc === 'kick' ? 'bigkick' : pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
+      if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(PIECE_VOICE[pc] || pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       const j = this.judgeDt(this.now - n.t); n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
       this.applyJudge(j, n);
@@ -3688,10 +4117,18 @@ class RhythmGame {
     return 1;
   }
   draw(ctx, A) {
-    rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
-    if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
-    vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
-    this.drawStageSurround(ctx, A);
+    // In overlay mode the venue behind is the picture: no box, no painted-on
+    // stage, just the play surface sitting inside the real scene.
+    if (!A.overlay) {
+      rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
+      if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
+      vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
+      this.drawStageSurround(ctx, A);
+    } else {
+      // just enough grade so the drums read against a bright pavement
+      const gy = A.y + A.h * 0.42;
+      vgrad(ctx, A.x, gy, A.w, A.h - (gy - A.y), 'rgba(8,6,16,0)', 'rgba(8,6,16,0.5)');
+    }
     const g = this.game;
     if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
@@ -3783,19 +4220,183 @@ class RhythmGame {
     if (star && w > 10) { drawText(ctx, '★', x, y - 4, '#fff8c0', { align: 'center', outline: darken(col, 0.4) }); }
     ctx.globalAlpha = 1;
   }
+  // ---------- The kit: no highway, no buttons. You hit the drum. ----------
+  // A note is a ring closing onto its own drum. When the ring touches the rim
+  // the note is on the beat, so the whole read happens on the object you are
+  // about to strike instead of on a lane of falling gems.
+  drawKitView(ctx, A) {
+    const instr = this.instrument, pieces = instr.pieces || instr.drumFor || ['kick', 'snare', 'hat', 'tom', 'crash'];
+    // The scene decides where the kit stands, so the drums sit on the actual
+    // ground next to the band instead of floating in a box.
+    const K = A.kit || {};
+    const cx = K.cx != null ? K.cx : A.x + A.w / 2;
+    const baseY = K.baseY != null ? K.baseY : A.y + A.h - (A.touch ? 84 : 74);
+    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk });
+    this.kitSpots = spots;
+    const byLane = {}; for (const sp of spots) byLane[sp.i] = sp;
+    // the upcoming bar, read left to right along the top: what is coming and
+    // in what order, without a highway anywhere near the drums
+    this.drawKitRibbon(ctx, A, pieces, cx, baseY);
+    // approach rings, far notes first so near ones draw on top
+    const vis = [];
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged) continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1.04) break;
+      if (k < -0.14) continue;
+      vis.push({ n, k });
+    }
+    vis.sort((a, b) => b.k - a.k);
+    for (const { n, k } of vis) {
+      const sp = byLane[n.lane]; if (!sp) continue;
+      const kk = clamp(k, 0, 1), alpha = this.noteAlpha(kk);
+      const col = n.star ? '#ffd24a' : (PIECE_COLORS[sp.piece] || '#c2c8d6');
+      const rimX = sp.G.grab, rimY = sp.G.grab * 0.62;
+      if (n.type === 'bomb') {
+        const r = rimX * (1 + kk * 1.5);
+        ctx.globalAlpha = alpha * 0.9; ellipseRingPx(ctx, sp.x, sp.y, r, r * 0.62, '#c8302a');
+        ctx.globalAlpha = alpha; drawText(ctx, 'X', sp.x, sp.y - 4, '#ff8a6a', { align: 'center', scale: 2, outline: '#1a1410' });
+        ctx.globalAlpha = 1; continue;
+      }
+      // the ring, closing in
+      const rx = rimX * (1 + kk * 1.9), ry = rimY * (1 + kk * 1.9);
+      ctx.globalAlpha = alpha * clamp(1.15 - kk * 0.5, 0, 1);
+      ellipseRingPx(ctx, sp.x, sp.y, rx, ry, col);
+      ellipseRingPx(ctx, sp.x, sp.y, rx - 1, ry - 1, darken(col, 0.3));
+      if (n.star) ellipseRingPx(ctx, sp.x, sp.y, rx + 2, ry + 2, '#fff4b0');
+      ctx.globalAlpha = 1;
+      // a marker riding the ring so the eye can track a fast passage
+      if (kk < 0.85) {
+        const mx = Math.round(sp.x), my = Math.round(sp.y - ry);
+        ctx.globalAlpha = alpha; rect(ctx, mx - 2, my - 1, 5, 3, col); rect(ctx, mx - 1, my, 3, 1, '#fff8e0'); ctx.globalAlpha = 1;
+      }
+      // hitting the rim: a bright flare exactly on the beat
+      if (kk < 0.06) { ctx.globalAlpha = (1 - kk / 0.06) * 0.8; ellipseRingPx(ctx, sp.x, sp.y, rimX + 2, rimY + 2, '#fff8e0'); ctx.globalAlpha = 1; }
+      if (n.chord) { ctx.globalAlpha = alpha * 0.6; drawText(ctx, 'x2', sp.x + rimX - 4, sp.y - rimY - 8, '#fff', { align: 'center', font: 'small', outline: '#1a1410' }); ctx.globalAlpha = 1; }
+    }
+    // a hint only while the first few notes go by
+    if (this.now < this.song.beat * 8) {
+      ctx.globalAlpha = clamp(1 - this.now / (this.song.beat * 8), 0, 1) * 0.85;
+      drawText(ctx, A.touch ? 'TAP THE DRUM WHEN THE RING LANDS' : 'CLICK THE DRUM WHEN THE RING LANDS',
+        cx, Math.min(A.y + A.h - 16, baseY + 78), '#fff2c8', { align: 'center', outline: '#1a1410' });
+      ctx.globalAlpha = 1;
+    }
+  }
+  // A slim two-bar preview strip: enough to read ahead, small enough that the
+  // scene behind it stays the thing you are looking at.
+  drawKitRibbon(ctx, A, pieces, cx, baseY) {
+    // Sits right above the kit, so reading ahead and hitting are the same look.
+    const h = 8 + pieces.length * 9, halfW = Math.min(236, A.w / 2 - 20);
+    const x0 = Math.round(cx - halfW), x1 = Math.round(cx + halfW);
+    const y = Math.round(baseY - Math.max(132, 96 + h)), span = this.song.beat * 4;
+    const hitX = x0 + 14, endX = x1 - 8;
+    rect(ctx, x0, y, x1 - x0, h, 'rgba(10,8,18,0.72)');
+    frame(ctx, x0, y, x1 - x0, h, '#4a4270');
+    rect(ctx, x0 + 1, y + 1, x1 - x0 - 2, 1, '#6a5f9a');
+    // one rail per piece, tinted like the drum it belongs to
+    pieces.forEach((p, i) => {
+      const ry = y + 5 + i * 9;
+      ctx.globalAlpha = 0.3; rect(ctx, x0 + 4, ry, x1 - x0 - 8, 1, PIECE_COLORS[p] || '#8a80b0'); ctx.globalAlpha = 1;
+    });
+    // beat ticks
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const bt = b * this.song.beat, k = (bt - this.now) / span; if (k > 1) break; if (k < 0) continue;
+      const x = hitX + k * (endX - hitX);
+      ctx.globalAlpha = b % 4 === 0 ? 0.5 : 0.22; rect(ctx, x, y + 2, 1, h - 4, '#9a90d0'); ctx.globalAlpha = 1;
+    }
+    // the now-line
+    rect(ctx, hitX - 1, y + 1, 2, h - 2, '#ffd24a');
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged) continue;
+      const k = (n.t - this.now) / span; if (k > 1) break; if (k < -0.02) continue;
+      const x = Math.round(hitX + k * (endX - hitX));
+      const col = n.type === 'bomb' ? '#c8302a' : n.star ? '#ffd24a' : (PIECE_COLORS[pieces[n.lane]] || '#c2c8d6');
+      const ny = y + 3 + n.lane * 9;
+      rect(ctx, x - 2, ny, 5, 5, '#12101c'); rect(ctx, x - 1, ny + 1, 3, 3, col); rect(ctx, x - 1, ny + 1, 3, 1, lighten(col, 0.3));
+    }
+  }
+  // ---------- Reading off the page ----------
+  // The chart is written out as notation on a sheet of paper that scrolls past
+  // a playhead. Pitch is height on the stave; you play what you read.
+  drawSheetView(ctx, A) {
+    const instr = this.instrument, L = instr.lanes;
+    const pw = Math.min(A.w - 60, 800), ph = A.touch ? 118 : 132;
+    const px0 = Math.round(A.x + (A.w - pw) / 2), py0 = Math.round(A.y + (A.touch ? 26 : 30));
+    // the sheet, propped on a stand, with a shadow under it
+    ctx.fillStyle = 'rgba(8,6,14,0.5)'; ctx.fillRect(px0 + 5, py0 + 7, pw, ph);
+    const S = drawStave(ctx, px0, py0, pw, ph, { seed: hashStr(this.song.name || 'x') & 31 });
+    this.sheet = S;
+    // title in the corner of the page, the way a chart is headed
+    drawText(ctx, (this.song.name || '').toUpperCase(), px0 + pw - 8, py0 + 6, '#6a5c48', { align: 'right', font: 'small' });
+    drawText(ctx, instr.name.toUpperCase(), px0 + pw - 8, py0 + ph - 12, '#6a5c48', { align: 'right', font: 'small' });
+    const hitX = S.padLeft + 26, endX = S.right - 14, runW = endX - hitX;
+    // bar lines walking past
+    for (let b = Math.ceil((this.now - this.approach * 0.2) / (this.song.beat * 4)); ; b++) {
+      const bt = b * this.song.beat * 4, k = (bt - this.now) / this.approach;
+      if (k > 1.02) break; if (k < -0.2) continue;
+      const x = Math.round(hitX + k * runW);
+      if (x > S.left && x < S.right) rect(ctx, x, S.top, 1, S.bot - S.top + 1, '#5e5245');
+    }
+    // the playhead: a bar of light down the page, where now is
+    ctx.globalAlpha = 0.2 + this.beatPulse * 0.22;
+    rect(ctx, hitX - 7, py0 + 3, 15, ph - 6, '#e0c060'); ctx.globalAlpha = 1;
+    rect(ctx, hitX, py0 + 3, 1, ph - 6, '#b8332a');
+    rect(ctx, hitX - 2, py0 + 3, 5, 2, '#b8332a'); rect(ctx, hitX - 2, py0 + ph - 5, 5, 2, '#b8332a');
+    this.receptors.main = { x: hitX, y: S.midY };
+    // notes, written out
+    ctx.save(); ctx.beginPath(); ctx.rect(S.left + 2, py0, pw - 4, ph); ctx.clip();
+    const vis = [];
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1.04) break;
+      if (n.type === 'hold') { if (n.judged && (n.tailJudged || !n.hit)) continue; if ((n.t + n.dur - this.now) / this.approach < -0.16) continue; }
+      else { if (n.judged) continue; if (k < -0.16) continue; }
+      vis.push({ n, k });
+    }
+    for (const { n, k } of vis) {
+      const x = hitX + k * runW, ny = stavePos(S, n.lane, L);
+      const col = n.star ? '#d9a520' : LANE_COLORS[n.lane % LANE_COLORS.length];
+      this.receptors[n.lane] = { x: hitX, y: ny };
+      if (n.type === 'bomb') { drawText(ctx, 'X', x, ny - 5, '#b8332a', { align: 'center', scale: 2 }); continue; }
+      if (n.type === 'hold') {
+        // a tie running from the head to where the note lets go
+        const k2 = (n.t + n.dur - this.now) / this.approach, x2 = hitX + k2 * runW;
+        const th = n.holding ? 3 : 2;
+        rect(ctx, Math.round(Math.min(x, x2)), ny - 1, Math.max(2, Math.round(Math.abs(x2 - x))), th, n.holding ? lighten(col, 0.2) : withAlpha(col, 0.85));
+        rect(ctx, Math.round(Math.min(x, x2)), ny - 2 - th, Math.max(2, Math.round(Math.abs(x2 - x))), 1, '#6a5c48');
+        if (n.holding) { if (Math.random() < 0.5) this.fx.add({ x: hitX, y: ny, vx: 20, vy: -30, life: 0.3, color: col, kind: 'px', gravity: 0 }); continue; }
+      }
+      drawNotehead(ctx, S, x, ny, col, { star: n.star, hold: n.type === 'hold', flag: n.type !== 'hold' && !n.chord, judged: false });
+      if (n.chord) rect(ctx, Math.round(x) - 5, ny - 8, 11, 1, '#2a2118');
+    }
+    ctx.restore();
+    // which finger goes where, printed under the stave like a fingering guide
+    if (!A.touch) for (let l = 0; l < L; l++) {
+      const ny = stavePos(S, l, L), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
+      const bx = S.left + 6;
+      rect(ctx, bx, ny - 4, 9, 9, held ? LANE_COLORS[l % LANE_COLORS.length] : 'rgba(240,232,208,0.75)');
+      frame(ctx, bx, ny - 4, 9, 9, '#6a5c48');
+      drawText(ctx, instr.keyNames[l], bx + 4, ny - 2, held ? '#fff' : '#4a4038', { align: 'center', font: 'small' });
+    }
+    // the lip of a music stand holding the page up
+    const sy2 = py0 + ph;
+    rect(ctx, px0 - 6, sy2, pw + 12, 4, '#5e5462');
+    rect(ctx, px0 - 6, sy2, pw + 12, 1, '#8e8496');
+    for (const d of [-0.3, 0.3]) { const bx = Math.round(px0 + pw / 2 + pw * d); rect(ctx, bx - 1, sy2 + 4, 3, 12, '#6e6472'); rect(ctx, bx - 1, sy2 + 4, 1, 12, '#9a90a0'); }
+  }
   drawLanes(ctx, A) {
+    if (this.instrument.view === 'kit') return this.drawKitView(ctx, A);
+    if (this.instrument.view === 'sheet') return this.drawSheetView(ctx, A);
     const instr = this.instrument, L = instr.lanes, kind = this.section.instrument;
     // a kit needs room under the hit line for the shells and their name plates
-    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads,
-      nearY: instr.view === 'kit' ? A.y + A.h - (A.touch ? 86 : 80) : undefined });
+    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads });
     this.hw = hw;
-    const cols = []; for (let l = 0; l < L; l++) cols.push(instr.view === 'kit' ? KIT_COLORS[l % KIT_COLORS.length] : LANE_COLORS[l % LANE_COLORS.length]);
+    const cols = []; for (let l = 0; l < L; l++) cols.push(LANE_COLORS[l % LANE_COLORS.length]);
     // lane floor glow
     for (let l = 0; l < L; l++) {
       const steps = 10;
       for (let i = 0; i < steps; i++) {
         const k0 = i / steps, k1 = (i + 1) / steps; const a = hw.pos(l, k0), b = hw.pos(l, k1);
-        ctx.globalAlpha = (instr.view === 'kit' ? 0.2 : 0.1) + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
+        ctx.globalAlpha = 0.1 + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
         ctx.fillStyle = cols[l]; ctx.beginPath();
         ctx.moveTo(a.x - a.w / 2 + 1, a.y); ctx.lineTo(a.x + a.w / 2 - 1, a.y); ctx.lineTo(b.x + b.w / 2 - 1, b.y); ctx.lineTo(b.x - b.w / 2 + 1, b.y); ctx.closePath(); ctx.fill();
         ctx.globalAlpha = 1;
@@ -3816,16 +4417,14 @@ class RhythmGame {
     for (let l = 0; l < L; l++) {
       const x = hw.laneCx(l), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
       this.receptors[l] = { x, y: hw.nearY };
-      const isKit = instr.view === 'kit';
-      if (!isString && kind !== 'piano' && !isKit) {
+      if (!isString && kind !== 'piano') {
         const w = hw.laneW - 8;
         rect(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? cols[l] : '#181430');
         frame(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? '#fff' : cols[l]);
       }
-      if (held && !isKit) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
-      if (!A.touch && !isString && kind !== 'piano' && !isKit) drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
+      if (held) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
+      if (!A.touch && !isString && kind !== 'piano') drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
     }
-    if (instr.view === 'kit') drawDrumKit(ctx, hw, this, { colors: KIT_COLORS, padNames: instr.padNames });
     // notes, far to near
     const vis = [];
     for (const n of this.notes) {
@@ -4058,8 +4657,10 @@ function buildPads(instr, area, qte) {
   const add = (fx, fw, code, label, color, sub) => pads.push({ x: Math.round(x + w * fx), y, w: Math.round(w * fw) - 3, h, code, label, color, sub });
   if (qte) { add(0.1, 0.8, 'Space', 'TAP', '#5bc0ff', 'HIT THE RING'); return pads; }
   switch (instr.game) {
-    case 'lanes': { const L = instr.lanes, kit = instr.view === 'kit';
-      for (let i = 0; i < L; i++) add(i / L, 1 / L, instr.keys[i], kit ? instr.padNames[i] : instr.keyNames[i], (kit ? KIT_COLORS : LANE_COLORS)[i % (kit ? KIT_COLORS.length : LANE_COLORS.length)]); break; }
+    // A kit has no pads at all: you tap the drum itself.
+    case 'lanes': { if (instr.noPads || instr.view === 'kit') return pads;
+      const L = instr.lanes;
+      for (let i = 0; i < L; i++) add(i / L, 1 / L, instr.keys[i], instr.keyNames[i], LANE_COLORS[i % LANE_COLORS.length]); break; }
     case 'taiko': add(0, 0.22, 'KeyD', 'KA', '#5bc0ff'); add(0.22, 0.28, 'KeyF', 'DON', '#ff6b6b'); add(0.50, 0.28, 'KeyJ', 'DON', '#ff6b6b'); add(0.78, 0.22, 'KeyK', 'KA', '#5bc0ff'); break;
     case 'wind': add(0.1, 0.8, 'Space', 'BLOW', '#e0b040', 'HOLD THE PAD'); break;
     case 'valves': add(0.14, 0.24, 'KeyJ', '1', '#f0c040'); add(0.38, 0.24, 'KeyK', '2', '#f0c040'); add(0.62, 0.24, 'KeyL', '3', '#f0c040'); break;
@@ -4244,8 +4845,8 @@ class ShopScene {
   }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
-  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
-  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; if (s.kind === 'upgrade') { const t = gearTier(s.quality); return t.desc + ' Pays x' + t.pay.toFixed(2) + (t.laneCut ? '' : ', full ' + INSTRUMENTS[s.key].lanes + ' lanes') + '.'; } return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
+  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return s.key === 'drums' ? KIT_LADDER[clamp(s.quality, 1, 5)].name : gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
+  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; if (s.kind === 'upgrade') { const t = gearTier(s.quality); if (s.key === 'drums') { const rung = KIT_LADDER[clamp(s.quality, 1, 5)]; return t.desc + ' ' + rung.pieces.map(p => PIECE_LABEL[p]).join(', ').toLowerCase() + '. Pays x' + t.pay.toFixed(2) + '.'; } return t.desc + ' Pays x' + t.pay.toFixed(2) + (t.laneCut ? '' : ', full ' + INSTRUMENTS[s.key].lanes + ' lanes') + '.'; } return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
   canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
@@ -4253,7 +4854,7 @@ class ShopScene {
     if (s.kind === 'charm') { r.addCharm(s.key); this.msg = 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
     else if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); this.msg = VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
     else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
-    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
+    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = s.key === 'drums' ? 'You are behind a ' + KIT_LADDER[clamp(s.quality, 1, 5)].name.toLowerCase() + ' now.' : 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
     else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
     else if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); this.msg = s.member.name + ' joins the band!'; }
     else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
@@ -6299,6 +6900,25 @@ class GigScene {
   }
   layout() {
     const t = Game.touch;
+    // A kit is played on the drums themselves, so it needs no highway and no
+    // pads: the venue gets the whole frame and the drums sit in it. Everything
+    // that still reads a converging highway keeps the split screen.
+    const lead = Game.run && Game.run.members[0];
+    const lv = lead && (INSTRUMENTS[lead.instrument] || {}).view;
+    this.openKit = lv === 'kit';
+    this.openStage = this.openKit || lv === 'sheet';
+    if (this.openStage) {
+      // A kit is tapped on the drums, so it never needs pads. Anything read off
+      // a page still does on a phone: the pads sit at the bottom of the scene.
+      const needPads = t && !this.openKit;
+      this.L = { top: false, open: true, stageTop: 26, stageBottom: H,
+                 groundY: t ? (needPads ? 330 : 372) : 396, rows: [0, -10, -20],
+                 streetY: t ? (needPads ? 356 : 420) : 446, streetH: needPads ? 56 : 94,
+                 rhythmY: 16, rhythmH: (needPads ? H - 124 : H) - 16,
+                 padY: needPads ? H - 118 : 0, padH: needPads ? 114 : 0, overlay: true };
+      this.stageX = 150; this.hatX = this.stageX + 92;
+      return;
+    }
     this.L = t ? { top: true, stageTop: 26, stageBottom: 150, groundY: 122, rows: [0, -8, -16], streetY: null, rhythmY: 152, rhythmH: 248, padY: 404, padH: 130, compact: true }
       : { top: false, stageTop: 316, stageBottom: 540, groundY: 452, rows: [0, -9, -18], streetY: 474, streetH: 66, rhythmY: 16, rhythmH: 296, padY: 0, padH: 0 };
     this.stageX = 230; this.hatX = this.stageX + 100;
@@ -6350,10 +6970,34 @@ class GigScene {
       this.backing.update(); this.rhythm.update(dt);
       this.cam.update(dt);
       if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
-      // a slow drift while the set runs, so the stage is never static
+      // ---- the camera works the set like a crew would
       if (this.camHold == null && this.rhythm && !this.paused) {
         const hy = this.rhythm.hype / 100;
-        this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+        if (this.L.open) {
+          // cut between a handful of shots, holding each for a few bars, and
+          // favour the tight ones once the crowd is going
+          this.shotT = (this.shotT || 0) - dt;
+          if (this.shotT <= 0) {
+            const bar = this.song.beat * 4;
+            this.shotT = bar * (2 + Math.floor(Math.random() * 3));
+            const pool = hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
+            this.shot = pool[Math.floor(Math.random() * pool.length)];
+          }
+          const kx = this.stageX + (this.openKit ? 244 : 120);
+          const SHOTS = {
+            wide:  { z: 1.0,  x: 0,             y: 0,   r: 0.004 },
+            tight: { z: 1.26, x: kx - W / 2,    y: -18, r: -0.006 },
+            low:   { z: 1.16, x: kx - W / 2 - 40, y: 24, r: 0.012 },
+            over:  { z: 1.34, x: this.stageX - W / 2 + 60, y: -34, r: -0.014 },
+          };
+          const sh = SHOTS[this.shot] || SHOTS.wide;
+          const breathe = Math.sin(this.t * 0.4) * 4;
+          this.cam.push(sh.z + hy * 0.05, sh.x + breathe, sh.y - hy * 8, sh.r + Math.sin(this.t * 0.27) * 0.004);
+          // and a small push on every downbeat, so the frame moves with the tune
+          if (this.rhythm.onBeat && this.rhythm.lastBeat % 4 === 0) this.cam.hit(1.4);
+        } else {
+          this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+        }
       }
       if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
@@ -6408,6 +7052,18 @@ class GigScene {
   togglePause() { this.paused = !this.paused; if (Audio.ctx) { if (this.paused) Audio.ctx.suspend(); else Audio.ctx.resume(); } this.rhythm.keysDown.clear(); }
   quit() { if (Audio.ctx) Audio.ctx.resume(); this.backing.stop(); this.rhythm.finished = true; this.paused = false; this.S.applause *= 0.5; this.finish(); }
   padAt(x, y) { return this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h); }
+  // Which drum is under the pointer? Nearest wins where two overlap, so a tap
+  // between a tom and a crash always resolves to something.
+  drumAt(x, y) {
+    const spots = this.rhythm && this.rhythm.kitSpots; if (!spots) return null;
+    let best = null, bestD = Infinity;
+    for (const sp of spots) {
+      if (!kitHit(sp, x, y)) continue;
+      const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6;
+      if (d < bestD) { bestD = d; best = sp; }
+    }
+    return best;
+  }
   pointerDown(x, y, id) {
     if (this.phase === 'prep') {
       if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
@@ -6418,10 +7074,21 @@ class GigScene {
     if (this.phase === 'tally') { if (!this.tallyDone) { this.tallyT = 999; return; } this.next(); return; }
     if (this.paused) { for (const b of this.pauseButtons) if (b.hit(x, y)) { b.onTap(); return; } return; }
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
-    const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); }
-    else if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
+    const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
+    // A kit is played by hitting the drums themselves, mouse or finger alike.
+    const drum = this.drumAt(x, y);
+    if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
   }
-  pointerMove(x, y, id) { if (this.phase !== 'play' || this.paused) return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
+  pointerMove(x, y, id) {
+    if (this.phase !== 'play' || this.paused) return;
+    const prev = this.padPointers.get(id); if (prev === undefined) return;
+    const pad = this.padAt(x, y); let next = pad ? pad.code : null;
+    if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
+    if (next === prev) return;
+    this.rhythm.keyUp(prev);
+    if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
+  }
   pointerUp(x, y, id) { const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
   hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
   toggleMember(i) {
@@ -6447,16 +7114,38 @@ class GigScene {
     this.fx.draw(ctx); ctx.restore();
     const wk = WEATHERS[Game.run.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
-    if (this.rhythm) {
-      const hx = W - 22, hy = L.stageTop + 8, hh = Math.min(130, L.stageBottom - L.stageTop - 30);
-      rect(ctx, hx - 2, hy - 2, 16, hh + 4, '#1a1410'); const fill = hh * this.rhythm.hype / 100;
-      rect(ctx, hx, hy + hh - fill, 12, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx - 2, hy - 2, 16, hh + 4, '#888');
-      if (this.rhythm.hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
-      rect(ctx, W - 186, L.stageTop + 6, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 186, L.stageTop + 6, 156, 44, '#3a3560');
-      drawText(ctx, fmtNum(this.S.applause), W - 38, L.stageTop + 10, '#fff', { align: 'right', scale: 3 });
-      ctx.drawImage(icon('heart'), W - 180, L.stageTop + 34, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 164, L.stageTop + 35, '#cfc9e6');
-      ctx.drawImage(icon('coin'), W - 128, L.stageTop + 33, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 110, L.stageTop + 35, '#ffd24a');
-    }
+    
+  }
+  // The set read-outs live outside the camera: the shot moves, the HUD does not.
+  drawSetHud(ctx) {
+    const L = this.L; if (!this.rhythm) return;
+      // ---- the hype gauge: a brass-cased meter with real ticks and a needle
+      const hh = L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
+      const hx = W - 34, hy = L.open ? H - 58 - hh - 10 : L.stageTop + 8;
+      const hype = this.rhythm.hype, hot = hype > 70, warm = hype > 40;
+      const hcol = hot ? '#ff5a9a' : warm ? '#ffd166' : '#6fb8ff';
+      rect(ctx, hx - 4, hy - 12, 20, hh + 18, '#171320');
+      frame(ctx, hx - 4, hy - 12, 20, hh + 18, '#6a5f8a');
+      rect(ctx, hx - 3, hy - 11, 18, 1, '#8f83b4');
+      drawText(ctx, 'HYPE', hx + 6, hy - 9, hcol, { align: 'center', font: 'small' });
+      rect(ctx, hx - 1, hy - 1, 14, hh + 2, '#0c0a14');
+      const fill = Math.round(hh * hype / 100);
+      // the column, brightening toward the top
+      for (let i = 0; i < fill; i++) {
+        const k = i / Math.max(1, hh), y2 = hy + hh - 1 - i;
+        rect(ctx, hx, y2, 12, 1, i > fill - 3 ? lighten(hcol, 0.3) : k > 0.72 ? '#ff5a9a' : k > 0.42 ? '#ffd166' : '#6fb8ff');
+        if (i % 6 === 0) { ctx.globalAlpha = 0.3; rect(ctx, hx, y2, 12, 1, '#ffffff'); ctx.globalAlpha = 1; }
+      }
+      // tick marks up the case, heavier at the quarters
+      for (let i = 0; i <= 8; i++) { const ty = hy + hh - Math.round(hh * i / 8); rect(ctx, hx + 12, ty, i % 2 ? 2 : 4, 1, '#8f83b4'); }
+      frame(ctx, hx - 1, hy - 1, 14, hh + 2, '#4a4270');
+      if (hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
+      const rdY = L.open ? H - 58 : L.stageTop + 6;
+      rect(ctx, W - 196, rdY, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 196, rdY, 156, 44, '#3a3560');
+      rect(ctx, W - 195, rdY + 1, 154, 1, '#5a5490');
+      drawText(ctx, fmtNum(this.S.applause), W - 48, rdY + 4, '#fff', { align: 'right', scale: 3 });
+      ctx.drawImage(icon('heart'), W - 190, rdY + 28, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 174, rdY + 29, '#cfc9e6');
+      ctx.drawImage(icon('coin'), W - 138, rdY + 27, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 120, rdY + 29, '#ffd24a');
   }
   // Standing outside the venue before the set. The scene does the talking:
   // the band is on the pavement, you tap a bug to put them in or out.
@@ -6554,13 +7243,34 @@ class GigScene {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
-      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
-      this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
-      this.drawStage(ctx);
-      this.cam.done(ctx);
+      const rA = { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, backdrop: this.V.far,
+        overlay: !!L.overlay, kit: L.open ? { cx: this.stageX + 244, baseY: L.groundY - 34, width: Math.round(W * 0.62) } : null };
+      // On an open stage the venue is the picture and the kit stands in it, so
+      // the scene is painted first and the drums go on top of the ground.
+      if (L.open) {
+        this.cam.apply(ctx, W / 2, L.groundY - 40);
+        this.drawStage(ctx);
+        this.rhythm.draw(ctx, rA);
+        this.cam.done(ctx);
+      } else {
+        this.rhythm.draw(ctx, rA);
+        this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
+        this.drawStage(ctx);
+        this.cam.done(ctx);
+      }
+      this.drawSetHud(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
-      const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 4;
-      rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, W * p, 4, '#ffd24a');
+      const p = clamp(this.rhythm.now / this.song.length, 0, 1);
+      const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);
+      rect(ctx, 0, barY, W, 5, '#1b1626'); rect(ctx, 0, barY, W, 1, '#332b46');
+      rect(ctx, 0, barY + 1, Math.round(W * p), 4, '#ffd24a');
+      rect(ctx, 0, barY + 1, Math.round(W * p), 1, '#fff2b0');
+      // where each section starts, so the run of the set is readable at a glance
+      for (const sec of this.rhythm.sections) {
+        const sx = Math.round(W * clamp(sec.start / this.song.length, 0, 1));
+        rect(ctx, sx, barY, 1, 5, sec.qte ? '#ff9f68' : '#6a5f9a');
+      }
+      { const hx2 = Math.round(W * p); rect(ctx, hx2 - 1, barY - 1, 3, 7, '#fff8e0'); }
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
       const lblY = L.top ? L.stageBottom - 18 : L.stageTop + 8;
       rect(ctx, 4, lblY - 3, textWidth(lbl) + 14, 15, 'rgba(0,0,0,0.62)'); drawText(ctx, lbl, 11, lblY, '#fff');
@@ -6850,10 +7560,21 @@ const Game = {
   // Top HUD strip in parchment style
   drawHud(ctx, opts = {}) {
     const r = this.run; if (!r) return;
-    rect(ctx, 0, 0, W, 24, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 21); rect(ctx, 0, 22, W, 1, UI.wood); rect(ctx, 0, 23, W, 1, UI.woodHi);
+    // The top bar: a strip of board with a brass rail under it, and the two
+    // numbers that actually matter each set in their own bevelled wells.
+    rect(ctx, 0, 0, W, 24, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 21);
+    rect(ctx, 0, 0, W, 1, UI.paperHi);
+    rect(ctx, 0, 22, W, 1, UI.wood); rect(ctx, 0, 23, W, 1, UI.goldLo);
+    const well = (wx, ww) => { rect(ctx, wx, 3, ww, 18, UI.paperLo); rect(ctx, wx + 1, 4, ww - 2, 16, UI.paperHi); rect(ctx, wx + 1, 4, ww - 2, 1, '#fffaea'); rect(ctx, wx + 1, 19, ww - 2, 1, UI.paperLine); };
+    well(4, 96); well(104, 56);
     ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
     ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
-    drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 8, UI.ink, { align: 'center' });
+    // the day, on a small plate, with a pip per day so the run has a shape
+    const dayTxt = 'DAY ' + Math.min(5, r.day + 1) + '/5', dw = textWidth(dayTxt) + 56;
+    rect(ctx, W / 2 - dw / 2, 2, dw, 20, UI.header); rect(ctx, W / 2 - dw / 2, 2, dw, 1, UI.headerHi);
+    rect(ctx, W / 2 - dw / 2, 21, dw, 1, UI.line);
+    drawText(ctx, dayTxt, W / 2 - 22, 8, '#fdf6e2', { align: 'center', shadow: darken(UI.header, 0.35) });
+    for (let i = 0; i < 5; i++) { const px2 = Math.round(W / 2 + dw / 2 - 46 + i * 8); rect(ctx, px2, 9, 5, 6, i <= r.day ? UI.goldHi : darken(UI.header, 0.22)); rect(ctx, px2, 9, 5, 1, i <= r.day ? '#fff6c8' : darken(UI.header, 0.1)); }
     let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 20; uiSlotMini(ctx, cx, 3, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[ck].icon)), 0, 0, 32, 32, cx + 2, 5, 14, 14); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }

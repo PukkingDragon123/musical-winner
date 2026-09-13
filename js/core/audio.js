@@ -101,6 +101,12 @@ const Audio = {
       case 'clap': for (let i = 0; i < 3; i++) this._noise(t + i * 0.012, 0.08, 'bandpass', 1800, 1.5, vel * 0.5, dest); break;
       case 'clunk': tone(120, 60, 0.1, 'sawtooth', vel * 0.3); this._noise(t, 0.06, 'lowpass', 700, 1, vel * 0.4, dest); break;
       case 'stomp': tone(90, 40, 0.25, 'sine', vel); this._noise(t, 0.12, 'lowpass', 300, 1, vel * 0.6, dest); break;
+      // ---- the junk kit: a paint bucket, a stock pot, a milk crate
+      case 'bucket': tone(95, 62, 0.16, 'sine', vel * 0.8); this._noise(t, 0.1, 'bandpass', 420, 1.4, vel * 0.55, dest); tone(310, 180, 0.06, 'triangle', vel * 0.2); break;
+      case 'pot': tone(620, 380, 0.09, 'square', vel * 0.3); this._noise(t, 0.24, 'bandpass', 2600, 2.2, vel * 0.5, dest); this._noise(t, 0.5, 'highpass', 4200, 0.7, vel * 0.16, dest); break;
+      case 'crate': tone(180, 90, 0.1, 'square', vel * 0.35); this._noise(t, 0.12, 'bandpass', 900, 1.1, vel * 0.5, dest); break;
+      case 'floortom': tone(180, 78, 0.3, 'sine', vel * 0.9); this._noise(t, 0.07, 'lowpass', 400, 1, vel * 0.2, dest); break;
+      case 'ride': this._noise(t, 0.5, 'highpass', 6000, 0.6, vel * 0.28, dest); tone(2400, 2100, 0.12, 'square', vel * 0.07); break;
     }
   },
   ui(kind) {

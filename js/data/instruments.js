@@ -1,19 +1,55 @@
 // ---------- Instruments ----------
 'use strict';
 const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
-const KIT_COLORS = ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];   // kick, tom, snare, crash
+// Colour per kit piece, keyed by piece name rather than by lane, because how
+// many pieces you own changes as you climb the ladder.
+const PIECE_COLORS = {
+  bucket: '#c9c2b0', pot: '#9aa2ab', pan: '#6e7178', crate: '#a8783f',
+  kick: '#e0563f', tom: '#e0563f', floor: '#c14a35', snare: '#c2c8d6',
+  hat: '#d8c060', crash: '#f2cf4a', ride: '#e8bf46',
+};
+// What each piece actually sounds like.
+const PIECE_VOICE = {
+  bucket: 'bucket', pot: 'pot', pan: 'ka', crate: 'crate',
+  kick: 'bigkick', tom: 'tom', floor: 'floortom', snare: 'snare',
+  hat: 'hat', crash: 'crash', ride: 'ride',
+};
+// Roughly where each piece sits in pitch, so a melody contour can be mapped
+// onto whatever pieces you happen to own.
+const PIECE_PITCH = {
+  kick: 0, bucket: 0, floor: 1, crate: 1, tom: 2, pot: 3, snare: 3, pan: 4, hat: 4, ride: 5, crash: 6,
+};
+const PIECE_LABEL = {
+  bucket: 'BUCKET', pot: 'POT', pan: 'PAN', crate: 'CRATE',
+  kick: 'KICK', tom: 'TOM', floor: 'FLOOR', snare: 'SNARE',
+  hat: 'HAT', crash: 'CRASH', ride: 'RIDE',
+};
+// ---------- The kit ladder ----------
+// Busking on day one is a paint bucket, a stock pot and one stick. Two things
+// to hit. Every tier bolts on another piece until, at the top, you are sitting
+// behind a real five-piece and the charts finally use all of it.
+const KIT_LADDER = [
+  null,
+  { pieces: ['bucket', 'pot'],                            name: 'BUCKET & POT',  junk: true },
+  { pieces: ['bucket', 'pot', 'crate'],                   name: 'STREET KIT',    junk: true },
+  { pieces: ['kick', 'snare', 'hat', 'tom'],              name: 'WORKING KIT' },
+  { pieces: ['kick', 'snare', 'hat', 'tom', 'crash'],     name: 'STAGE KIT' },
+  { pieces: ['kick', 'snare', 'hat', 'tom', 'crash'],     name: 'SIGNATURE KIT', chrome: true },
+];
+const KIT_COLORS = KIT_LADDER[4].pieces.map(p => PIECE_COLORS[p]);
 const INSTRUMENTS = {
   guitar:     { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'], voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
                 desc: 'Four lanes of falling notes. Hold the long ones, catch the gold stars, dodge the bombs.' },
   bass:       { name: 'Bass', game: 'lanes', lanes: 2, keys: ['KeyF', 'KeyJ'], keyNames: ['F', 'J'], voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
                 desc: 'Two fat strings and long slides. Lock in with the drums.' },
-  piano:      { name: 'Keyboard', game: 'lanes', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'], voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
-                desc: 'Six lanes with two-note chords. For virtuosos.' },
+  piano:      { name: 'Keyboard', game: 'lanes', view: 'sheet', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'], voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
+                desc: 'Read it off the page. Six notes on the stave, chords and all.' },
   tambourine: { name: 'Tambourine', game: 'lanes', lanes: 1, keys: ['Space'], keyNames: ['SPACE'], voice: 'tambourine', price: 12, tipMult: 0.7, family: 'percussion',
                 desc: 'One lane. Hit the beat and shake the hold notes. Humble but honest.' },
-  drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
-                padNames: ['KICK', 'TOM', 'SNARE', 'CRASH'], drumFor: ['kick', 'tom', 'snare', 'crash'], voice: null, price: 60, tipMult: 1.1, family: 'percussion',
-                desc: 'Four pieces of a real kit. Hit the drum the note lands on, right on the beat.' },
+  drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 5, keys: ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'SP', 'J', 'K'],
+                pieces: KIT_LADDER[4].pieces, padNames: KIT_LADDER[4].pieces.map(p => PIECE_LABEL[p]), drumFor: KIT_LADDER[4].pieces,
+                voice: null, price: 60, tipMult: 1.1, family: 'percussion', noPads: true,
+                desc: 'Hit the drum itself, right on the beat. Start on a bucket and a pot; end up behind a five-piece.' },
   sax:        { name: 'Saxophone', game: 'wind', keys: ['Space'], keyNames: ['SPACE'], voice: 'sax', price: 55, tipMult: 1.15, family: 'horns',
                 desc: 'Hold SPACE through each phrase and release on the end marker. Watch your breath.' },
   trumpet:    { name: 'Trumpet', game: 'valves', keys: ['KeyJ', 'KeyK', 'KeyL'], keyNames: ['J', 'K', 'L'], voice: 'trumpet', price: 50, tipMult: 1.1, family: 'horns',
@@ -53,6 +89,26 @@ function gearTier(q) { return GEAR_TIERS[clamp(Math.round(q || 1), 1, 5)]; }
 function gearInstrument(kind, quality) {
   const base = INSTRUMENTS[kind]; if (!base) return INSTRUMENTS.guitar;
   const t = gearTier(quality);
+  // Drums do not lose lanes, they lose *pieces*: the ladder says exactly what
+  // you are sitting behind, from a bucket and a pot up to a full five-piece.
+  if (kind === 'drums') {
+    const q = clamp(Math.round(quality || 1), 1, 5);
+    return cached('kit|' + q, () => {
+      const rung = KIT_LADDER[q], pieces = rung.pieces;
+      const allKeys = ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'];
+      const allNames = ['D', 'F', 'SP', 'J', 'K'];
+      // fewer pieces use the middle keys, so your hands never start spread wide
+      const pick = []; const n = pieces.length;
+      for (let i = 0; i < n; i++) pick.push(Math.round((5 - n) / 2) + i);
+      return Object.assign({}, base, {
+        lanes: n, pieces, kitName: rung.name, junk: !!rung.junk, chrome: !!rung.chrome,
+        keys: pick.map(i => allKeys[i]),
+        keyNames: pick.map(i => allNames[i]),
+        padNames: pieces.map(p => PIECE_LABEL[p]),
+        drumFor: pieces.slice(),
+      });
+    });
+  }
   if (!t.laneCut || !base.lanes || base.lanes <= 2) return base;
   return cached('gear|' + kind + '|' + quality, () => {
     const lanes = Math.max(2, base.lanes - t.laneCut);

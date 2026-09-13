@@ -157,10 +157,21 @@ const Game = {
   // Top HUD strip in parchment style
   drawHud(ctx, opts = {}) {
     const r = this.run; if (!r) return;
-    rect(ctx, 0, 0, W, 24, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 21); rect(ctx, 0, 22, W, 1, UI.wood); rect(ctx, 0, 23, W, 1, UI.woodHi);
+    // The top bar: a strip of board with a brass rail under it, and the two
+    // numbers that actually matter each set in their own bevelled wells.
+    rect(ctx, 0, 0, W, 24, UI.woodLo); ctx.fillStyle = paperTexture(); ctx.fillRect(0, 1, W, 21);
+    rect(ctx, 0, 0, W, 1, UI.paperHi);
+    rect(ctx, 0, 22, W, 1, UI.wood); rect(ctx, 0, 23, W, 1, UI.goldLo);
+    const well = (wx, ww) => { rect(ctx, wx, 3, ww, 18, UI.paperLo); rect(ctx, wx + 1, 4, ww - 2, 16, UI.paperHi); rect(ctx, wx + 1, 4, ww - 2, 1, '#fffaea'); rect(ctx, wx + 1, 19, ww - 2, 1, UI.paperLine); };
+    well(4, 96); well(104, 56);
     ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
     ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
-    drawText(ctx, 'DAY ' + Math.min(5, r.day + 1) + '/5', W / 2, 8, UI.ink, { align: 'center' });
+    // the day, on a small plate, with a pip per day so the run has a shape
+    const dayTxt = 'DAY ' + Math.min(5, r.day + 1) + '/5', dw = textWidth(dayTxt) + 56;
+    rect(ctx, W / 2 - dw / 2, 2, dw, 20, UI.header); rect(ctx, W / 2 - dw / 2, 2, dw, 1, UI.headerHi);
+    rect(ctx, W / 2 - dw / 2, 21, dw, 1, UI.line);
+    drawText(ctx, dayTxt, W / 2 - 22, 8, '#fdf6e2', { align: 'center', shadow: darken(UI.header, 0.35) });
+    for (let i = 0; i < 5; i++) { const px2 = Math.round(W / 2 + dw / 2 - 46 + i * 8); rect(ctx, px2, 9, 5, 6, i <= r.day ? UI.goldHi : darken(UI.header, 0.22)); rect(ctx, px2, 9, 5, 1, i <= r.day ? '#fff6c8' : darken(UI.header, 0.1)); }
     let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 20; uiSlotMini(ctx, cx, 3, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[ck].icon)), 0, 0, 32, 32, cx + 2, 5, 14, 14); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }

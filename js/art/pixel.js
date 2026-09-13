@@ -7,6 +7,9 @@ class Pix {
   get(x, y) { return this.inb(x, y) ? this.d[this.idx(x, y)] : null; }
   set(x, y, c) { if (this.inb(x, y)) this.d[this.idx(x, y)] = c; }
   mask() { return new Uint8Array(this.w * this.h); }
+  // Every pixel that has been drawn: lets a finishing pass texture a whole
+  // sprite without knowing how it was built.
+  solidMask(skip) { const m = this.mask(); for (let i = 0; i < m.length; i++) if (this.d[i] != null && this.d[i] !== skip) m[i] = 1; return m; }
   mEllipse(m, cx, cy, rx, ry) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
       const dx = (x - cx) / (rx + 0.5), dy = (y - cy) / (ry + 0.5);
@@ -73,6 +76,85 @@ class Pix {
   }
   // replace colors inside mask by pattern function (x,y)=>color|null
   paint(m, fn) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { const c = fn(x, y); if (c) this.d[y * this.w + x] = c; } }
+  // ---------- Material textures ----------
+  // Everything below works on whatever colour is already under the mask, so a
+  // texture can be layered onto a shaded fill without flattening it.
+  _shift(x, y, amt, sat = 0) { const c = this.get(x, y); if (c == null) return; this.set(x, y, amt >= 0 ? lighten(c, amt) : darken(c, -amt)); }
+  // Fine grain: a hash-driven speckle, the cheapest way to stop a flat fill
+  // reading as plastic. `amt` is how far each pixel is nudged.
+  grain(m, amt = 0.05, seed = 1) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const n = ((Math.imul(x + seed * 71, 0x9E3779B1) ^ Math.imul(y + seed * 131, 0x85EBCA77)) >>> 24) / 255;
+      if (n < 0.34) this._shift(x, y, amt);
+      else if (n > 0.72) this._shift(x, y, -amt);
+    }
+  }
+  // Ordered 4x4 dither between the colour underneath and a target, weighted by
+  // a 0..1 field. Gives a gradient that still looks hand-placed.
+  ditherTo(m, color, field, strength = 1) {
+    const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const k = clamp(field(x, y) * strength, 0, 1);
+      if (k * 16 > B[(y & 3) * 4 + (x & 3)]) this.set(x, y, color);
+    }
+  }
+  // Horizontal wood grain: long wavering lines plus the odd knot.
+  wood(m, seed = 1, amt = 0.09) {
+    const r = makeRng(hashStr('wood' + seed));
+    const lines = []; for (let i = 0; i < Math.ceil(this.h / 3); i++) lines.push({ y: r.range(0, this.h), a: r.range(0, 6.3), f: r.range(0.1, 0.3), d: r.chance(0.5) ? amt : -amt });
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      for (const l of lines) if (Math.abs(y - (l.y + Math.sin(x * l.f + l.a) * 1.6)) < 0.6) { this._shift(x, y, l.d); break; }
+    }
+  }
+  // Brushed metal: vertical streaks and a bright specular band.
+  metal(m, seed = 1, amt = 0.1) {
+    const r = makeRng(hashStr('metal' + seed));
+    const cols = []; for (let x = 0; x < this.w; x++) cols.push(r.chance(0.3) ? (r.chance(0.5) ? amt : -amt) : 0);
+    let top = this.h, bot = -1;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { if (y < top) top = y; if (y > bot) bot = y; }
+    const band = top + (bot - top) * 0.3;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      if (cols[x]) this._shift(x, y, cols[x]);
+      if (Math.abs(y - band) < 1.2) this._shift(x, y, amt * 1.6);
+    }
+  }
+  // Woven cloth: a two-pixel checker, very subtle.
+  cloth(m, amt = 0.05) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      if (((x >> 1) + (y >> 1)) & 1) this._shift(x, y, -amt); else this._shift(x, y, amt * 0.6);
+    }
+  }
+  // Scratches and dents: short strokes, biased toward the edges of the shape.
+  scuff(m, seed = 1, n = 6, amt = 0.16) {
+    const r = makeRng(hashStr('scuff' + seed));
+    for (let i = 0; i < n; i++) {
+      const x0 = r.int(0, this.w - 1), y0 = r.int(0, this.h - 1);
+      const len = r.int(2, 5), dx = r.pick([-1, 0, 1]), dy = r.pick([-1, 0, 1]);
+      const up = r.chance(0.55);
+      for (let k = 0; k < len; k++) { const x = x0 + dx * k, y = y0 + dy * k; if (this.inb(x, y) && m[y * this.w + x]) this._shift(x, y, up ? amt : -amt); }
+    }
+  }
+  // Rust and grime creeping in from the bottom edge.
+  rust(m, seed = 1, color = '#7a4a22', density = 0.3) {
+    const r = makeRng(hashStr('rust' + seed));
+    let top = this.h, bot = -1;
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (m[y * this.w + x]) { if (y < top) top = y; if (y > bot) bot = y; }
+    const span = Math.max(1, bot - top);
+    for (let y = top; y <= bot; y++) for (let x = 0; x < this.w; x++) {
+      if (!m[y * this.w + x]) continue;
+      const k = (y - top) / span;
+      if (r() < density * k * k) this.set(x, y, r.chance(0.4) ? darken(color, 0.12) : color);
+    }
+  }
+  // A row of rivets or lugs around a rectangle edge.
+  studs(x0, y0, w, h, step, color, hiColor) {
+    for (let x = x0; x < x0 + w; x += step) { this.set(x, y0, hiColor || lighten(color, 0.3)); this.set(x, y0 + 1, color); this.set(x, y0 + h - 1, color); }
+  }
   outlineAll(color) {
     const w = this.w, h = this.h, src = this.d.slice();
     const has = (x, y) => x >= 0 && y >= 0 && x < w && y < h && src[y * w + x] != null;

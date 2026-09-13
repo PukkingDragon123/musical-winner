@@ -46,6 +46,9 @@ function propCanvas(kind, variant = 0) {
       case 'window': { P = new Pix(40, 30); const m = P.mask(); P.mRound(m, 0, 0, 40, 30, 10); P.fill(m, '#d8dce8', { outline: OL }); const g2 = P.mask(); P.mRound(g2, 4, 4, 32, 22, 8); P.fill(g2, '#8ec8f0', { shade: false }); break; }
       default: P = new Pix(4, 4);
     }
+    // Finishing pass: a little grain and wear on every prop, so street
+    // furniture reads as something that has stood outside for years.
+    if (P.w > 4) { const body = P.solidMask(OL); P.grain(body, 0.045, hashStr(kind + variant) & 63); P.scuff(body, hashStr(kind) & 31, 3, 0.1); }
     return P.toCanvas();
   });
 }

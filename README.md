@@ -54,12 +54,29 @@ lanes, a wide forgiving timing window, and a payout barely over half. Upgrading 
 gives the lanes back and raises what the crowd pays, so the game gets harder exactly as it gets
 richer. BUSTED, PAWN SHOP, WORKING, PRO, SIGNATURE.
 
-The play area *is* your instrument, hung inside a lit stage: a truss of coloured lamps
-overhead, beams sweeping across the lanes on the beat, speaker stacks at both edges and a
-front row of bugs bobbing with lighters up. Guitar and bass are a wooden fretboard receding to a
-vanishing point, with strings that ring and wobble when you hit them. Keyboard is a real
-keyboard whose keys depress. Drums, saxophone, trumpet and violin each draw their own body,
-keys, valves and bow.
+**A drummer starts with a paint bucket, a stock pot and one stick.** Two things to hit, on a
+sheet of flattened cardboard. Every rung of the ladder bolts on another piece — a milk crate,
+then a real kick and snare, a hi-hat, a rack tom, a crash — until you are sitting behind a
+five-piece on a proper rug and the charts finally use all of it. The junk pieces sound like junk
+too: the bucket thumps, the pot rings and rattles for half a second.
+
+**You hit the drum, not a button.** There are no lanes and no pads under a kit. The drums stand
+in the scene at their real size and a note is a ring closing onto the one you have to strike;
+when the ring touches the rim you are on the beat. Click or tap the drum itself, and drag across
+them for a fill. A slim two-bar strip above the kit shows what is coming, one rail per piece.
+
+**Players who read get a page instead.** Keyboard charts are drawn as notation on aged paper
+propped on a music stand: a treble clef, a time signature, five stave lines, bar lines walking
+past a playhead, noteheads with stems that point the right way and ledger lines when the part
+climbs off the stave. Pitch is height on the page.
+
+Both of those hand the venue the whole frame — the band, the crowd, the bay behind them — and
+the camera cuts between wide, tight, low and over-the-shoulder shots every few bars, pushing in
+on each downbeat. Everything still on a highway keeps its lit stage: a truss of coloured lamps
+overhead, beams sweeping on the beat, speaker stacks at both edges, a front row bobbing with
+lighters up. Guitar and bass are a wooden fretboard receding to a vanishing point with strings
+that ring when you hit them; saxophone, trumpet and violin each draw their own body, valves
+and bow.
 
 **Every day states what it wants.** Three goals on a clipboard pinned to the map: take home a
 number, play a set count, hold a combo, land perfects, walk blocks, add a bug, upgrade an
@@ -68,7 +85,8 @@ instrument, end the day with nobody hungry. Each pays cash or stamina the moment
 | Instrument | Keys |
 |---|---|
 | Guitar / Bass / Keyboard / Tambourine | `D F J K` / `F J` / `S D F J K L` / `Space` |
-| Drum Kit | `D` kick, `F` tom, `J` snare, `K` crash |
+| Drum Kit | click or tap the drum; keys `D F Space J K` |
+| Keyboard (sheet) | `S D F J K L`, read off the stave |
 | Saxophone | hold `Space` |
 | Trumpet | `J K L` valve combos |
 | Violin | `↑/W` up bow, `↓/S` down bow |
@@ -105,6 +123,12 @@ eyes, chunky limbs and one strong silhouette apiece: the drummer is a moose beet
 antlers are half his height, the elder carries a staff and a medallion, the firefly's abdomen
 glows. Bugs breathe, squash and bounce on a shared animation clock, and switch expression with
 what is happening: focused mid-set, grinning on a high combo, shocked on a drop, sad backstage.
+Materials are real: the drums carry brushed metal on the hoops and lugs, lacquered wrap dithered
+light-to-dark across the barrel, hammer marks and lathed rings on the cymbals, cream mylar heads
+with a worn patch where the stick lands. The bucket is dented galvanised steel flecked with dried
+paint, the pot sooted up the sides with one good dent. Every item and every piece of street
+furniture gets a finishing pass of fine grain and scratches, so nothing reads as flat plastic.
+
 Items are drawn at 32x32 in ornate gold slots. Ability cards animate: the item bobs and tips
 inside its frame over a rarity-tinted halftone backing, a shine sweeps across it, sparks orbit
 the slot and the card itself breathes and tilts, with the rarity glowing behind it. Scenes carry

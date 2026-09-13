@@ -89,9 +89,10 @@ class RhythmGame {
       // each lane is a different piece of the kit, so it should sound like one
       const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
       const v = j === 'perfect' ? 0.95 : j === 'great' ? 0.8 : 0.6;
-      Audio.drum(piece === 'kick' ? 'bigkick' : piece, 0, v);
+      Audio.drum(PIECE_VOICE[piece] || piece, 0, v);
       if (piece === 'kick') Audio.drum('kick', 0, v * 0.6);
       if (piece === 'crash') Audio.drum('hat', 0, v * 0.4);
+      if (piece === 'bucket') Audio.drum('kick', 0, v * 0.35);   // a bucket still thumps
       return null;
     }
     const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
@@ -120,7 +121,7 @@ class RhythmGame {
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && n.lane === lane && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
       if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.5, 0, 100); this.playHit(roll, 'great'); const r = this.receptorOf(roll); this.fx.burst(r.x, r.y, 4, { color: '#ffd166', speed: 50, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0, x: r.x, y: r.y - 14 }); if (this.hooks.onRoll) this.hooks.onRoll(); this.flashes[lane] = 0.15; return; }
       const n = this.findNote(x => x.lane === lane && x.type !== 'roll');
-      if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(pc === 'kick' ? 'bigkick' : pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
+      if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(PIECE_VOICE[pc] || pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       const j = this.judgeDt(this.now - n.t); n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
       this.applyJudge(j, n);
@@ -226,10 +227,18 @@ class RhythmGame {
     return 1;
   }
   draw(ctx, A) {
-    rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
-    if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
-    vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
-    this.drawStageSurround(ctx, A);
+    // In overlay mode the venue behind is the picture: no box, no painted-on
+    // stage, just the play surface sitting inside the real scene.
+    if (!A.overlay) {
+      rect(ctx, A.x, A.y, A.w, A.h, '#0b0916');
+      if (A.backdrop) { ctx.globalAlpha = 0.22; ctx.drawImage(A.backdrop, 0, 0, A.backdrop.width, A.backdrop.height, A.x, A.y, A.w, Math.round(A.h * 0.6)); ctx.globalAlpha = 1; }
+      vgrad(ctx, A.x, A.y, A.w, A.h, 'rgba(30,20,60,0.55)', 'rgba(8,6,16,0.95)');
+      this.drawStageSurround(ctx, A);
+    } else {
+      // just enough grade so the drums read against a bright pavement
+      const gy = A.y + A.h * 0.42;
+      vgrad(ctx, A.x, gy, A.w, A.h - (gy - A.y), 'rgba(8,6,16,0)', 'rgba(8,6,16,0.5)');
+    }
     const g = this.game;
     if (g === 'qte') this.drawQte(ctx, A); else if (g === 'lanes') this.drawLanes(ctx, A); else if (g === 'taiko') this.drawTaiko(ctx, A);
     else if (g === 'wind') this.drawWind(ctx, A); else if (g === 'valves') this.drawValves(ctx, A); else if (g === 'bow') this.drawBow(ctx, A);
@@ -321,19 +330,183 @@ class RhythmGame {
     if (star && w > 10) { drawText(ctx, '★', x, y - 4, '#fff8c0', { align: 'center', outline: darken(col, 0.4) }); }
     ctx.globalAlpha = 1;
   }
+  // ---------- The kit: no highway, no buttons. You hit the drum. ----------
+  // A note is a ring closing onto its own drum. When the ring touches the rim
+  // the note is on the beat, so the whole read happens on the object you are
+  // about to strike instead of on a lane of falling gems.
+  drawKitView(ctx, A) {
+    const instr = this.instrument, pieces = instr.pieces || instr.drumFor || ['kick', 'snare', 'hat', 'tom', 'crash'];
+    // The scene decides where the kit stands, so the drums sit on the actual
+    // ground next to the band instead of floating in a box.
+    const K = A.kit || {};
+    const cx = K.cx != null ? K.cx : A.x + A.w / 2;
+    const baseY = K.baseY != null ? K.baseY : A.y + A.h - (A.touch ? 84 : 74);
+    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk });
+    this.kitSpots = spots;
+    const byLane = {}; for (const sp of spots) byLane[sp.i] = sp;
+    // the upcoming bar, read left to right along the top: what is coming and
+    // in what order, without a highway anywhere near the drums
+    this.drawKitRibbon(ctx, A, pieces, cx, baseY);
+    // approach rings, far notes first so near ones draw on top
+    const vis = [];
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged) continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1.04) break;
+      if (k < -0.14) continue;
+      vis.push({ n, k });
+    }
+    vis.sort((a, b) => b.k - a.k);
+    for (const { n, k } of vis) {
+      const sp = byLane[n.lane]; if (!sp) continue;
+      const kk = clamp(k, 0, 1), alpha = this.noteAlpha(kk);
+      const col = n.star ? '#ffd24a' : (PIECE_COLORS[sp.piece] || '#c2c8d6');
+      const rimX = sp.G.grab, rimY = sp.G.grab * 0.62;
+      if (n.type === 'bomb') {
+        const r = rimX * (1 + kk * 1.5);
+        ctx.globalAlpha = alpha * 0.9; ellipseRingPx(ctx, sp.x, sp.y, r, r * 0.62, '#c8302a');
+        ctx.globalAlpha = alpha; drawText(ctx, 'X', sp.x, sp.y - 4, '#ff8a6a', { align: 'center', scale: 2, outline: '#1a1410' });
+        ctx.globalAlpha = 1; continue;
+      }
+      // the ring, closing in
+      const rx = rimX * (1 + kk * 1.9), ry = rimY * (1 + kk * 1.9);
+      ctx.globalAlpha = alpha * clamp(1.15 - kk * 0.5, 0, 1);
+      ellipseRingPx(ctx, sp.x, sp.y, rx, ry, col);
+      ellipseRingPx(ctx, sp.x, sp.y, rx - 1, ry - 1, darken(col, 0.3));
+      if (n.star) ellipseRingPx(ctx, sp.x, sp.y, rx + 2, ry + 2, '#fff4b0');
+      ctx.globalAlpha = 1;
+      // a marker riding the ring so the eye can track a fast passage
+      if (kk < 0.85) {
+        const mx = Math.round(sp.x), my = Math.round(sp.y - ry);
+        ctx.globalAlpha = alpha; rect(ctx, mx - 2, my - 1, 5, 3, col); rect(ctx, mx - 1, my, 3, 1, '#fff8e0'); ctx.globalAlpha = 1;
+      }
+      // hitting the rim: a bright flare exactly on the beat
+      if (kk < 0.06) { ctx.globalAlpha = (1 - kk / 0.06) * 0.8; ellipseRingPx(ctx, sp.x, sp.y, rimX + 2, rimY + 2, '#fff8e0'); ctx.globalAlpha = 1; }
+      if (n.chord) { ctx.globalAlpha = alpha * 0.6; drawText(ctx, 'x2', sp.x + rimX - 4, sp.y - rimY - 8, '#fff', { align: 'center', font: 'small', outline: '#1a1410' }); ctx.globalAlpha = 1; }
+    }
+    // a hint only while the first few notes go by
+    if (this.now < this.song.beat * 8) {
+      ctx.globalAlpha = clamp(1 - this.now / (this.song.beat * 8), 0, 1) * 0.85;
+      drawText(ctx, A.touch ? 'TAP THE DRUM WHEN THE RING LANDS' : 'CLICK THE DRUM WHEN THE RING LANDS',
+        cx, Math.min(A.y + A.h - 16, baseY + 78), '#fff2c8', { align: 'center', outline: '#1a1410' });
+      ctx.globalAlpha = 1;
+    }
+  }
+  // A slim two-bar preview strip: enough to read ahead, small enough that the
+  // scene behind it stays the thing you are looking at.
+  drawKitRibbon(ctx, A, pieces, cx, baseY) {
+    // Sits right above the kit, so reading ahead and hitting are the same look.
+    const h = 8 + pieces.length * 9, halfW = Math.min(236, A.w / 2 - 20);
+    const x0 = Math.round(cx - halfW), x1 = Math.round(cx + halfW);
+    const y = Math.round(baseY - Math.max(132, 96 + h)), span = this.song.beat * 4;
+    const hitX = x0 + 14, endX = x1 - 8;
+    rect(ctx, x0, y, x1 - x0, h, 'rgba(10,8,18,0.72)');
+    frame(ctx, x0, y, x1 - x0, h, '#4a4270');
+    rect(ctx, x0 + 1, y + 1, x1 - x0 - 2, 1, '#6a5f9a');
+    // one rail per piece, tinted like the drum it belongs to
+    pieces.forEach((p, i) => {
+      const ry = y + 5 + i * 9;
+      ctx.globalAlpha = 0.3; rect(ctx, x0 + 4, ry, x1 - x0 - 8, 1, PIECE_COLORS[p] || '#8a80b0'); ctx.globalAlpha = 1;
+    });
+    // beat ticks
+    for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
+      const bt = b * this.song.beat, k = (bt - this.now) / span; if (k > 1) break; if (k < 0) continue;
+      const x = hitX + k * (endX - hitX);
+      ctx.globalAlpha = b % 4 === 0 ? 0.5 : 0.22; rect(ctx, x, y + 2, 1, h - 4, '#9a90d0'); ctx.globalAlpha = 1;
+    }
+    // the now-line
+    rect(ctx, hitX - 1, y + 1, 2, h - 2, '#ffd24a');
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged) continue;
+      const k = (n.t - this.now) / span; if (k > 1) break; if (k < -0.02) continue;
+      const x = Math.round(hitX + k * (endX - hitX));
+      const col = n.type === 'bomb' ? '#c8302a' : n.star ? '#ffd24a' : (PIECE_COLORS[pieces[n.lane]] || '#c2c8d6');
+      const ny = y + 3 + n.lane * 9;
+      rect(ctx, x - 2, ny, 5, 5, '#12101c'); rect(ctx, x - 1, ny + 1, 3, 3, col); rect(ctx, x - 1, ny + 1, 3, 1, lighten(col, 0.3));
+    }
+  }
+  // ---------- Reading off the page ----------
+  // The chart is written out as notation on a sheet of paper that scrolls past
+  // a playhead. Pitch is height on the stave; you play what you read.
+  drawSheetView(ctx, A) {
+    const instr = this.instrument, L = instr.lanes;
+    const pw = Math.min(A.w - 60, 800), ph = A.touch ? 118 : 132;
+    const px0 = Math.round(A.x + (A.w - pw) / 2), py0 = Math.round(A.y + (A.touch ? 26 : 30));
+    // the sheet, propped on a stand, with a shadow under it
+    ctx.fillStyle = 'rgba(8,6,14,0.5)'; ctx.fillRect(px0 + 5, py0 + 7, pw, ph);
+    const S = drawStave(ctx, px0, py0, pw, ph, { seed: hashStr(this.song.name || 'x') & 31 });
+    this.sheet = S;
+    // title in the corner of the page, the way a chart is headed
+    drawText(ctx, (this.song.name || '').toUpperCase(), px0 + pw - 8, py0 + 6, '#6a5c48', { align: 'right', font: 'small' });
+    drawText(ctx, instr.name.toUpperCase(), px0 + pw - 8, py0 + ph - 12, '#6a5c48', { align: 'right', font: 'small' });
+    const hitX = S.padLeft + 26, endX = S.right - 14, runW = endX - hitX;
+    // bar lines walking past
+    for (let b = Math.ceil((this.now - this.approach * 0.2) / (this.song.beat * 4)); ; b++) {
+      const bt = b * this.song.beat * 4, k = (bt - this.now) / this.approach;
+      if (k > 1.02) break; if (k < -0.2) continue;
+      const x = Math.round(hitX + k * runW);
+      if (x > S.left && x < S.right) rect(ctx, x, S.top, 1, S.bot - S.top + 1, '#5e5245');
+    }
+    // the playhead: a bar of light down the page, where now is
+    ctx.globalAlpha = 0.2 + this.beatPulse * 0.22;
+    rect(ctx, hitX - 7, py0 + 3, 15, ph - 6, '#e0c060'); ctx.globalAlpha = 1;
+    rect(ctx, hitX, py0 + 3, 1, ph - 6, '#b8332a');
+    rect(ctx, hitX - 2, py0 + 3, 5, 2, '#b8332a'); rect(ctx, hitX - 2, py0 + ph - 5, 5, 2, '#b8332a');
+    this.receptors.main = { x: hitX, y: S.midY };
+    // notes, written out
+    ctx.save(); ctx.beginPath(); ctx.rect(S.left + 2, py0, pw - 4, ph); ctx.clip();
+    const vis = [];
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx) continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1.04) break;
+      if (n.type === 'hold') { if (n.judged && (n.tailJudged || !n.hit)) continue; if ((n.t + n.dur - this.now) / this.approach < -0.16) continue; }
+      else { if (n.judged) continue; if (k < -0.16) continue; }
+      vis.push({ n, k });
+    }
+    for (const { n, k } of vis) {
+      const x = hitX + k * runW, ny = stavePos(S, n.lane, L);
+      const col = n.star ? '#d9a520' : LANE_COLORS[n.lane % LANE_COLORS.length];
+      this.receptors[n.lane] = { x: hitX, y: ny };
+      if (n.type === 'bomb') { drawText(ctx, 'X', x, ny - 5, '#b8332a', { align: 'center', scale: 2 }); continue; }
+      if (n.type === 'hold') {
+        // a tie running from the head to where the note lets go
+        const k2 = (n.t + n.dur - this.now) / this.approach, x2 = hitX + k2 * runW;
+        const th = n.holding ? 3 : 2;
+        rect(ctx, Math.round(Math.min(x, x2)), ny - 1, Math.max(2, Math.round(Math.abs(x2 - x))), th, n.holding ? lighten(col, 0.2) : withAlpha(col, 0.85));
+        rect(ctx, Math.round(Math.min(x, x2)), ny - 2 - th, Math.max(2, Math.round(Math.abs(x2 - x))), 1, '#6a5c48');
+        if (n.holding) { if (Math.random() < 0.5) this.fx.add({ x: hitX, y: ny, vx: 20, vy: -30, life: 0.3, color: col, kind: 'px', gravity: 0 }); continue; }
+      }
+      drawNotehead(ctx, S, x, ny, col, { star: n.star, hold: n.type === 'hold', flag: n.type !== 'hold' && !n.chord, judged: false });
+      if (n.chord) rect(ctx, Math.round(x) - 5, ny - 8, 11, 1, '#2a2118');
+    }
+    ctx.restore();
+    // which finger goes where, printed under the stave like a fingering guide
+    if (!A.touch) for (let l = 0; l < L; l++) {
+      const ny = stavePos(S, l, L), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
+      const bx = S.left + 6;
+      rect(ctx, bx, ny - 4, 9, 9, held ? LANE_COLORS[l % LANE_COLORS.length] : 'rgba(240,232,208,0.75)');
+      frame(ctx, bx, ny - 4, 9, 9, '#6a5c48');
+      drawText(ctx, instr.keyNames[l], bx + 4, ny - 2, held ? '#fff' : '#4a4038', { align: 'center', font: 'small' });
+    }
+    // the lip of a music stand holding the page up
+    const sy2 = py0 + ph;
+    rect(ctx, px0 - 6, sy2, pw + 12, 4, '#5e5462');
+    rect(ctx, px0 - 6, sy2, pw + 12, 1, '#8e8496');
+    for (const d of [-0.3, 0.3]) { const bx = Math.round(px0 + pw / 2 + pw * d); rect(ctx, bx - 1, sy2 + 4, 3, 12, '#6e6472'); rect(ctx, bx - 1, sy2 + 4, 1, 12, '#9a90a0'); }
+  }
   drawLanes(ctx, A) {
+    if (this.instrument.view === 'kit') return this.drawKitView(ctx, A);
+    if (this.instrument.view === 'sheet') return this.drawSheetView(ctx, A);
     const instr = this.instrument, L = instr.lanes, kind = this.section.instrument;
     // a kit needs room under the hit line for the shells and their name plates
-    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads,
-      nearY: instr.view === 'kit' ? A.y + A.h - (A.touch ? 86 : 80) : undefined });
+    const hw = new Highway(A, L, { touch: A.touch, pads: A.pads });
     this.hw = hw;
-    const cols = []; for (let l = 0; l < L; l++) cols.push(instr.view === 'kit' ? KIT_COLORS[l % KIT_COLORS.length] : LANE_COLORS[l % LANE_COLORS.length]);
+    const cols = []; for (let l = 0; l < L; l++) cols.push(LANE_COLORS[l % LANE_COLORS.length]);
     // lane floor glow
     for (let l = 0; l < L; l++) {
       const steps = 10;
       for (let i = 0; i < steps; i++) {
         const k0 = i / steps, k1 = (i + 1) / steps; const a = hw.pos(l, k0), b = hw.pos(l, k1);
-        ctx.globalAlpha = (instr.view === 'kit' ? 0.2 : 0.1) + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
+        ctx.globalAlpha = 0.1 + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
         ctx.fillStyle = cols[l]; ctx.beginPath();
         ctx.moveTo(a.x - a.w / 2 + 1, a.y); ctx.lineTo(a.x + a.w / 2 - 1, a.y); ctx.lineTo(b.x + b.w / 2 - 1, b.y); ctx.lineTo(b.x - b.w / 2 + 1, b.y); ctx.closePath(); ctx.fill();
         ctx.globalAlpha = 1;
@@ -354,16 +527,14 @@ class RhythmGame {
     for (let l = 0; l < L; l++) {
       const x = hw.laneCx(l), held = this.keysDown.has(instr.keys[l]) || (this.flashes[l] || 0) > 0.05;
       this.receptors[l] = { x, y: hw.nearY };
-      const isKit = instr.view === 'kit';
-      if (!isString && kind !== 'piano' && !isKit) {
+      if (!isString && kind !== 'piano') {
         const w = hw.laneW - 8;
         rect(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? cols[l] : '#181430');
         frame(ctx, x - w / 2, hw.nearY - 5, w, 10, held ? '#fff' : cols[l]);
       }
-      if (held && !isKit) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
-      if (!A.touch && !isString && kind !== 'piano' && !isKit) drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
+      if (held) { ctx.globalAlpha = 0.5; circle(ctx, x, hw.nearY, 12, cols[l]); ctx.globalAlpha = 1; }
+      if (!A.touch && !isString && kind !== 'piano') drawText(ctx, instr.keyNames[l], x, hw.nearY + 12, '#ddd', { align: 'center', font: 'small' });
     }
-    if (instr.view === 'kit') drawDrumKit(ctx, hw, this, { colors: KIT_COLORS, padNames: instr.padNames });
     // notes, far to near
     const vis = [];
     for (const n of this.notes) {

@@ -188,12 +188,19 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
           lastLane = lane;
           if (bomb) { notes.push({ t, lane: clamp(lane + rng.sign(), 0, L - 1), dur: 0, type: 'bomb', midi }); break; }
           if (kit) {
-            // A kit has no sustain. Downbeats land as kick, and now and then
-            // the crash rides on top of them.
+            // A kit has no sustain. The contour picks a piece by how high it
+            // sits, downbeats fall on the lowest thing you own, and the top
+            // piece rides on top of them. Works for a bucket and a pot as
+            // happily as for a full five-piece.
+            const pieces = instr.pieces || instr.drumFor || [];
+            const order = pieces.map((p, i) => i).sort((a, b) => (PIECE_PITCH[pieces[a]] || 0) - (PIECE_PITCH[pieces[b]] || 0));
+            const low = order[0], top = order[order.length - 1];
+            lane = order[clamp(Math.round(rel * (order.length - 1)), 0, order.length - 1)];
             const onBeat = Math.abs(((t - secStart) / beat) % 2) < 0.02;
-            if (onBeat && rng.chance(0.5)) lane = 0;
+            if (onBeat && rng.chance(0.5)) lane = low;
             notes.push({ t, lane, dur: 0, type: 'tap', midi, star });
-            if (onBeat && difficulty >= 3 && rng.chance(0.22) && lane !== 3) { notes.push({ t, lane: 3, dur: 0, type: 'tap', midi, chord: true }); notes[notes.length - 2].chord = true; }
+            // a two-limb accent: only once you own enough of a kit for it
+            if (onBeat && difficulty >= 3 && L >= 4 && rng.chance(0.22) && lane !== top) { notes.push({ t, lane: top, dur: 0, type: 'tap', midi, chord: true }); notes[notes.length - 2].chord = true; }
             break;
           }
           if (isLong && difficulty >= 2) { notes.push({ t, lane, dur: dur - beat * 0.15, type: 'hold', midi, star }); break; }

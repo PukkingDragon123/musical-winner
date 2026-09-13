@@ -19,6 +19,25 @@ class GigScene {
   }
   layout() {
     const t = Game.touch;
+    // A kit is played on the drums themselves, so it needs no highway and no
+    // pads: the venue gets the whole frame and the drums sit in it. Everything
+    // that still reads a converging highway keeps the split screen.
+    const lead = Game.run && Game.run.members[0];
+    const lv = lead && (INSTRUMENTS[lead.instrument] || {}).view;
+    this.openKit = lv === 'kit';
+    this.openStage = this.openKit || lv === 'sheet';
+    if (this.openStage) {
+      // A kit is tapped on the drums, so it never needs pads. Anything read off
+      // a page still does on a phone: the pads sit at the bottom of the scene.
+      const needPads = t && !this.openKit;
+      this.L = { top: false, open: true, stageTop: 26, stageBottom: H,
+                 groundY: t ? (needPads ? 330 : 372) : 396, rows: [0, -10, -20],
+                 streetY: t ? (needPads ? 356 : 420) : 446, streetH: needPads ? 56 : 94,
+                 rhythmY: 16, rhythmH: (needPads ? H - 124 : H) - 16,
+                 padY: needPads ? H - 118 : 0, padH: needPads ? 114 : 0, overlay: true };
+      this.stageX = 150; this.hatX = this.stageX + 92;
+      return;
+    }
     this.L = t ? { top: true, stageTop: 26, stageBottom: 150, groundY: 122, rows: [0, -8, -16], streetY: null, rhythmY: 152, rhythmH: 248, padY: 404, padH: 130, compact: true }
       : { top: false, stageTop: 316, stageBottom: 540, groundY: 452, rows: [0, -9, -18], streetY: 474, streetH: 66, rhythmY: 16, rhythmH: 296, padY: 0, padH: 0 };
     this.stageX = 230; this.hatX = this.stageX + 100;
@@ -70,10 +89,34 @@ class GigScene {
       this.backing.update(); this.rhythm.update(dt);
       this.cam.update(dt);
       if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
-      // a slow drift while the set runs, so the stage is never static
+      // ---- the camera works the set like a crew would
       if (this.camHold == null && this.rhythm && !this.paused) {
         const hy = this.rhythm.hype / 100;
-        this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+        if (this.L.open) {
+          // cut between a handful of shots, holding each for a few bars, and
+          // favour the tight ones once the crowd is going
+          this.shotT = (this.shotT || 0) - dt;
+          if (this.shotT <= 0) {
+            const bar = this.song.beat * 4;
+            this.shotT = bar * (2 + Math.floor(Math.random() * 3));
+            const pool = hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
+            this.shot = pool[Math.floor(Math.random() * pool.length)];
+          }
+          const kx = this.stageX + (this.openKit ? 244 : 120);
+          const SHOTS = {
+            wide:  { z: 1.0,  x: 0,             y: 0,   r: 0.004 },
+            tight: { z: 1.26, x: kx - W / 2,    y: -18, r: -0.006 },
+            low:   { z: 1.16, x: kx - W / 2 - 40, y: 24, r: 0.012 },
+            over:  { z: 1.34, x: this.stageX - W / 2 + 60, y: -34, r: -0.014 },
+          };
+          const sh = SHOTS[this.shot] || SHOTS.wide;
+          const breathe = Math.sin(this.t * 0.4) * 4;
+          this.cam.push(sh.z + hy * 0.05, sh.x + breathe, sh.y - hy * 8, sh.r + Math.sin(this.t * 0.27) * 0.004);
+          // and a small push on every downbeat, so the frame moves with the tune
+          if (this.rhythm.onBeat && this.rhythm.lastBeat % 4 === 0) this.cam.hit(1.4);
+        } else {
+          this.cam.push(1 + hy * 0.035, Math.sin(this.t * 0.35) * 5, -hy * 6, Math.sin(this.t * 0.23) * 0.006);
+        }
       }
       if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
@@ -128,6 +171,18 @@ class GigScene {
   togglePause() { this.paused = !this.paused; if (Audio.ctx) { if (this.paused) Audio.ctx.suspend(); else Audio.ctx.resume(); } this.rhythm.keysDown.clear(); }
   quit() { if (Audio.ctx) Audio.ctx.resume(); this.backing.stop(); this.rhythm.finished = true; this.paused = false; this.S.applause *= 0.5; this.finish(); }
   padAt(x, y) { return this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h); }
+  // Which drum is under the pointer? Nearest wins where two overlap, so a tap
+  // between a tom and a crash always resolves to something.
+  drumAt(x, y) {
+    const spots = this.rhythm && this.rhythm.kitSpots; if (!spots) return null;
+    let best = null, bestD = Infinity;
+    for (const sp of spots) {
+      if (!kitHit(sp, x, y)) continue;
+      const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6;
+      if (d < bestD) { bestD = d; best = sp; }
+    }
+    return best;
+  }
   pointerDown(x, y, id) {
     if (this.phase === 'prep') {
       if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
@@ -138,10 +193,21 @@ class GigScene {
     if (this.phase === 'tally') { if (!this.tallyDone) { this.tallyT = 999; return; } this.next(); return; }
     if (this.paused) { for (const b of this.pauseButtons) if (b.hit(x, y)) { b.onTap(); return; } return; }
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
-    const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); }
-    else if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
+    const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
+    // A kit is played by hitting the drums themselves, mouse or finger alike.
+    const drum = this.drumAt(x, y);
+    if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
   }
-  pointerMove(x, y, id) { if (this.phase !== 'play' || this.paused) return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
+  pointerMove(x, y, id) {
+    if (this.phase !== 'play' || this.paused) return;
+    const prev = this.padPointers.get(id); if (prev === undefined) return;
+    const pad = this.padAt(x, y); let next = pad ? pad.code : null;
+    if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
+    if (next === prev) return;
+    this.rhythm.keyUp(prev);
+    if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
+  }
   pointerUp(x, y, id) { const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
   hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
   toggleMember(i) {
@@ -167,16 +233,38 @@ class GigScene {
     this.fx.draw(ctx); ctx.restore();
     const wk = WEATHERS[Game.run.weather] || WEATHERS.clear;
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
-    if (this.rhythm) {
-      const hx = W - 22, hy = L.stageTop + 8, hh = Math.min(130, L.stageBottom - L.stageTop - 30);
-      rect(ctx, hx - 2, hy - 2, 16, hh + 4, '#1a1410'); const fill = hh * this.rhythm.hype / 100;
-      rect(ctx, hx, hy + hh - fill, 12, fill, this.rhythm.hype > 70 ? '#ff5a9a' : this.rhythm.hype > 40 ? '#ffd166' : '#6fb8ff'); frame(ctx, hx - 2, hy - 2, 16, hh + 4, '#888');
-      if (this.rhythm.hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
-      rect(ctx, W - 186, L.stageTop + 6, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 186, L.stageTop + 6, 156, 44, '#3a3560');
-      drawText(ctx, fmtNum(this.S.applause), W - 38, L.stageTop + 10, '#fff', { align: 'right', scale: 3 });
-      ctx.drawImage(icon('heart'), W - 180, L.stageTop + 34, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 164, L.stageTop + 35, '#cfc9e6');
-      ctx.drawImage(icon('coin'), W - 128, L.stageTop + 33, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 110, L.stageTop + 35, '#ffd24a');
-    }
+    
+  }
+  // The set read-outs live outside the camera: the shot moves, the HUD does not.
+  drawSetHud(ctx) {
+    const L = this.L; if (!this.rhythm) return;
+      // ---- the hype gauge: a brass-cased meter with real ticks and a needle
+      const hh = L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
+      const hx = W - 34, hy = L.open ? H - 58 - hh - 10 : L.stageTop + 8;
+      const hype = this.rhythm.hype, hot = hype > 70, warm = hype > 40;
+      const hcol = hot ? '#ff5a9a' : warm ? '#ffd166' : '#6fb8ff';
+      rect(ctx, hx - 4, hy - 12, 20, hh + 18, '#171320');
+      frame(ctx, hx - 4, hy - 12, 20, hh + 18, '#6a5f8a');
+      rect(ctx, hx - 3, hy - 11, 18, 1, '#8f83b4');
+      drawText(ctx, 'HYPE', hx + 6, hy - 9, hcol, { align: 'center', font: 'small' });
+      rect(ctx, hx - 1, hy - 1, 14, hh + 2, '#0c0a14');
+      const fill = Math.round(hh * hype / 100);
+      // the column, brightening toward the top
+      for (let i = 0; i < fill; i++) {
+        const k = i / Math.max(1, hh), y2 = hy + hh - 1 - i;
+        rect(ctx, hx, y2, 12, 1, i > fill - 3 ? lighten(hcol, 0.3) : k > 0.72 ? '#ff5a9a' : k > 0.42 ? '#ffd166' : '#6fb8ff');
+        if (i % 6 === 0) { ctx.globalAlpha = 0.3; rect(ctx, hx, y2, 12, 1, '#ffffff'); ctx.globalAlpha = 1; }
+      }
+      // tick marks up the case, heavier at the quarters
+      for (let i = 0; i <= 8; i++) { const ty = hy + hh - Math.round(hh * i / 8); rect(ctx, hx + 12, ty, i % 2 ? 2 : 4, 1, '#8f83b4'); }
+      frame(ctx, hx - 1, hy - 1, 14, hh + 2, '#4a4270');
+      if (hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
+      const rdY = L.open ? H - 58 : L.stageTop + 6;
+      rect(ctx, W - 196, rdY, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 196, rdY, 156, 44, '#3a3560');
+      rect(ctx, W - 195, rdY + 1, 154, 1, '#5a5490');
+      drawText(ctx, fmtNum(this.S.applause), W - 48, rdY + 4, '#fff', { align: 'right', scale: 3 });
+      ctx.drawImage(icon('heart'), W - 190, rdY + 28, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 174, rdY + 29, '#cfc9e6');
+      ctx.drawImage(icon('coin'), W - 138, rdY + 27, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 120, rdY + 29, '#ffd24a');
   }
   // Standing outside the venue before the set. The scene does the talking:
   // the band is on the pavement, you tap a bug to put them in or out.
@@ -274,13 +362,34 @@ class GigScene {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
-      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
-      this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
-      this.drawStage(ctx);
-      this.cam.done(ctx);
+      const rA = { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, backdrop: this.V.far,
+        overlay: !!L.overlay, kit: L.open ? { cx: this.stageX + 244, baseY: L.groundY - 34, width: Math.round(W * 0.62) } : null };
+      // On an open stage the venue is the picture and the kit stands in it, so
+      // the scene is painted first and the drums go on top of the ground.
+      if (L.open) {
+        this.cam.apply(ctx, W / 2, L.groundY - 40);
+        this.drawStage(ctx);
+        this.rhythm.draw(ctx, rA);
+        this.cam.done(ctx);
+      } else {
+        this.rhythm.draw(ctx, rA);
+        this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
+        this.drawStage(ctx);
+        this.cam.done(ctx);
+      }
+      this.drawSetHud(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
-      const p = clamp(this.rhythm.now / this.song.length, 0, 1), barY = L.top ? L.stageBottom : L.stageTop - 4;
-      rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, W * p, 4, '#ffd24a');
+      const p = clamp(this.rhythm.now / this.song.length, 0, 1);
+      const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);
+      rect(ctx, 0, barY, W, 5, '#1b1626'); rect(ctx, 0, barY, W, 1, '#332b46');
+      rect(ctx, 0, barY + 1, Math.round(W * p), 4, '#ffd24a');
+      rect(ctx, 0, barY + 1, Math.round(W * p), 1, '#fff2b0');
+      // where each section starts, so the run of the set is readable at a glance
+      for (const sec of this.rhythm.sections) {
+        const sx = Math.round(W * clamp(sec.start / this.song.length, 0, 1));
+        rect(ctx, sx, barY, 1, 5, sec.qte ? '#ff9f68' : '#6a5f9a');
+      }
+      { const hx2 = Math.round(W * p); rect(ctx, hx2 - 1, barY - 1, 3, 7, '#fff8e0'); }
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
       const lblY = L.top ? L.stageBottom - 18 : L.stageTop + 8;
       rect(ctx, 4, lblY - 3, textWidth(lbl) + 14, 15, 'rgba(0,0,0,0.62)'); drawText(ctx, lbl, 11, lblY, '#fff');

@@ -5,7 +5,15 @@ const IOL = '#231a16';           // shared item outline: warm near-black
 
 // Every item is a Pix of ITEM_PX square, drawn once and cached.
 function itemCanvas(kind) {
-  return cached('item32|' + kind, () => buildItem(kind).toCanvas());
+  return cached('item32|' + kind, () => {
+    const P = buildItem(kind);
+    // A finishing pass over every item: fine grain so no face is dead flat,
+    // and a few scratches so the thing looks like it has been carried around.
+    const body = P.solidMask(IOL);
+    P.grain(body, 0.05, hashStr(kind) & 63);
+    P.scuff(body, hashStr(kind) & 31, 4, 0.12);
+    return P.toCanvas();
+  });
 }
 function buildItem(kind) {
   const P = new Pix(ITEM_PX, ITEM_PX);
