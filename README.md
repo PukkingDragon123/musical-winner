@@ -70,15 +70,25 @@ then a real kick and snare, a hi-hat, a rack tom, a crash — until you are sitt
 five-piece on a proper rug and the charts finally use all of it. The junk pieces sound like junk
 too: the bucket thumps, the pot rings and rattles for half a second.
 
+**Drums are about the beat, and forgiving about the rest.** The timing windows on a kit are half
+again as wide as anywhere else, and if you hit the beat on the wrong drum it still counts — you
+played the beat, just not the piece the chart asked for, so it caps at GREAT, the drum under your
+hand is the one that sounds, and the judgement says `(ANY DRUM)` so you know what happened. A
+closing ring under the preview strip beats out the count with a pip per beat of the bar, so
+landing on it is something you can see as well as hear.
+
 **You hit the drum, not a button.** There are no lanes and no pads under a kit. The drums stand
 in the scene at their real size and a note is a ring closing onto the one you have to strike;
 when the ring touches the rim you are on the beat. Click or tap the drum itself, and drag across
 them for a fill. A slim two-bar strip above the kit shows what is coming, one rail per piece.
 
-**Keys, guitar and bass are played by ear, on the real instrument.** No lanes, no letters, no
-pads. A full pixel keyboard — white keys with the black ones in their proper places — or a
-rosewood neck with six strung, bound and fretted strings sits across the bottom of the screen,
-and you touch the note you want. The band plays you a phrase and lights where it lands; then it
+**Guitar and bass are Guitar Hero.** Four lanes (two on a bass) of gems falling down a wooden
+fretboard that recedes to a vanishing point, with strings that ring and wobble when you hit them,
+holds to sustain, gold stars worth triple and bombs to dodge.
+
+**Keys are played by ear, on the real instrument.** No lanes, no letters, no
+pads. A full pixel keyboard — white keys with the black ones in their proper places — sits across the
+bottom of the screen, and you touch the note you want. The band plays you a phrase and lights where it lands; then it
 goes quiet and you play the same phrase back from memory. Get the pitch wrong and the game tells
 you what you played and what it wanted; get the pitch right but the moment wrong and it says
 that too. How much help you get thins out as the run goes on: at first every note you owe is
@@ -104,7 +114,8 @@ instrument, end the day with nobody hungry. Each pays cash or stamina the moment
 |---|---|
 | Guitar / Bass / Keyboard / Tambourine | `D F J K` / `F J` / `S D F J K L` / `Space` |
 | Drum Kit | click or tap the drum; keys `D F Space J K` |
-| Keyboard / Guitar / Bass | play the instrument itself; `Z S X D C V…` on a keyboard |
+| Guitar / Bass | `D F J K` / `F J` down the fretboard |
+| Keyboard | play the keys themselves; `Z S X D C V…` on a computer |
 | Saxophone | hold `Space` |
 | Trumpet | `J K L` valve combos |
 | Violin | `↑/W` up bow, `↓/S` down bow |

@@ -38,12 +38,12 @@ const KIT_LADDER = [
 ];
 const KIT_COLORS = KIT_LADDER[4].pieces.map(p => PIECE_COLORS[p]);
 const INSTRUMENTS = {
-  guitar:     { name: 'Guitar', game: 'ear', view: 'fret', voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
-                frets: 5, keys: [], keyNames: [],
-                desc: 'A real neck. Listen to the phrase, then find it on the fretboard and play it back.' },
-  bass:       { name: 'Bass', game: 'ear', view: 'fret', voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
-                frets: 5, tuning: [28, 33, 38, 43], keys: [], keyNames: [],
-                desc: 'Four thick strings. Hear the line, then walk it back yourself.' },
+  guitar:     { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+                voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
+                desc: 'Four lanes of falling notes down the fretboard. Hold the long ones, catch the gold stars, dodge the bombs.' },
+  bass:       { name: 'Bass', game: 'lanes', lanes: 2, keys: ['KeyF', 'KeyJ'], keyNames: ['F', 'J'],
+                voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
+                desc: 'Two fat strings and long slides. Lock in with the drums.' },
   piano:      { name: 'Keyboard', game: 'ear', view: 'keys', voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
                 octaves: 2, keys: [], keyNames: [],
                 desc: 'Real keys. The band plays you a phrase, then you play it back from memory.' },
