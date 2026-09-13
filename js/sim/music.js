@@ -83,11 +83,21 @@ function generateChart(song, sections, difficulty, rng, opts = {}) {
 }
 // Backing band with genre styles. mute: fn(t)->{drums,bass,pad} or object
 class Backing {
-  constructor(song, startTime, mute) { this.song = song; this.start = startTime; this.mute = mute || {}; this.nextStep = 0; this.stepDur = song.beat / 4; this.totalSteps = (song.bars + 4) * 16; this.stopped = false; }
+  constructor(song, startTime, mute, opts = {}) {
+    this.song = song; this.start = startTime; this.mute = mute || {}; this.nextStep = 0; this.stepDur = song.beat / 4;
+    // A call-and-response set runs far longer than the tune does, so the band
+    // can be told to keep vamping round the changes instead of stopping.
+    this.loop = !!opts.loop;
+    this.loopBars = song.bars;
+    this.totalSteps = opts.steps || (song.bars + 4) * 16;
+    this.stopped = false;
+  }
   update() { if (this.stopped || !Audio.ctx) return; const horizon = Audio.now() + 0.3; while (this.nextStep < this.totalSteps) { const t = this.start + this.nextStep * this.stepDur; if (t > horizon) break; this.schedule(this.nextStep, t); this.nextStep++; } }
   schedule(step, t) {
-    const s = this.song, barIdx = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
-    const countIn = barIdx === 0, outro = barIdx > s.bars;
+    const s = this.song, rawBar = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
+    // when vamping, the count-in happens once and then the bars wrap round
+    const barIdx = this.loop && rawBar > 0 ? ((rawBar - 1) % this.loopBars) + 1 : rawBar;
+    const countIn = rawBar === 0, outro = !this.loop && barIdx > s.bars;
     const mute = typeof this.mute === 'function' ? (this.mute(t) || {}) : this.mute;
     if (countIn) { if (sub === 0) Audio.drum('hat', t, 0.7); return; }
     const chord = s.chords[Math.min(barIdx - 1, s.bars - 1)], rootMidi = s.root - 12, style = s.style || 'rock';

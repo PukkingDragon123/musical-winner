@@ -15,7 +15,10 @@ class Crowd {
     this.peds.push({ x: anywhere ? r.range(20, W - 20) : (dir > 0 ? -24 : W + 24), dir, row, spec: randomBugSpec(r), speed: r.range(16, 30), state: 'walk', t: r.range(0, 10), watchT: 0, tipT: r.range(2, 5), generous: r.range(0.6, 1.6), attention: r.range(0.5, 1.4), stopX: null, bob: r.range(0, 6), tipped: 0, walkT: 0 });
   }
   spawnCar() { const r = this.rng, dir = r.sign(); const kind = this.venue.cablecar && r.chance(0.25) ? 'cable' : 'car'; this.cars.push({ x: dir > 0 ? -70 : W + 70, dir, speed: kind === 'cable' ? 22 : r.range(40, 75), seed: r.int(1, 9999), kind, lane: dir > 0 ? 1 : 0 }); }
-  update(dt, hype, ev, wind) {
+  update(dt, hype, ev, wind, playing) {
+    // Passers-by drop coins for playing, not for standing there listening to
+    // your own band. A mode with a listen half would otherwise earn double.
+    this.paying = playing !== false;
     this.time += dt; this.hype = hype;
     const traffic = this.venue.traffic * this.mods.crowd * (this.mods.bossMod === 'rushHour' ? 2 : 1);
     this.spawnAcc += dt * traffic * 0.42; while (this.spawnAcc >= 1) { this.spawnAcc -= 1; if (this.peds.length < 26) this.spawn(); }
@@ -42,7 +45,7 @@ class Crowd {
     if (ev.cheer) { this.cheerFlash = 1; for (const p of this.watchers) this.tip(p, ev.cheer); Audio.applause(clamp(this.watchers.length / 8, 0.2, 1)); for (let i = 0; i < 40; i++) this.fx.add({ x: this.L.stageX + (this.rng() - 0.5) * 240, y: this.L.groundY - 90 - this.rng() * 40, vx: (this.rng() - 0.5) * 30, vy: 20 + this.rng() * 30, life: 2, color: ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff'][i % 5], kind: 'confetti', gravity: 15 }); }
     this.cheerFlash = Math.max(0, this.cheerFlash - dt * 2);
     this.peds = this.peds.filter(p => p.x > -40 && p.x < W + 40);
-    for (const c of this.coins) { c.t += dt / c.dur; if (c.t >= 1 && !c.done) { c.done = true; this.earned += c.value; this.tipCount++; Audio.ui(c.bill ? 'bill' : 'coin'); this.fx.text(this.L.hatX, this.L.hatY - 10, '+' + fmtMoney(c.value), c.bill ? '#9af09a' : '#ffe680', { life: 1 }); this.fx.burst(this.L.hatX, this.L.hatY - 2, 6, { color: ['#ffe680', '#fff'], speed: 40, life: 0.4, kind: 'spark', gravity: 80, up: 30 }); } }
+    for (const c of this.coins) { c.t += dt / c.dur; if (c.t >= 1 && !c.done) { c.done = true; if (this.paying) this.earned += c.value; this.tipCount++; Audio.ui(c.bill ? 'bill' : 'coin'); this.fx.text(this.L.hatX, this.L.hatY - 10, '+' + fmtMoney(c.value), c.bill ? '#9af09a' : '#ffe680', { life: 1 }); this.fx.burst(this.L.hatX, this.L.hatY - 2, 6, { color: ['#ffe680', '#fff'], speed: 40, life: 0.4, kind: 'spark', gravity: 80, up: 30 }); } }
     this.coins = this.coins.filter(c => !c.done);
     for (const pg of this.pigeons) { pg.t += dt; if (pg.t > 3 && this.rng.chance(dt * 0.6)) { pg.t = 0; pg.hop = 0.25; pg.dir = this.rng.sign(); } if (pg.hop > 0) { pg.hop -= dt; pg.x += pg.dir * 30 * dt; } const near = this.peds.some(p => Math.abs(p.x - pg.x) < 14); if (near && pg.hop <= 0) { pg.hop = 0.3; pg.dir = this.rng.sign(); } pg.x = clamp(pg.x, 10, W - 10); }
     // ambient: leaves / fog / steam

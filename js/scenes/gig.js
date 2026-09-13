@@ -8,14 +8,41 @@ class GigScene {
     this.difficulty = clamp(Math.round(1 + r.day * 0.8 + (this.mode === 'elite' ? 1 : 0) + (this.mode === 'boss' ? 2 : 0)), 1, 7);
     const leader = r.members[0], fam = INSTRUMENTS[leader.instrument].family;
     const pool = r.buffs.genre ? TUNE_BY_GENRE(r.buffs.genre) : TUNE_KEYS.filter(k => this.difficulty >= 4 || !TUNES[k].hard);
-    this.tuneKey = r.rng.pick(pool.length ? pool : TUNE_KEYS);
-    this.song = songFromTune(this.tuneKey, { bpm: TUNES[this.tuneKey].bpm + r.day * 2 });
-    this.bars = this.mode === 'boss' ? Math.max(12, this.song.bars) : this.song.bars;
+    // ---- the crate: what this room has records of tonight
+    const src = (pool.length >= 8 ? pool : TUNE_KEYS).slice();
+    this.crate = r.rng.shuffle(src).slice(0, 8);
+    // a tune you have played before is still in the crate, but marked, so you
+    // can choose between something you know and something you do not
+    this.known = r.playedTunes || (r.playedTunes = {});
+    this.setlist = [];
+    this.songIdx = 0;
+    // the tally adds up across the whole show
+    this.showTotals = { perfect: 0, great: 0, good: 0, miss: 0, maxCombo: 0 };
+    this.setSong(this.crate[0]);
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
-    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.fx = new Particles();
+    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
     this.cam = new Camera(); this.cutIn = null;
     this.train = { x: -700, t: r.rng.range(4, 9) };
+  }
+  // Point the scene at one tune: everything downstream reads this.song.
+  setSong(key) {
+    const r = Game.run;
+    this.tuneKey = key;
+    this.song = songFromTune(key, { bpm: TUNES[key].bpm + r.day * 2 });
+    this.bars = this.mode === 'boss' ? Math.max(12, this.song.bars) : this.song.bars;
+  }
+  // A show is three songs. Each one is short, so the set has shape.
+  get setSize() { return 3; }
+  toggleSong(key) {
+    const i = this.setlist.indexOf(key);
+    if (i >= 0) { this.setlist.splice(i, 1); Audio.ui('back'); return; }
+    if (this.setlist.length >= this.setSize) { Audio.ui('error'); return; }
+    this.setlist.push(key); Audio.ui('select');
+    // a taste of what you just picked, so choosing is a musical decision
+    const t2 = TUNES[key]; const beat = 60 / t2.bpm;
+    let at = Audio.now() + 0.02;
+    for (const [m, b] of t2.notes.slice(0, 6)) { if (m > 0) Audio.note('piano', m, at, beat * b * 0.9, 0.34); at += beat * b * 0.6; }
   }
   layout() {
     const t = Game.touch;
@@ -25,11 +52,12 @@ class GigScene {
     const lead = Game.run && Game.run.members[0];
     const lv = lead && (INSTRUMENTS[lead.instrument] || {}).view;
     this.openKit = lv === 'kit';
-    this.openStage = this.openKit || lv === 'sheet';
+    this.openEar = lv === 'keys' || lv === 'fret';
+    this.openStage = this.openKit || this.openEar || lv === 'sheet';
     if (this.openStage) {
       // A kit is tapped on the drums, so it never needs pads. Anything read off
       // a page still does on a phone: the pads sit at the bottom of the scene.
-      const needPads = t && !this.openKit;
+      const needPads = t && !this.openKit && !this.openEar;
       this.L = { top: false, open: true, stageTop: 26, stageBottom: H,
                  groundY: t ? (needPads ? 330 : 372) : 396, rows: [0, -10, -20],
                  streetY: t ? (needPads ? 356 : 420) : 446, streetH: needPads ? 56 : 94,
@@ -53,17 +81,42 @@ class GigScene {
   }
   startPlay() {
     const r = Game.run; Audio.init(); Audio.setStageReverb(false);
+    if (this.setlist.length < this.setSize) { Audio.ui('error'); this.setWarn = 1.4; return; }
     for (const k in this.useItems) if (this.useItems[k]) { const i = r.consumables.indexOf(k); if (i >= 0) { r.consumables.splice(i, 1); CONSUMABLES[k].use(r); } }
+    this.songIdx = 0;
+    this.startSong(0);
+  }
+  // Run one song of the set. Called again for each, so the show is continuous.
+  startSong(idx) {
+    const r = Game.run;
+    this.songIdx = idx;
+    this.setSong(this.setlist[idx]);
+    this.known[this.tuneKey] = (this.known[this.tuneKey] || 0) + 1;
     this.performers = r.members.filter((m, i) => this.active[i]); if (!this.performers.length) this.performers = [r.members[0]];
     const leader = r.members[0], mates = this.performers.filter(m => !m.leader);
     const sections = []; let mi = 0;
     for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, instr: gearInstrument(leader.instrument, leader.quality), startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
     this.sections = sections;
     const mods = r.gigMods(this.performers, this.difficulty, this.bossMod); mods.fx = { shake: Game.shake };
+    mods.maxPhrases = 3;
     const notes = chartFromMelody(this.song, sections, this.difficulty, r.rng, { bombMult: (this.bossMod === 'heckler' ? 3 : 1) * (mods.bombMult || 1), starRate: mods.starRate || 0.08 });
     this.mods = mods;
-    this.S = new ScoreState(r, { instrument: leader.instrument, genre: this.song.genre, tune: this.tuneKey, performers: this.performers.length, band: this.performers, venue: this.venue, mode: this.mode, bossMod: this.bossMod, mods, battle: !!(r.pendingGig && r.pendingGig.battle) });
-    this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
+    if (!this.S) this.S = new ScoreState(r, { instrument: leader.instrument, genre: this.song.genre, tune: this.tuneKey, performers: this.performers.length, band: this.performers, venue: this.venue, mode: this.mode, bossMod: this.bossMod, mods, songs: this.setSize, battle: !!(r.pendingGig && r.pendingGig.battle) });
+    else this.S.setSection(false);
+    // Instruments you actually play are run by ear: the band states a phrase
+    // and you answer it on the real thing. Everything else keeps its chart.
+    const lInstr = gearInstrument(leader.instrument, leader.quality);
+    if (lInstr.game === 'ear') {
+      this.surface = makeSurface(lInstr, this.song);
+      this.rhythm = new EarGame(this.song, this.surface, mods, {
+        onJudge: (n, j) => { const a = this.S.onHit({ midi: n.midi, star: false }, j, {}); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, '#fff', { life: 0.6 }); },
+        onPhase: (ph) => { if (ph === 'response') { this.cam.hit(2); Audio.ui('tick'); } },
+        onMilestone: (ms) => { this.cutIn = { t: 0, ms }; this.cam.hit(3); this.cam.push(1.12, 0, -14, (Math.random() - 0.5) * 0.02); this.camHold = 1.1; },
+      });
+      this.rhythm.voice = lInstr.voice;
+      this.rhythm.instr = lInstr; this.rhythm.instrKey = leader.instrument; this.rhythm.member = leader;
+      this.earMode = true;
+    } else this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
       onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
@@ -74,16 +127,26 @@ class GigScene {
         this.camHold = 1.1;
       },
     });
+    this.S.setSection(false);
     const wmul = (WEATHERS[r.weather] || WEATHERS.clear).tipMult;
     this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 6 });
     const start = Audio.now() + 0.6 + this.song.leadIn; this.rhythm.begin(start);
-    this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); const ins = sec ? sec.instrument : null; return { drums: ins === 'drums', bass: ins === 'bass' }; });
+    if (this.earMode) {
+      // the band vamps round the changes for as long as the lesson takes, and
+      // drops out under a call so the phrase is the only thing you can hear
+      const steps = Math.ceil(this.rhythm.totalLength / (this.song.beat / 4)) + 32;
+      this.backing = new Backing(this.song, start - this.song.leadIn, () => {
+        const quiet = this.rhythm.phase === 'call';
+        return { bass: quiet, chords: quiet };
+      }, { loop: true, steps });
+    } else this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); const ins = sec ? sec.instrument : null; return { drums: ins === 'drums', bass: ins === 'bass' }; });
     this.phase = 'play'; this.padKey = null; this.quakeT = 3;
     this.pauseBtn = new Btn(8, this.L.rhythmY + 6, 34, 20, 'II', () => this.togglePause(), { color: '#3a3560', hi: '#5a5490', lo: '#2a2540', ol: '#1a1430' });
     this.pauseButtons = [new Btn(W / 2 - 150, 240, 140, 34, 'RESUME', () => this.togglePause(), { scale: 2 }), new Btn(W / 2 + 10, 240, 140, 34, 'BAIL OUT', () => this.quit(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 })];
   }
   update(dt) {
     this.t += dt; this.fx.update(dt, Game.wind.px);
+    if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
       this.backing.update(); this.rhythm.update(dt);
@@ -99,11 +162,18 @@ class GigScene {
           if (this.shotT <= 0) {
             const bar = this.song.beat * 4;
             this.shotT = bar * (2 + Math.floor(Math.random() * 3));
-            const pool = hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
+            const pool = this.earMode ? ['wide', 'wide', 'low'] : hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
             this.shot = pool[Math.floor(Math.random() * pool.length)];
           }
           const kx = this.stageX + (this.openKit ? 244 : 120);
-          const SHOTS = {
+          // With an instrument in your hands the shot only breathes: a big pan
+          // would drag the venue off the frame behind a keyboard that cannot
+          // move with it. A kit stands in the scene, so it can take real moves.
+          const SHOTS = this.earMode ? {
+            wide: { z: 1.0,  x: 0,  y: 0,  r: 0.003 },
+            low:  { z: 1.06, x: 0,  y: 12, r: 0.008 },
+            tight: { z: 1.08, x: Math.round((kx - W / 2) * 0.25), y: -8, r: -0.005 },
+          } : {
             wide:  { z: 1.0,  x: 0,             y: 0,   r: 0.004 },
             tight: { z: 1.26, x: kx - W / 2,    y: -18, r: -0.006 },
             low:   { z: 1.16, x: kx - W / 2 - 40, y: 24, r: 0.012 },
@@ -120,15 +190,41 @@ class GigScene {
       }
       if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
-      this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v);
-      this.S.watcherTick(dt, this.crowd.watchers.length);
+      this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v, !this.earMode || this.rhythm.phase === 'response');
+      this.S.watcherTick(dt, this.crowd.watchers.length, !this.earMode || this.rhythm.phase === 'response');
       if (this.bossMod === 'quake') { this.quakeT -= dt; if (this.quakeT <= 0) { this.quakeT = 4 + Math.random() * 5; Game.shake.hit(6, 0.6); Audio.drum('stomp', 0, 0.6); } }
       this.train.t -= dt; if (this.train.t < 0 && this.venue.kind === 'subway') { this.train.x += dt * 300; if (this.train.x > W + 400) { this.train.x = -700; this.train.t = 7 + Math.random() * 8; } }
-      if (this.rhythm.finished) this.finish();
+      if (this.rhythm.finished) this.songDone();
+    } else if (this.phase === 'break') {
+      // a beat between numbers: the crowd claps, you catch your breath
+      this.songBreak.t += dt;
+      this.crowd.update(dt, 70, { perfects: 0, misses: 0, cheer: 1 }, Game.wind.v);
+      if (this.songBreak.t > 2.4) { this.songBreak = null; this.startSong(this.songIdx + 1); }
     } else if (this.phase === 'tally') { this.tallyT += dt; this.advanceTally(); }
   }
+  // One song down. Bank it, put the next record on, and only tally the show
+  // once all three have been played.
+  songDone() {
+    const res = this.rhythm.results();
+    const T = this.showTotals;
+    T.perfect += res.perfect; T.great += res.great; T.good += res.good; T.miss += res.miss;
+    T.maxCombo = Math.max(T.maxCombo, res.maxCombo);
+    if (this.backing) this.backing.stopped = true;
+    if (this.songIdx + 1 < this.setlist.length) {
+      this.songBreak = { t: 0, next: this.setlist[this.songIdx + 1] };
+      this.phase = 'break';
+      Audio.applause(0.6, 1.1);
+      return;
+    }
+    this.finish();
+  }
   finish() {
-    const r = Game.run, res = this.rhythm.results(); this.res = res;
+    const r = Game.run, live = this.rhythm.results(), T = this.showTotals;
+    // the tally is the whole show, not the last song of it
+    const res = { perfect: T.perfect, great: T.great, good: T.good, miss: T.miss, maxCombo: Math.max(T.maxCombo, live.maxCombo) };
+    res.total = res.perfect + res.great + res.good + res.miss;
+    res.acc = res.total ? (res.perfect + res.great * 0.75 + res.good * 0.4) / res.total : 0;
+    this.res = res;
     const total = this.S.finish({ combo: this.rhythm.combo, maxCombo: res.maxCombo, misses: res.miss, watchers: this.crowd.watchers.length, hype: this.rhythm.hype, acc: res.acc });
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
@@ -187,6 +283,8 @@ class GigScene {
     if (this.phase === 'prep') {
       if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
       if (this.backBtn && this.backBtn.hit(x, y)) { this.backBtn.onTap(); return; }
+      for (const sv of (this.sleeves || [])) if (x >= sv.x && x < sv.x + sv.w && y >= sv.y && y < sv.y + sv.h) { this.toggleSong(sv.key); return; }
+      for (const sl of (this.setSlots || [])) if (x >= sl.x && x < sl.x + sl.w && y >= sl.y && y < sl.y + sl.h) { const k = this.setlist[sl.i]; if (k) this.toggleSong(k); return; }
       for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) { this.toggleMember(l.i); return; }
       return;
     }
@@ -197,18 +295,44 @@ class GigScene {
     // A kit is played by hitting the drums themselves, mouse or finger alike.
     const drum = this.drumAt(x, y);
     if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    // Keys and necks are played on the instrument: the note under your finger
+    // is the note that sounds, exactly as it would be in the room.
+    if (this.earMode && this.surface) {
+      const hit = this.surface.noteAt(x, y);
+      if (hit != null) {
+        const midi = typeof hit === 'object' ? hit.m : hit;
+        const sp = typeof hit === 'object' ? this.surface.spot(hit.str, hit.fret) : (() => { const sl = this.surface.slotOf(midi); return sl ? { x: sl.cx, y: sl.y + 16 } : null; })();
+        this.earPointers.set(id, midi);
+        this.rhythm.press(midi, sp);
+        return;
+      }
+    }
     if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
+    if (this.earMode && this.surface && this.earPointers.has(id)) {
+      const hit = this.surface.noteAt(x, y);
+      const midi = hit == null ? null : (typeof hit === 'object' ? hit.m : hit);
+      const prevM = this.earPointers.get(id);
+      if (midi !== prevM) {
+        this.rhythm.release(prevM);
+        if (midi == null) this.earPointers.delete(id);
+        else { this.earPointers.set(id, midi); this.rhythm.press(midi, null); }
+      }
+      return;
+    }
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
     if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
     if (next === prev) return;
     this.rhythm.keyUp(prev);
     if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
-  pointerUp(x, y, id) { const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
+  pointerUp(x, y, id) {
+    const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
+    const m = this.earPointers.get(id); if (m !== undefined) { this.earPointers.delete(id); this.rhythm.release(m); }
+  }
   hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
   toggleMember(i) {
     const r = Game.run; if (i == null || !r.members[i]) return;
@@ -235,12 +359,29 @@ class GigScene {
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
     
   }
+  // Between numbers: the record you just played, and the one going on next.
+  drawBreak(ctx) {
+    const L = this.L, b = this.songBreak, k = clamp(b.t / 0.4, 0, 1);
+    this.drawStage(ctx);
+    ctx.globalAlpha = 0.55 * k; rect(ctx, 0, 0, W, H, '#0a0812'); ctx.globalAlpha = 1;
+    const cy = H / 2 - 10;
+    const slide = (1 - easeOutBack(k)) * 90;
+    drawText(ctx, 'SONG ' + (this.songIdx + 2) + ' OF ' + this.setlist.length, W / 2, cy - 108 + slide, '#cfc9e6', { align: 'center', scale: 2 });
+    // the sleeve of what is coming, big
+    const S = 120;
+    drawSleeve(ctx, b.next, W / 2 - S / 2, cy - 66 + slide, S, { selected: true });
+    const t2 = TUNES[b.next];
+    drawText(ctx, t2.title.toUpperCase(), W / 2, cy + 66 + slide, '#ffd98a', { align: 'center', scale: 3, outline: '#1a1410' });
+    drawText(ctx, t2.composer.toUpperCase(), W / 2, cy + 92 + slide, '#b8aed0', { align: 'center' });
+    if (b.t > 1.5) { ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6); drawText(ctx, 'COUNTING IN', W / 2, cy + 114 + slide, '#6be585', { align: 'center' }); ctx.globalAlpha = 1; }
+    this.fx.draw(ctx);
+  }
   // The set read-outs live outside the camera: the shot moves, the HUD does not.
   drawSetHud(ctx) {
     const L = this.L; if (!this.rhythm) return;
       // ---- the hype gauge: a brass-cased meter with real ticks and a needle
-      const hh = L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
-      const hx = W - 34, hy = L.open ? H - 58 - hh - 10 : L.stageTop + 8;
+      const hh = this.earMode ? 132 : L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
+      const hx = W - 34, hy = this.earMode ? 92 : L.open ? H - 58 - hh - 10 : L.stageTop + 8;
       const hype = this.rhythm.hype, hot = hype > 70, warm = hype > 40;
       const hcol = hot ? '#ff5a9a' : warm ? '#ffd166' : '#6fb8ff';
       rect(ctx, hx - 4, hy - 12, 20, hh + 18, '#171320');
@@ -259,7 +400,7 @@ class GigScene {
       for (let i = 0; i <= 8; i++) { const ty = hy + hh - Math.round(hh * i / 8); rect(ctx, hx + 12, ty, i % 2 ? 2 : 4, 1, '#8f83b4'); }
       frame(ctx, hx - 1, hy - 1, 14, hh + 2, '#4a4270');
       if (hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
-      const rdY = L.open ? H - 58 : L.stageTop + 6;
+      const rdY = this.earMode ? 32 : L.open ? H - 58 : L.stageTop + 6;
       rect(ctx, W - 196, rdY, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 196, rdY, 156, 44, '#3a3560');
       rect(ctx, W - 195, rdY + 1, 154, 1, '#5a5490');
       drawText(ctx, fmtNum(this.S.applause), W - 48, rdY + 4, '#fff', { align: 'right', scale: 3 });
@@ -301,28 +442,42 @@ class GigScene {
       if (on) { ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 4 + i); ringPx(ctx, x, y - 34, 32, '#ffd24a'); ctx.globalAlpha = 1; }
       this.lineup.push({ x: x - 34, y: y - 96, w: 68, h: 120, i });
     });
-    // ---- a compact plaque for the song, top left
-    const G = GENRES[this.song.genre];
-    const title = this.song.name.toUpperCase();
-    const pw = Math.max(280, textWidth(title, { scale: 3 }) + 36);
-    rect(ctx, 16, 38, pw, 62, 'rgba(18,14,24,0.62)'); rect(ctx, 16, 38, pw, 2, '#c8a03a'); rect(ctx, 16, 98, pw, 2, '#5a4a18');
-    rect(ctx, 16, 38, 3, 62, '#c8a03a');
-    drawText(ctx, title, 28, 46, '#ffd98a', { scale: 3 });
-    drawText(ctx, this.song.composer.toUpperCase(), 28, 76, '#b8aed0', { font: 'small' });
-    { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
-      const gw = textWidth(t2.short) + 12;
-      rect(ctx, 16, 104, gw, 14, t2.color); frame(ctx, 16, 104, gw, 14, '#1a1410');
-      drawText(ctx, t2.short, 22, 107, '#fdf6e2');
-      drawText(ctx, INSTRUMENTS[m0.instrument].name.toUpperCase() + '  ' + gearInstrument(m0.instrument, m0.quality).lanes + ' LANES', 22 + gw, 107, '#cfc6b0', { font: 'small' }); }
-    const gx = 28 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 10;
-    rect(ctx, gx, 73, textWidth(G.name.toUpperCase(), { font: 'small' }) + 10, 11, G.color);
-    drawText(ctx, G.name.toUpperCase(), gx + 5, 76, '#1a1410', { font: 'small' });
-    for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), 16 + pw - 24 - i * 20, 76, 16, 14);
-    // venue read-out as two icons, not a sentence
-    ctx.drawImage(icon('coin'), 16 + pw + 14, 48, 13, 12);
-    drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', 16 + pw + 32, 50, '#f0e0b0');
-    ctx.drawImage(icon('heart'), 16 + pw + 14, 70, 12, 10);
-    drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', 16 + pw + 32, 70, '#f0e0b0');
+    // ---- the crate: flip through the records and build a three-song set
+    this.sleeves = []; this.setSlots = [];
+    const SZ = 74, gap = 10, n2 = this.crate.length;
+    const totalW = n2 * SZ + (n2 - 1) * gap;
+    const cx0 = Math.round((W - totalW) / 2), cy0 = 60;
+    // the crate itself, with a divider card behind the records
+    rect(ctx, cx0 - 14, cy0 - 12, totalW + 28, SZ + 40, 'rgba(30,20,16,0.82)');
+    frame(ctx, cx0 - 14, cy0 - 12, totalW + 28, SZ + 40, '#6a4a2c');
+    rect(ctx, cx0 - 13, cy0 - 11, totalW + 26, 2, '#9a7048');
+    rect(ctx, cx0 - 14, cy0 + SZ + 24, totalW + 28, 4, '#4a3220');
+    this.crate.forEach((k, i) => {
+      const x = cx0 + i * (SZ + gap), y = cy0 + (this.setlist.includes(k) ? -6 : 0);
+      const chosen = this.setlist.indexOf(k);
+      drawSleeve(ctx, k, x, y, SZ, { selected: chosen >= 0 });
+      if (chosen >= 0) {
+        rect(ctx, x + SZ - 15, y - 4, 15, 13, '#d9a520'); frame(ctx, x + SZ - 15, y - 4, 15, 13, '#1a1410');
+        drawText(ctx, String(chosen + 1), x + SZ - 8, y - 1, '#2a2010', { align: 'center' });
+      }
+      // how many times you have played it: a tune you know is worth less
+      const plays = this.known[k] || 0;
+      if (plays > 0) { rect(ctx, x, y + SZ - 9, 30, 9, 'rgba(10,8,16,0.8)'); drawText(ctx, 'x' + plays, x + 3, y + SZ - 7, '#8a80b0', { font: 'small' }); }
+      this.sleeves.push({ x, y, w: SZ, h: SZ, key: k });
+    });
+    // the set, written on a strip of tape stuck to the floor monitor
+    const slotY = cy0 + SZ + 34, sw = 172;
+    const sx0 = Math.round(W / 2 - (this.setSize * (sw + 8) - 8) / 2);
+    for (let i = 0; i < this.setSize; i++) {
+      const x = sx0 + i * (sw + 8), k = this.setlist[i];
+      rect(ctx, x, slotY, sw, 22, k ? '#e8dcbc' : 'rgba(20,16,26,0.7)');
+      frame(ctx, x, slotY, sw, 22, k ? '#9a8a60' : '#4a4268');
+      drawText(ctx, String(i + 1) + '.', x + 6, slotY + 7, k ? '#8a7a50' : '#5a5480');
+      if (k) drawText(ctx, TUNES[k].title.toUpperCase().slice(0, 20), x + 22, slotY + 7, '#3a2e18');
+      else drawText(ctx, 'PICK A RECORD', x + 22, slotY + 7, '#5a5480');
+      this.setSlots.push({ x, y: slotY, w: sw, h: 22, i });
+    }
+    if (this.setWarn > 0) { ctx.globalAlpha = clamp(this.setWarn, 0, 1); drawText(ctx, 'PICK ' + this.setSize + ' SONGS FIRST', W / 2, slotY + 28, '#ff8a6a', { align: 'center', outline: '#1a1410' }); ctx.globalAlpha = 1; }
     if (this.bossMod) {
       const bm = BOSS_MODS[this.bossMod], bw = textWidth(bm.name.toUpperCase() + '  ' + bm.desc) + 40;
       rect(ctx, W / 2 - bw / 2, 112, bw, 20, bm.color); frame(ctx, W / 2 - bw / 2, 112, bw, 20, '#1a1410');
@@ -361,6 +516,7 @@ class GigScene {
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
+    if (this.phase === 'break') { this.drawBreak(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       const rA = { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, backdrop: this.V.far,
         overlay: !!L.overlay, kit: L.open ? { cx: this.stageX + 244, baseY: L.groundY - 34, width: Math.round(W * 0.62) } : null };
@@ -369,8 +525,11 @@ class GigScene {
       if (L.open) {
         this.cam.apply(ctx, W / 2, L.groundY - 40);
         this.drawStage(ctx);
-        this.rhythm.draw(ctx, rA);
+        // The kit stands in the scene, so it rides the shot. An instrument in
+        // your hands does not: it stays put while the camera moves behind it.
+        if (!this.earMode) this.rhythm.draw(ctx, rA);
         this.cam.done(ctx);
+        if (this.earMode) this.rhythm.draw(ctx, rA);
       } else {
         this.rhythm.draw(ctx, rA);
         this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
@@ -379,13 +538,16 @@ class GigScene {
       }
       this.drawSetHud(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
-      const p = clamp(this.rhythm.now / this.song.length, 0, 1);
+      const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
       const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);
       rect(ctx, 0, barY, W, 5, '#1b1626'); rect(ctx, 0, barY, W, 1, '#332b46');
       rect(ctx, 0, barY + 1, Math.round(W * p), 4, '#ffd24a');
       rect(ctx, 0, barY + 1, Math.round(W * p), 1, '#fff2b0');
       // where each section starts, so the run of the set is readable at a glance
-      for (const sec of this.rhythm.sections) {
+      if (this.earMode) {
+        const n = this.rhythm.phrases.length;
+        for (let i = 1; i < n; i++) rect(ctx, Math.round(W * i / n), barY, 1, 5, '#6a5f9a');
+      } else for (const sec of this.rhythm.sections) {
         const sx = Math.round(W * clamp(sec.start / this.song.length, 0, 1));
         rect(ctx, sx, barY, 1, 5, sec.qte ? '#ff9f68' : '#6a5f9a');
       }

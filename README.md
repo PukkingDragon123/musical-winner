@@ -54,6 +54,16 @@ lanes, a wide forgiving timing window, and a payout barely over half. Upgrading 
 gives the lanes back and raises what the crowd pays, so the game gets harder exactly as it gets
 richer. BUSTED, PAWN SHOP, WORKING, PRO, SIGNATURE.
 
+**A show is three songs, and you choose them.** Every venue has a crate of records; you flip
+through it and build a setlist of three. Each sleeve is original cover art drawn in the design
+language of a period — a hard-bop two-tone photo block, a prog gatefold with a sun over a ridge,
+a photocopied punk zine with a ransom-note title, a chrome-and-lightning metal sleeve, a black
+metal forest with an illegible logo, a warm folk porch photo, a psychedelic poster, a soul
+portrait in a vignette, a plain classical box with a catalogue number — each with a bug on it
+and a band name like THORAX COLLECTIVE or SIX GRUB ORCHESTRA. Picking a record plays you the
+first few bars, so choosing a set is a musical decision. The crate marks what you have played
+before, and the show runs the three straight through with a beat between numbers.
+
 **A drummer starts with a paint bucket, a stock pot and one stick.** Two things to hit, on a
 sheet of flattened cardboard. Every rung of the ladder bolts on another piece — a milk crate,
 then a real kick and snare, a hi-hat, a rack tom, a crash — until you are sitting behind a
@@ -65,10 +75,18 @@ in the scene at their real size and a note is a ring closing onto the one you ha
 when the ring touches the rim you are on the beat. Click or tap the drum itself, and drag across
 them for a fill. A slim two-bar strip above the kit shows what is coming, one rail per piece.
 
-**Players who read get a page instead.** Keyboard charts are drawn as notation on aged paper
-propped on a music stand: a treble clef, a time signature, five stave lines, bar lines walking
-past a playhead, noteheads with stems that point the right way and ledger lines when the part
-climbs off the stave. Pitch is height on the page.
+**Keys, guitar and bass are played by ear, on the real instrument.** No lanes, no letters, no
+pads. A full pixel keyboard — white keys with the black ones in their proper places — or a
+rosewood neck with six strung, bound and fretted strings sits across the bottom of the screen,
+and you touch the note you want. The band plays you a phrase and lights where it lands; then it
+goes quiet and you play the same phrase back from memory. Get the pitch wrong and the game tells
+you what you played and what it wanted; get the pitch right but the moment wrong and it says
+that too. How much help you get thins out as the run goes on: at first every note you owe is
+outlined on the instrument, then only the first one, then nothing at all.
+
+The computer keyboard is laid out the way a tracker lays one out — `Z S X D C V G B H N J M`
+for an octave, `Q 2 W 3 E R 5 T 6 Y 7 U` for the one above — so the black keys sit where they
+look. Sliding a finger across the keys glissandos, because a real one does.
 
 Both of those hand the venue the whole frame — the band, the crowd, the bay behind them — and
 the camera cuts between wide, tight, low and over-the-shoulder shots every few bars, pushing in
@@ -86,7 +104,7 @@ instrument, end the day with nobody hungry. Each pays cash or stamina the moment
 |---|---|
 | Guitar / Bass / Keyboard / Tambourine | `D F J K` / `F J` / `S D F J K L` / `Space` |
 | Drum Kit | click or tap the drum; keys `D F Space J K` |
-| Keyboard (sheet) | `S D F J K L`, read off the stave |
+| Keyboard / Guitar / Bass | play the instrument itself; `Z S X D C V…` on a keyboard |
 | Saxophone | hold `Space` |
 | Trumpet | `J K L` valve combos |
 | Violin | `↑/W` up bow, `↓/S` down bow |

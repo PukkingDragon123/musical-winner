@@ -2778,6 +2778,488 @@ function drawNotehead(ctx, S, x, ny, col, opts = {}) {
   if (opts.star) { drawText(ctx, '★', x, ny - S.step * 2 - 6, '#d9a520', { align: 'center', outline: '#f2e8cc' }); }
 }
 
+// ===== js/art/playable.js =====
+// ---------- Playable instruments: you touch the note, not a button ----------
+// Every surface here answers the same two questions: draw yourself, and tell me
+// which note is under this finger. Nothing has a letter on it, because a real
+// instrument does not either — you find the note by where it sits.
+'use strict';
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const IS_BLACK = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
+const noteName = (m) => NOTE_NAMES[((m % 12) + 12) % 12];
+const octaveOf = (m) => Math.floor(m / 12) - 1;
+
+// ---------- PIANO ----------
+// A real keyboard: white keys with the black ones sitting between them in the
+// right places, so the shape of the octave is the thing you learn to read.
+class PianoSurface {
+  // lo/hi are MIDI notes; the keyboard covers whole octaves around them
+  constructor(lo, hi) {
+    this.lo = Math.max(21, lo - ((lo % 12) === 0 ? 0 : (lo % 12)));    // start on a C
+    this.hi = Math.min(108, hi + (11 - (hi % 12)));                    // end on a B
+    this.whites = []; this.blacks = [];
+    for (let m = this.lo; m <= this.hi; m++) (IS_BLACK[m % 12] ? this.blacks : this.whites).push(m);
+  }
+  layout(x, y, w, h) {
+    const nW = this.whites.length;
+    const kw = Math.max(9, Math.floor(w / nW)), used = kw * nW;
+    const x0 = Math.round(x + (w - used) / 2);
+    this.geo = { x: x0, y: Math.round(y), w: used, h: Math.round(h), kw, bw: Math.max(5, Math.round(kw * 0.62)), bh: Math.round(h * 0.6) };
+    this.slots = {};
+    this.whites.forEach((m, i) => { this.slots[m] = { m, x: x0 + i * kw, y: this.geo.y, w: kw, h: this.geo.h, black: false, cx: x0 + i * kw + kw / 2 }; });
+    // a black key hangs on the seam between the two whites it sits between
+    for (const m of this.blacks) {
+      const wi = this.whites.filter(w2 => w2 < m).length;          // whites to its left
+      const bx = x0 + wi * kw - Math.round(this.geo.bw / 2);
+      this.slots[m] = { m, x: bx, y: this.geo.y, w: this.geo.bw, h: this.geo.bh, black: true, cx: bx + this.geo.bw / 2 };
+    }
+    return this.geo;
+  }
+  // Black keys sit on top, so they get first refusal on a tap.
+  noteAt(px2, py) {
+    const g = this.geo; if (!g) return null;
+    if (py < g.y || py > g.y + g.h) return null;
+    for (const m of this.blacks) { const s = this.slots[m]; if (px2 >= s.x && px2 < s.x + s.w && py < s.y + s.h) return m; }
+    for (const m of this.whites) { const s = this.slots[m]; if (px2 >= s.x && px2 < s.x + s.w) return m; }
+    return null;
+  }
+  slotOf(m) { return this.slots ? this.slots[m] : null; }
+  // lit: {midi: strength}. ghost: notes to outline as a hint, without filling.
+  draw(ctx, opts = {}) {
+    const g = this.geo; if (!g) return;
+    const lit = opts.lit || {}, ghost = opts.ghost || {}, held = opts.held || {};
+    // the case the keys are set into
+    rect(ctx, g.x - 6, g.y - 9, g.w + 12, g.h + 15, '#2a2029');
+    rect(ctx, g.x - 6, g.y - 9, g.w + 12, 2, '#4a3c48');
+    rect(ctx, g.x - 5, g.y - 7, g.w + 10, 5, '#16121a');
+    rect(ctx, g.x - 5, g.y - 3, g.w + 10, 1, '#5c4a58');
+    for (const m of this.whites) {
+      const s = this.slots[m], on = lit[m] || 0, hd = held[m], down = on > 0 || hd;
+      const dy = down ? 2 : 0;
+      rect(ctx, s.x, s.y + dy, s.w - 1, s.h, '#1a1418');
+      const face = hd ? '#ffe9a8' : on > 0 ? mixColor('#f6f2e6', '#ffd24a', clamp(on, 0, 1)) : '#f6f2e6';
+      rect(ctx, s.x + 1, s.y + 1 + dy, s.w - 3, s.h - 2, face);
+      // ivory: warm at the top, worn grey along the front lip
+      rect(ctx, s.x + 1, s.y + 1 + dy, s.w - 3, 2, lighten(face, 0.08));
+      rect(ctx, s.x + 1, s.y + s.h - 4 + dy, s.w - 3, 3, darken(face, 0.1));
+      rect(ctx, s.x + s.w - 3, s.y + 1 + dy, 1, s.h - 2, darken(face, 0.16));
+      if (ghost[m]) { frame(ctx, s.x + 2, s.y + s.h - 16 + dy, s.w - 5, 13, '#4d86c6'); rect(ctx, s.x + 3, s.y + s.h - 15 + dy, s.w - 7, 11, 'rgba(77,134,198,0.3)'); }
+      // C is marked, the way a beginner marks their own keyboard
+      if (m % 12 === 0) drawText(ctx, 'C' + octaveOf(m), s.cx, s.y + s.h - 11 + dy, '#b0a694', { align: 'center', font: 'small' });
+    }
+    for (const m of this.blacks) {
+      const s = this.slots[m], on = lit[m] || 0, hd = held[m], down = on > 0 || hd;
+      const dy = down ? 2 : 0;
+      rect(ctx, s.x, s.y + dy, s.w, s.h, '#0e0b12');
+      const face = hd ? '#e0b040' : on > 0 ? mixColor('#332c3a', '#ffd24a', clamp(on, 0, 1)) : '#332c3a';
+      rect(ctx, s.x + 1, s.y + dy, s.w - 2, s.h - 3, face);
+      rect(ctx, s.x + 1, s.y + dy, s.w - 2, 1, lighten(face, 0.22));
+      rect(ctx, s.x + 1, s.y + s.h - 5 + dy, s.w - 2, 2, darken(face, 0.3));
+      if (ghost[m]) frame(ctx, s.x, s.y + s.h - 14 + dy, s.w, 12, '#4d86c6');
+    }
+  }
+}
+
+// ---------- GUITAR ----------
+// A fretboard laid flat: six strings, five frets. You pick the spot, which
+// means you have to know where a note lives on the neck.
+const GTR_TUNING = [40, 45, 50, 55, 59, 64];     // E A D G B e, low string first
+class FretSurface {
+  constructor(strings, frets) { this.S = strings || GTR_TUNING.slice(); this.F = frets || 5; }
+  midiAt(str, fret) { return this.S[str] + fret; }
+  layout(x, y, w, h) {
+    const nutW = 12, fw = Math.floor((w - nutW) / this.F), sh = Math.floor(h / this.S.length);
+    this.geo = { x: Math.round(x), y: Math.round(y), w: nutW + fw * this.F, h: sh * this.S.length, fw, sh, nutW };
+    return this.geo;
+  }
+  // Where a stopped note sits: the middle of the fret, on its string.
+  spot(str, fret) {
+    const g = this.geo; if (!g) return null;
+    const sy = g.y + g.sh * (this.S.length - 1 - str) + g.sh / 2;
+    const sx = fret === 0 ? g.x + g.nutW / 2 : g.x + g.nutW + (fret - 1) * g.fw + g.fw / 2;
+    return { x: Math.round(sx), y: Math.round(sy), str, fret, m: this.midiAt(str, fret) };
+  }
+  // Every place on the neck that sounds this pitch, nearest the nut first.
+  spotsFor(midi) {
+    const out = [];
+    for (let s = 0; s < this.S.length; s++) { const f = midi - this.S[s]; if (f >= 0 && f <= this.F) out.push(this.spot(s, f)); }
+    return out.sort((a, b) => a.fret - b.fret);
+  }
+  noteAt(px2, py) {
+    const g = this.geo; if (!g) return null;
+    if (px2 < g.x || px2 > g.x + g.w || py < g.y || py > g.y + g.h) return null;
+    const row = clamp(Math.floor((py - g.y) / g.sh), 0, this.S.length - 1);
+    const str = this.S.length - 1 - row;
+    const fret = px2 < g.x + g.nutW ? 0 : clamp(Math.floor((px2 - g.x - g.nutW) / g.fw) + 1, 1, this.F);
+    return { m: this.midiAt(str, fret), str, fret };
+  }
+  draw(ctx, opts = {}) {
+    const g = this.geo; if (!g) return;
+    const lit = opts.lit || {}, ghost = opts.ghost || {};
+    const n = this.S.length;
+    // the neck: bound edges, a rosewood board, and the body butting in at the
+    // end, so what you are looking at is a guitar and not a brown rectangle
+    rect(ctx, g.x - 5, g.y - 7, g.w + 10, g.h + 14, '#2a1a12');
+    rect(ctx, g.x - 4, g.y - 6, g.w + 8, 4, '#e8dcc0');        // binding, top
+    rect(ctx, g.x - 4, g.y + g.h + 2, g.w + 8, 4, '#cdbf9e');  // binding, bottom
+    rect(ctx, g.x - 4, g.y - 6, g.w + 8, 1, '#fff6e2');
+    const board = cached('fbd2|' + g.w + '|' + g.h, () => {
+      const P = new Pix(g.w, g.h), m = P.mask(); P.mRect(m, 0, 0, g.w, g.h);
+      P.fill(m, '#5c3b2c', { shade: false });
+      P.wood(m, 7, 0.12); P.grain(m, 0.06, 3);
+      P.ditherTo(m, '#472c21', (x, y) => clamp(Math.abs(y - g.h / 2) / (g.h / 2), 0, 1) * 0.6);
+      return P.toCanvas();
+    });
+    ctx.drawImage(board, g.x, g.y);
+    // the nut, then fretwire with a shadow under each one
+    for (let f = 1; f <= this.F; f++) {
+      const fx = g.x + g.nutW + f * g.fw;
+      rect(ctx, fx - 2, g.y, 1, g.h, 'rgba(0,0,0,0.35)');
+      rect(ctx, fx - 1, g.y, 2, g.h, '#b9bcc8'); rect(ctx, fx - 1, g.y, 1, g.h, '#eef2fa');
+    }
+    rect(ctx, g.x + g.nutW - 4, g.y, 4, g.h, '#efe6ce');
+    rect(ctx, g.x + g.nutW - 4, g.y, 1, g.h, '#fffaea');
+    rect(ctx, g.x + g.nutW, g.y, 1, g.h, 'rgba(0,0,0,0.4)');
+    // position dots where a guitar actually has them, doubled at the twelfth
+    for (const f of [3, 5, 7, 9, 12]) {
+      if (f > this.F) continue;
+      const sp = this.spot(0, f), cy = g.y + g.h / 2;
+      const ys = f === 12 ? [cy - g.sh, cy + g.sh] : [cy];
+      for (const yy of ys) { ellipsePx(ctx, sp.x, yy, 3, 3, '#b8ab8a'); ellipsePx(ctx, sp.x, yy - 1, 3, 2, '#eee4c6'); }
+    }
+    // strings: thick and bronze at the bottom, thin and bright at the top
+    for (let s2 = 0; s2 < n; s2++) {
+      const row = n - 1 - s2, sy = Math.round(g.y + g.sh * row + g.sh / 2);
+      const th = s2 < 2 ? 3 : s2 < 4 ? 2 : 1;
+      const col = s2 < 3 ? '#cdb079' : '#e2e2ea';
+      rect(ctx, g.x, sy + th, g.w, 1, 'rgba(0,0,0,0.4)');
+      rect(ctx, g.x, sy, g.w, th, col);
+      rect(ctx, g.x, sy, g.w, 1, lighten(col, 0.3));
+      // the winding on a wound string, as a fine stripe
+      if (s2 < 3) for (let x = g.x; x < g.x + g.w; x += 3) rect(ctx, x, sy + th - 1, 1, 1, darken(col, 0.22));
+    }
+    // a hint ring, then the finger that lands on it
+    for (const key in ghost) { const sp = ghost[key]; if (!sp) continue; ellipseRingPx(ctx, sp.x, sp.y, 9, 8, '#4d86c6'); ellipseRingPx(ctx, sp.x, sp.y, 8, 7, '#2f5a8a'); }
+    for (const key in lit) {
+      const l = lit[key]; if (!l || !l.sp) continue;
+      const k = clamp(l.k, 0, 1);
+      ellipsePx(ctx, l.sp.x, l.sp.y, 10, 9, withAlpha('#ffd24a', 0.3 * k));
+      ellipsePx(ctx, l.sp.x, l.sp.y, 7, 6, '#1d1620');
+      ellipsePx(ctx, l.sp.x, l.sp.y, 6, 5, '#ffe9a8');
+      ellipsePx(ctx, l.sp.x - 1, l.sp.y - 1, 3, 2, '#fff8e0');
+    }
+    // string names down the nut, the one label a real neck does carry
+    const NAMES = ['E', 'A', 'D', 'G', 'B', 'e'];
+    for (let s2 = 0; s2 < n; s2++) {
+      const row = n - 1 - s2, sy = Math.round(g.y + g.sh * row + g.sh / 2);
+      drawText(ctx, NAMES[s2] || noteName(this.S[s2]), g.x - 7, sy - 2, '#8a7f6a', { align: 'right', font: 'small' });
+    }
+  }
+}
+
+// Build the surface an instrument is played on, sized to the range of the tune
+// so every note in it is reachable without scrolling the neck or the keyboard.
+function makeSurface(instr, song) {
+  const ns = ((song && song.melody) || []).filter(n => n[0] > 0).map(n => n[0]);
+  const lo = ns.length ? Math.min(...ns) : 60, hi = ns.length ? Math.max(...ns) : 72;
+  if (instr.view === 'fret') {
+    const tuning = instr.tuning || GTR_TUNING;
+    const frets = instr.frets || 5;
+    // slide the whole neck so the tune sits on it, the way a capo would
+    const open = tuning[0], top = tuning[tuning.length - 1] + frets;
+    let shift = 0;
+    if (lo < open) shift = -Math.ceil((open - lo) / 12) * 12;
+    else if (hi > top) shift = Math.ceil((hi - top) / 12) * 12;
+    return new FretSurface(tuning.map(t => t + shift), frets);
+  }
+  const octs = instr.octaves || 2;
+  // centre the keyboard on the tune, then widen until the tune fits inside it
+  const mid = Math.round((lo + hi) / 2);
+  let start = clamp(Math.floor((mid - octs * 6) / 12) * 12, 36, 84);
+  let end = start + octs * 12 - 1;
+  while (lo < start && start > 24) start -= 12;
+  while (hi > end && end < 103) end += 12;
+  return new PianoSurface(start, end);
+}
+// How far a tune has to move to sit on a given surface at all.
+function fitToSurface(surface, notes) {
+  if (!notes.length) return 0;
+  const lo = Math.min(...notes), hi = Math.max(...notes);
+  const sLo = surface.lo != null ? surface.lo : surface.S[0];
+  const sHi = surface.hi != null ? surface.hi : surface.S[surface.S.length - 1] + surface.F;
+  let shift = 0;
+  while (lo + shift < sLo) shift += 12;
+  while (hi + shift > sHi) shift -= 12;
+  return shift;
+}
+
+// ===== js/art/sleeves.js =====
+// ---------- Record sleeves ----------
+// Original cover art, one per tune, drawn in the *design language* of a period
+// rather than copying anybody's actual sleeve: a hard-bop two-tone block, a
+// prog gatefold landscape, a photocopied punk zine, a chrome metal sleeve, a
+// black-metal forest, a folk porch photo, a psych poster, a plain classical
+// box. Every one of them has a bug on it.
+'use strict';
+
+const SLEEVE_PX = 88;
+// Band names built from bug vocabulary. Original, and daft on purpose.
+const BAND_A = ['THE', 'DEAD', 'ROYAL', 'SIX', 'LATE', 'HOLY', 'YOUNG', 'ELECTRIC', 'SLOW', 'BITTER', 'GOLDEN', 'CRUDE'];
+const BAND_B = ['MANDIBLE', 'CARAPACE', 'LARVA', 'THORAX', 'ANTENNA', 'MOLT', 'CHITIN', 'GRUB', 'HIVE', 'SPIRACLE', 'PUPA', 'WEEVIL', 'MOTH', 'BEETLE', 'APHID'];
+const BAND_C = ['S', ' COLLECTIVE', ' ORCHESTRA', ' FIVE', ' QUARTET', ' UNION', ' SOCIETY', ' BROTHERS', '', '', ''];
+const LABELS = ['BUZZ REC.', 'HIVE SOUND', 'NECTAR', 'SIX LEG', 'CHITIN LP', 'MOLT RECORDS', 'ANTHILL', 'GRUBWAX'];
+function bandName(key) {
+  const r = makeRng(hashStr('band' + key));
+  const a = r.chance(0.45) ? r.pick(BAND_A) + ' ' : '';
+  return (a + r.pick(BAND_B) + r.pick(BAND_C)).trim();
+}
+// Which design era a tune gets. Stable per tune, steered by its genre so a
+// waltz does not end up looking like a thrash record unless the dice say so.
+const STYLE_BY_GENRE = {
+  rock: ['shred', 'bm', 'punk', 'prog'],
+  jazz: ['bop', 'bop', 'soul'],
+  funk: ['soul', 'disco', 'psych'],
+  ballad: ['classical', 'folk', 'prog'],
+  folk: ['folk', 'punk', 'psych'],
+};
+function sleeveStyle(key) {
+  const t = TUNES[key];
+  const pool = (t && STYLE_BY_GENRE[t.genre]) || ['classical'];
+  return pool[hashStr('sty' + key) % pool.length];
+}
+
+// A bug drawn straight onto the sleeve, sized to it.
+function sleeveBug(ctx, key, cx, feetY, scale, opts = {}) {
+  const spec = cached('slvbug|' + key, () => randomBugSpec(makeRng(hashStr('cover' + key))));
+  drawBugAt(ctx, spec, cx, feetY, Object.assign({ pose: 'play', expr: 'focus', scale, bounce: 0, rate: 0 }, opts));
+}
+
+function sleeveCanvas(key, size) {
+  const S = size || SLEEVE_PX;
+  return cached('sleeve|' + key + '|' + S, () => {
+    const c = makeCanvas(S, S), ctx = c.getContext('2d');
+    const t = TUNES[key] || { title: key, composer: '', genre: 'folk' };
+    const r = makeRng(hashStr('slv' + key));
+    const style = sleeveStyle(key);
+    const band = bandName(key);
+    const title = t.title.toUpperCase();
+    const fit = (str, w) => { let s2 = str; while (textWidth(s2, { font: 'small' }) > w && s2.length > 3) s2 = s2.slice(0, -1); return s2; };
+    // A long title gets two lines rather than being chopped mid-word, because
+    // half a title on a sleeve just looks like a mistake.
+    const wrap2 = (str, w) => {
+      if (textWidth(str, { font: 'small' }) <= w) return [str];
+      const words = str.split(' '); let a = '', b = '';
+      for (const wd of words) {
+        if (!a || textWidth(a + ' ' + wd, { font: 'small' }) <= w) a = a ? a + ' ' + wd : wd;
+        else b = b ? b + ' ' + wd : wd;
+      }
+      return b ? [a, fit(b, w)] : [fit(a, w)];
+    };
+    // Draw a title where the last line sits on `y`, so it never runs off the
+    // bottom edge of the sleeve however long it is.
+    const title2 = (str, cx2, y, w, col, o = {}) => {
+      const ls = wrap2(str, w), lh = 7;
+      ls.forEach((l, i) => drawText(ctx, l, cx2, y - (ls.length - 1 - i) * lh, col, Object.assign({ align: 'center', font: 'small' }, o)));
+      return ls.length;
+    };
+
+    switch (style) {
+      // ---- hard bop: two flat colours, a tilted photo block, condensed type
+      case 'bop': {
+        const bg = r.pick(['#1d4f7a', '#7a3320', '#2c6a52', '#6a2a4a']);
+        rect(ctx, 0, 0, S, S, bg);
+        halftone(ctx, 0, 0, S, S, '#ffffff', 5, 0.1);
+        // the photo, knocked back to two tones and set at an angle
+        ctx.save(); ctx.translate(S * 0.56, S * 0.52); ctx.rotate(-0.06); ctx.translate(-S * 0.56, -S * 0.52);
+        rect(ctx, S * 0.3, S * 0.2, S * 0.62, S * 0.6, '#e8e0cc');
+        rect(ctx, S * 0.3, S * 0.2, S * 0.62, 2, '#fff8ea');
+        ctx.save(); ctx.beginPath(); ctx.rect(S * 0.3, S * 0.2, S * 0.62, S * 0.6); ctx.clip();
+        sleeveBug(ctx, key, S * 0.61, S * 0.79, S / 62, { expr: 'cool' });
+        ctx.globalAlpha = 0.35; rect(ctx, S * 0.3, S * 0.2, S * 0.62, S * 0.6, bg); ctx.globalAlpha = 1;
+        ctx.restore(); ctx.restore();
+        rect(ctx, 0, S - 16, S, 4, '#e8b23a');
+        drawText(ctx, fit(band, S - 10), 5, 6, '#f4ecd6', { font: 'small' });
+        wrap2(title, S - 10).forEach((l, i) => drawText(ctx, l, 5, 13 + i * 7, '#e8b23a', { font: 'small' }));
+        drawText(ctx, LABELS[hashStr(key) % LABELS.length], 5, S - 10, '#f4ecd6', { font: 'small' });
+        break;
+      }
+      // ---- prog gatefold: an airbrushed sky, a lone shape, an arched title
+      case 'prog': {
+        for (let y = 0; y < S; y++) rect(ctx, 0, y, S, 1, mixColor('#f0a860', '#2a2060', y / S));
+        const sun = S * 0.34;
+        ellipsePx(ctx, S / 2, sun, S * 0.22, S * 0.22, '#ffd98a');
+        ellipsePx(ctx, S / 2, sun, S * 0.18, S * 0.18, '#ffefc0');
+        // a ridge of rock, and a very small bug looking at it
+        ctx.fillStyle = '#3a2a4a'; ctx.beginPath(); ctx.moveTo(0, S * 0.78);
+        for (let x = 0; x <= S; x += 6) ctx.lineTo(x, S * 0.78 - Math.sin(x * 0.11 + 1) * 8 - (x > S * 0.5 ? 6 : 0));
+        ctx.lineTo(S, S); ctx.lineTo(0, S); ctx.fill();
+        sleeveBug(ctx, key, S * 0.3, S * 0.8, S / 110, { pose: 'idle' });
+        for (let i = 0; i < 30; i++) px(ctx, r.int(0, S - 1), r.int(0, S * 0.5), '#fff8e0');
+        drawText(ctx, fit(band, S - 8), S / 2, 6, '#f6e6c0', { align: 'center', font: 'small', outline: '#2a2060' });
+        title2(title, S / 2, S - 12, S - 8, '#f6e6c0', { outline: '#2a2060' });
+        break;
+      }
+      // ---- punk zine: a photocopy, a ransom-note title, a stapled corner
+      case 'punk': {
+        rect(ctx, 0, 0, S, S, '#e8e6de');
+        for (let i = 0; i < 400; i++) px(ctx, r.int(0, S - 1), r.int(0, S - 1), r.chance(0.5) ? '#d2d0c8' : '#f4f2ea');
+        ctx.save(); ctx.beginPath(); ctx.rect(4, 16, S - 8, S - 38); ctx.clip();
+        rect(ctx, 4, 16, S - 8, S - 38, '#f8f6ee');
+        sleeveBug(ctx, key, S / 2, S - 24, S / 58, { expr: 'angry', pose: 'cheer' });
+        // blown-out photocopy: knock it to black and white with a halftone
+        ctx.globalCompositeOperation = 'saturation'; rect(ctx, 4, 16, S - 8, S - 38, '#808080');
+        ctx.globalCompositeOperation = 'source-over';
+        halftone(ctx, 4, 16, S - 8, S - 38, '#000000', 3, 0.3);
+        ctx.restore();
+        frame(ctx, 4, 16, S - 8, S - 38, '#151515');
+        // ransom note: every letter on its own scrap
+        let lx = 4;
+        for (const ch of fit(title, S - 8)) {
+          const cw = textWidth(ch, { font: 'small' }) + 3, ch2 = r.int(-1, 1);
+          rect(ctx, lx, 3 + ch2, cw, 9, r.chance(0.5) ? '#151515' : '#e8442e');
+          drawText(ctx, ch, lx + 1, 5 + ch2, r.chance(0.5) ? '#f8f6ee' : '#ffe14d', { font: 'small' });
+          lx += cw;
+          if (lx > S - 8) break;
+        }
+        drawText(ctx, fit(band, S - 8), 5, S - 9, '#151515', { font: 'small' });
+        for (const [sx, sy] of [[S - 10, 5], [S - 10, S - 9]]) { rect(ctx, sx, sy, 5, 2, '#9aa0a8'); rect(ctx, sx, sy + 2, 5, 1, '#6a7078'); }
+        break;
+      }
+      // ---- eighties metal: chrome type, lightning, a guitar held overhead
+      case 'shred': {
+        for (let y = 0; y < S; y++) rect(ctx, 0, y, S, 1, mixColor('#1a1030', '#5a1040', y / S));
+        for (let i = 0; i < 4; i++) {
+          let x = r.int(8, S - 8), y = 0;
+          while (y < S * 0.7) { const nx = x + r.int(-5, 5), ny = y + r.int(5, 11); line(ctx, x, y, nx, ny, '#9ad8ff'); line(ctx, x + 1, y, nx + 1, ny, '#e8f6ff'); x = nx; y = ny; }
+        }
+        sleeveBug(ctx, key, S / 2, S - 16, S / 56, { pose: 'cheer', expr: 'happy' });
+        ctx.globalAlpha = 0.25; rect(ctx, 0, 0, S, S, '#ff40a0'); ctx.globalAlpha = 1;
+        drawText(ctx, fit(band, S - 6), S / 2, 8, '#e8ecf4', { align: 'center', font: 'small', outline: '#7a1060', shadow: '#3a0830' });
+        rect(ctx, 0, S - 21, S, 17, 'rgba(10,6,20,0.84)');
+        title2(title, S / 2, S - 12, S - 6, '#ffd24a');
+        break;
+      }
+      // ---- black metal: a wall of trees, an unreadable logo, one pale figure
+      case 'bm': {
+        rect(ctx, 0, 0, S, S, '#0a0b0c');
+        for (let i = 0; i < 34; i++) {
+          const x = r.int(0, S - 1), h = r.int(S * 0.4, S * 0.9), w = r.int(1, 3);
+          rect(ctx, x, S - h, w, h, r.chance(0.4) ? '#1a1e1c' : '#121514');
+          for (let b = 0; b < 4; b++) line(ctx, x, S - h + b * 8 + 6, x + r.int(-7, 7), S - h + b * 8, '#161a18');
+        }
+        rect(ctx, 0, S - 8, S, 8, '#0e1010');
+        ctx.globalAlpha = 0.5; sleeveBug(ctx, key, S * 0.5, S - 10, S / 78, { pose: 'sad', expr: 'sad' }); ctx.globalAlpha = 1;
+        ctx.globalAlpha = 0.6; rect(ctx, 0, 0, S, S, '#0a1418'); ctx.globalAlpha = 1;
+        // the logo: spidery, symmetrical, barely legible, exactly as intended
+        const ly = 12;
+        drawText(ctx, fit(band, S - 10), S / 2, ly, '#cfd8d4', { align: 'center', font: 'small' });
+        const bw = textWidth(fit(band, S - 10), { font: 'small' });
+        for (const d of [-1, 1]) {
+          const ex = S / 2 + d * (bw / 2 + 2);
+          for (let i = 0; i < 5; i++) { line(ctx, ex, ly + 2, ex + d * (3 + i * 2), ly - 4 - i * 2, '#cfd8d4'); }
+          line(ctx, ex, ly + 2, ex + d * 8, ly + 8, '#cfd8d4');
+        }
+        title2(title, S / 2, S - 7, S - 6, '#7a8a84');
+        break;
+      }
+      // ---- folk: a warm washed photo of somebody sitting on a step
+      case 'folk': {
+        for (let y = 0; y < S; y++) rect(ctx, 0, y, S, 1, mixColor('#d8b478', '#8a6a44', y / S));
+        rect(ctx, 0, S * 0.66, S, S * 0.34, '#7a5c3c');
+        for (let i = 0; i < 3; i++) rect(ctx, 0, S * 0.66 + i * 8, S, 2, '#6a4e32');
+        sleeveBug(ctx, key, S * 0.5, S * 0.78, S / 58, { pose: 'idle', expr: 'calm' });
+        ctx.globalAlpha = 0.18; rect(ctx, 0, 0, S, S, '#e8c078'); ctx.globalAlpha = 1;
+        for (let i = 0; i < 80; i++) px(ctx, r.int(0, S - 1), r.int(0, S - 1), r.chance(0.5) ? '#f0dcb8' : '#6a5238');
+        rect(ctx, 0, 0, S, 1, '#f4e4c0'); frame(ctx, 0, 0, S, S, '#6a5238');
+        // handwritten-looking title, on a slant
+        rect(ctx, 2, S - 26, S - 4, 24, 'rgba(240,228,196,0.86)');
+        ctx.save(); ctx.translate(6, S - 22); ctx.rotate(-0.04);
+        wrap2(title, S - 14).forEach((l, i) => drawText(ctx, l, 0, i * 7, '#3a2a1a', { font: 'small' }));
+        drawText(ctx, fit(band, S - 14), 0, 15, '#7a5e40', { font: 'small' });
+        ctx.restore();
+        break;
+      }
+      // ---- disco: a mirrorball sunburst and a lot of gloss
+      case 'disco': {
+        rect(ctx, 0, 0, S, S, '#2a1040');
+        for (let i = 0; i < 24; i++) {
+          const a = (i / 24) * Math.PI * 2;
+          ctx.fillStyle = i % 2 ? '#e8409a' : '#f0a020'; ctx.globalAlpha = 0.5;
+          ctx.beginPath(); ctx.moveTo(S / 2, S / 2);
+          ctx.lineTo(S / 2 + Math.cos(a) * S, S / 2 + Math.sin(a) * S);
+          ctx.lineTo(S / 2 + Math.cos(a + 0.13) * S, S / 2 + Math.sin(a + 0.13) * S); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        ellipsePx(ctx, S / 2, S * 0.42, S * 0.24, S * 0.24, '#b8c8e0');
+        for (let y = -12; y <= 12; y += 3) for (let x = -12; x <= 12; x += 3) {
+          if (x * x + y * y > 132) continue;
+          px(ctx, S / 2 + x, S * 0.42 + y, (x + y) % 6 === 0 ? '#ffffff' : (x * y) % 4 === 0 ? '#8aa0c0' : '#dfe8f4');
+        }
+        sleeveBug(ctx, key, S / 2, S - 14, S / 66, { pose: 'cheer', expr: 'happy' });
+        drawText(ctx, fit(band, S - 6), S / 2, S - 12, '#ffe14d', { align: 'center', font: 'small', outline: '#7a1050' });
+        wrap2(title, S - 6).forEach((l, i) => drawText(ctx, l, S / 2, 5 + i * 7, '#ffffff', { align: 'center', font: 'small', outline: '#7a1050' }));
+        break;
+      }
+      // ---- psychedelic poster: melting rings and type you have to work at
+      case 'psych': {
+        const c1 = r.pick(['#e84a2a', '#f0a020', '#5a30c0']), c2 = r.pick(['#20b0a0', '#e8e040', '#e8409a']);
+        rect(ctx, 0, 0, S, S, c1);
+        for (let rr = S; rr > 0; rr -= 7) { ellipsePx(ctx, S / 2 + Math.sin(rr * 0.3) * 4, S / 2, rr / 2, rr / 2.2, (rr / 7) % 2 ? c2 : c1); }
+        ctx.globalAlpha = 0.9; sleeveBug(ctx, key, S / 2, S * 0.76, S / 62, { pose: 'play', expr: 'happy' }); ctx.globalAlpha = 1;
+        for (let i = 0; i < 5; i++) { const y = S * 0.06 + i; rect(ctx, 0, y, S, 1, i % 2 ? c2 : c1); }
+        drawText(ctx, fit(band, S - 6), S / 2, 6, '#2a1030', { align: 'center', font: 'small', outline: '#f6e8a0' });
+        title2(title, S / 2, S - 10, S - 6, '#2a1030', { outline: '#f6e8a0' });
+        break;
+      }
+      // ---- soul: a portrait in a soft vignette over one hot colour
+      case 'soul': {
+        const bg = r.pick(['#c8402a', '#2a5aa8', '#d88a20', '#7a2a6a']);
+        rect(ctx, 0, 0, S, S, bg);
+        ellipsePx(ctx, S / 2, S * 0.46, S * 0.36, S * 0.36, darken(bg, 0.25));
+        ellipsePx(ctx, S / 2, S * 0.46, S * 0.33, S * 0.33, '#f0dfc0');
+        ctx.save(); ctx.beginPath(); ctx.arc(S / 2, S * 0.46, S * 0.33, 0, Math.PI * 2); ctx.clip();
+        sleeveBug(ctx, key, S / 2, S * 0.72, S / 48, { expr: 'calm', pose: 'idle' });
+        ctx.restore();
+        rect(ctx, 0, S - 26, S, 26, 'rgba(20,10,14,0.76)');
+        drawText(ctx, fit(band, S - 6), S / 2, S - 24, '#ffe9b0', { align: 'center', font: 'small' });
+        title2(title, S / 2, S - 9, S - 6, '#f0c060');
+        break;
+      }
+      // ---- the plain classical box: a field, a rule, a catalogue number
+      default: {
+        const bg = r.pick(['#1f3a5c', '#3c2a1e', '#2a3c2a', '#4a2030']);
+        rect(ctx, 0, 0, S, S, bg);
+        frame(ctx, 4, 4, S - 8, S - 8, '#d8c48a');
+        frame(ctx, 6, 6, S - 12, S - 12, '#8a7648');
+        rect(ctx, 8, 8, S - 16, 12, '#d8c48a');
+        drawText(ctx, fit(t.composer.toUpperCase(), S - 22), S / 2, 11, '#2a2018', { align: 'center', font: 'small' });
+        ctx.save(); ctx.beginPath(); ctx.rect(10, 24, S - 20, S - 48); ctx.clip();
+        rect(ctx, 10, 24, S - 20, S - 48, darken(bg, 0.16));
+        sleeveBug(ctx, key, S / 2, S - 26, S / 56, { pose: 'play', expr: 'focus' });
+        ctx.restore();
+        frame(ctx, 10, 24, S - 20, S - 48, '#8a7648');
+        title2(title, S / 2, S - 20, S - 16, '#e8dcb8');
+        drawText(ctx, 'No. ' + (hashStr(key) % 900 + 100), S / 2, S - 12, '#9a8a60', { align: 'center', font: 'small' });
+        break;
+      }
+    }
+    // every sleeve is a printed object: a little wear, and a spine shadow
+    ctx.globalAlpha = 0.14; rect(ctx, 0, 0, 3, S, '#000000'); ctx.globalAlpha = 1;
+    for (let i = 0; i < 12; i++) { const x = r.int(0, S - 1), y = r.int(0, S - 1); ctx.globalAlpha = 0.2; px(ctx, x, y, r.chance(0.5) ? '#ffffff' : '#000000'); ctx.globalAlpha = 1; }
+    frame(ctx, 0, 0, S, S, '#15121a');
+    return c;
+  });
+}
+// A sleeve sitting in its outer, as it looks in a crate.
+function drawSleeve(ctx, key, x, y, size, opts = {}) {
+  const S = Math.round(size);
+  ctx.fillStyle = 'rgba(8,6,12,0.45)'; ctx.fillRect(x + 3, y + 4, S, S);
+  ctx.drawImage(sleeveCanvas(key, SLEEVE_PX), 0, 0, SLEEVE_PX, SLEEVE_PX, Math.round(x), Math.round(y), S, S);
+  if (opts.selected) { frame(ctx, x - 2, y - 2, S + 4, S + 4, '#fff8e8'); frame(ctx, x - 3, y - 3, S + 6, S + 6, '#d9a520'); }
+  if (opts.done) { ctx.globalAlpha = 0.55; rect(ctx, x, y, S, S, '#0a0812'); ctx.globalAlpha = 1; ctx.drawImage(icon('check'), x + S / 2 - 6, y + S / 2 - 5); }
+}
+
 // ===== js/data/instruments.js =====
 // ---------- Instruments ----------
 'use strict';
@@ -2819,12 +3301,15 @@ const KIT_LADDER = [
 ];
 const KIT_COLORS = KIT_LADDER[4].pieces.map(p => PIECE_COLORS[p]);
 const INSTRUMENTS = {
-  guitar:     { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'], voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
-                desc: 'Four lanes of falling notes. Hold the long ones, catch the gold stars, dodge the bombs.' },
-  bass:       { name: 'Bass', game: 'lanes', lanes: 2, keys: ['KeyF', 'KeyJ'], keyNames: ['F', 'J'], voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
-                desc: 'Two fat strings and long slides. Lock in with the drums.' },
-  piano:      { name: 'Keyboard', game: 'lanes', view: 'sheet', lanes: 6, keys: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'], keyNames: ['S', 'D', 'F', 'J', 'K', 'L'], voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
-                desc: 'Read it off the page. Six notes on the stave, chords and all.' },
+  guitar:     { name: 'Guitar', game: 'ear', view: 'fret', voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
+                frets: 5, keys: [], keyNames: [],
+                desc: 'A real neck. Listen to the phrase, then find it on the fretboard and play it back.' },
+  bass:       { name: 'Bass', game: 'ear', view: 'fret', voice: 'bass', price: 35, tipMult: 0.9, family: 'strings',
+                frets: 5, tuning: [28, 33, 38, 43], keys: [], keyNames: [],
+                desc: 'Four thick strings. Hear the line, then walk it back yourself.' },
+  piano:      { name: 'Keyboard', game: 'ear', view: 'keys', voice: 'piano', price: 80, tipMult: 1.3, family: 'keys',
+                octaves: 2, keys: [], keyNames: [],
+                desc: 'Real keys. The band plays you a phrase, then you play it back from memory.' },
   tambourine: { name: 'Tambourine', game: 'lanes', lanes: 1, keys: ['Space'], keyNames: ['SPACE'], voice: 'tambourine', price: 12, tipMult: 0.7, family: 'percussion',
                 desc: 'One lane. Hit the beat and shake the hold notes. Humble but honest.' },
   drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 5, keys: ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'SP', 'J', 'K'],
@@ -3764,11 +4249,21 @@ function generateChart(song, sections, difficulty, rng, opts = {}) {
 }
 // Backing band with genre styles. mute: fn(t)->{drums,bass,pad} or object
 class Backing {
-  constructor(song, startTime, mute) { this.song = song; this.start = startTime; this.mute = mute || {}; this.nextStep = 0; this.stepDur = song.beat / 4; this.totalSteps = (song.bars + 4) * 16; this.stopped = false; }
+  constructor(song, startTime, mute, opts = {}) {
+    this.song = song; this.start = startTime; this.mute = mute || {}; this.nextStep = 0; this.stepDur = song.beat / 4;
+    // A call-and-response set runs far longer than the tune does, so the band
+    // can be told to keep vamping round the changes instead of stopping.
+    this.loop = !!opts.loop;
+    this.loopBars = song.bars;
+    this.totalSteps = opts.steps || (song.bars + 4) * 16;
+    this.stopped = false;
+  }
   update() { if (this.stopped || !Audio.ctx) return; const horizon = Audio.now() + 0.3; while (this.nextStep < this.totalSteps) { const t = this.start + this.nextStep * this.stepDur; if (t > horizon) break; this.schedule(this.nextStep, t); this.nextStep++; } }
   schedule(step, t) {
-    const s = this.song, barIdx = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
-    const countIn = barIdx === 0, outro = barIdx > s.bars;
+    const s = this.song, rawBar = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
+    // when vamping, the count-in happens once and then the bars wrap round
+    const barIdx = this.loop && rawBar > 0 ? ((rawBar - 1) % this.loopBars) + 1 : rawBar;
+    const countIn = rawBar === 0, outro = !this.loop && barIdx > s.bars;
     const mute = typeof this.mute === 'function' ? (this.mute(t) || {}) : this.mute;
     if (countIn) { if (sub === 0) Audio.drum('hat', t, 0.7); return; }
     const chord = s.chords[Math.min(barIdx - 1, s.bars - 1)], rootMidi = s.root - 12, style = s.style || 'rock';
@@ -3864,7 +4359,9 @@ class ScoreState {
   onBombDodged() { this.applause += 6; }
   onRoll() { this.applause += 6; this.rollHits++; }
   onQte(judge) { const a = judge === 'perfect' ? 30 : judge === 'great' ? 20 : judge === 'good' ? 10 : 0; this.applause += a; if (a) this.qteHits++; return a; }
-  watcherTick(dt, watchers) { this.watchers = watchers; this.applause += watchers * 3 * dt * this.mods.watcherApplause; }
+  // The crowd only cheers while you are actually playing. Without this, a mode
+  // that spends half its time listening would earn twice as much for it.
+  watcherTick(dt, watchers, playing) { this.watchers = watchers; if (playing === false) return; this.applause += watchers * 3 * dt * this.mods.watcherApplause; }
   onCheer() { this.cheers++; this.addMult(this.mods.cheerMult, 'Crowd cheer'); }
   finish(state) {
     this.combo = state.combo; this.maxCombo = state.maxCombo; this.misses = state.misses; this.watchers = state.watchers; this.hype = state.hype; this.acc = state.acc;
@@ -3877,6 +4374,10 @@ class ScoreState {
     let mult = this.baseMult + this.multAdd; for (const t of this.times) mult *= t;
     this.mult = Math.round(mult * 100) / 100;
     const venue = this.info.venue || { wealth: 1 }; let dollars = this.applause * this.mult / PAYOUT_DIV * venue.wealth;
+    // A show is several songs, but it is still one night's pay: normalise by
+    // the song count and hand back a modest bonus for playing a longer set.
+    const songs = this.info.songs || 1;
+    if (songs > 1) dollars *= (1 + (songs - 1) * 0.35) / songs;
     if (this.info.mode === 'elite') dollars *= 1.25 * this.mods.eliteBonus; if (this.info.mode === 'boss') dollars *= 1.6;
     if (this.info.bossMod === 'cops') dollars *= 1.4;
     this.basePay = Math.round(dollars * 4) / 4;
@@ -4559,6 +5060,402 @@ class RhythmGame {
   }
 }
 
+// ===== js/sim/ear.js =====
+// ---------- Call and response: hear it, then play it back ----------
+// This is how anybody actually learns a tune. The band plays you a phrase and
+// you watch where it lands on the instrument; then it goes quiet and you play
+// the same phrase back from memory. Get the pitches right and get them in
+// time. The hints thin out as the run goes on until you are working by ear.
+'use strict';
+
+const EAR_JUDGE = { perfect: 0.07, great: 0.13, good: 0.2 };
+// How much help you get, by difficulty. Early on the keys are outlined for
+// you; later you are only told the first note; at the top, nothing.
+function earHints(difficulty) {
+  // One listen, always: hearing the same bar twice is dead air. What changes
+  // with difficulty is how much the instrument tells you afterwards.
+  if (difficulty <= 1) return { ghosts: 'all', callRepeats: 1 };
+  if (difficulty <= 2) return { ghosts: 'all', callRepeats: 1 };
+  if (difficulty <= 4) return { ghosts: 'first', callRepeats: 1 };
+  return { ghosts: 'none', callRepeats: 1 };
+}
+
+class EarGame {
+  // song: {beat, bars, tune:{notes}}; surface: PianoSurface|FretSurface
+  constructor(song, surface, mods = {}, hooks = {}) {
+    this.song = song; this.surface = surface; this.mods = mods; this.hooks = hooks;
+    this.difficulty = mods.difficulty || 1;
+    this.hint = earHints(this.difficulty);
+    this.beat = song.beat;
+    this.barsPerPhrase = this.difficulty >= 5 ? 4 : 2;
+    this.phrases = this.buildPhrases();
+    // In a three-song set each number is a few phrases: the show has to move.
+    if (mods.maxPhrases) this.phrases = this.phrases.slice(0, mods.maxPhrases);
+    this.pi = 0; this.phase = 'lead'; this.phaseT = 0; this.repeat = 0;
+    this.now = -song.leadIn; this.startTime = null; this.finished = false;
+    this.counts = { perfect: 0, great: 0, good: 0, miss: 0 };
+    this.combo = 0; this.maxCombo = 0; this.hype = 25; this.lastMilestone = 0;
+    this.events = { perfects: 0, misses: 0, cheer: 0 };
+    this.popups = []; this.bursts = []; this.fx = new Particles();
+    this.lit = {}; this.held = {}; this.receptors = {}; this.flashes = {};
+    this.beatPulse = 0; this.lastBeat = -1; this.onBeat = false;
+    this.safetyLeft = mods.safetyNet || 0;
+    this.notesTotal = this.phrases.reduce((n, p) => n + p.notes.length, 0);
+    this.hypeScale = clamp(190 / Math.max(1, this.notesTotal), 1, 3);
+    this.wrongT = 0; this.lastWrong = null;
+  }
+  // Chop the tune into singable phrases, dropping rests off the ends so each
+  // one starts on a note the way a phrase you would hum does.
+  buildPhrases() {
+    const src = this.song.melody || [];
+    const span = this.beat * 4 * this.barsPerPhrase;
+    const out = []; let t = 0, cur = { notes: [], start: 0, end: span };
+    for (const [midi, beats] of src) {
+      const dur = beats * this.beat;
+      if (t >= cur.end) { if (cur.notes.length) out.push(cur); cur = { notes: [], start: Math.floor(t / span) * span, end: (Math.floor(t / span) + 1) * span }; }
+      if (midi > 0) cur.notes.push({ midi, t: t - cur.start, dur: Math.min(dur, this.beat * 1.5) });
+      t += dur;
+    }
+    if (cur.notes.length) out.push(cur);
+    // A phrase of one note is not a phrase; fold it into its neighbour.
+    const merged = [];
+    for (const p of out) {
+      if (p.notes.length <= 1 && merged.length) { const last = merged[merged.length - 1]; const off = p.start - last.start; for (const n of p.notes) last.notes.push({ midi: n.midi, t: n.t + off, dur: n.dur }); last.len = Math.max(last.len || span, off + span); }
+      else merged.push(Object.assign({ len: span }, p));
+    }
+    return merged.length ? merged : [{ notes: [{ midi: 60, t: 0, dur: this.beat }], start: 0, len: span }];
+  }
+  get phrase() { return this.phrases[Math.min(this.pi, this.phrases.length - 1)]; }
+  // How far through the set you are: phrases done, plus where you are in this
+  // one. The song's own clock is no use here because every phrase runs twice.
+  get progress() {
+    const n = Math.max(1, this.phrases.length);
+    const within = clamp(this.phaseT / Math.max(0.001, this.phraseLen), 0, 1);
+    const half = this.phase === 'response' ? 0.5 + within * 0.5 : this.phase === 'call' ? within * 0.5 : 0;
+    return clamp((this.pi + half) / n, 0, 1);
+  }
+  // Roughly how long the whole thing runs, so the band knows how much to play.
+  get totalLength() {
+    return this.song.leadIn + this.phrases.reduce((a, p) => a + (p.len || 0) * (1 + this.hint.callRepeats), 0) + 2;
+  }
+  get phraseLen() { return this.phrase.len || this.beat * 4 * this.barsPerPhrase; }
+  // What the scene shows in the corner: what you are meant to be doing.
+  get prompt() {
+    if (this.phase === 'lead') return { text: 'LISTEN', color: '#6fb8ff' };
+    if (this.phase === 'call') return { text: 'LISTEN', color: '#6fb8ff' };
+    if (this.phase === 'response') return { text: 'YOUR TURN', color: '#ffd24a' };
+    return { text: '', color: '#fff' };
+  }
+  // ---- what the gig scene expects of any play mode
+  get instrument() { return this.instr || INSTRUMENTS.piano; }
+  get section() { return this._sec || (this._sec = { instrument: this.instrKey || 'piano', qte: false, member: this.member || null, start: 0, end: this.song.length }); }
+  get sections() { return this.phrases.map((p, i) => ({ start: p.start, end: p.start + (p.len || 0), qte: false, idx: i })); }
+  get notes() { return []; }
+  // The computer keyboard is laid out the way a tracker lays one out, so the
+  // same two rows are an octave apart and the black keys sit where they look.
+  static get KEYMAP() {
+    return EarGame._km || (EarGame._km = (() => {
+      const rows = ['KeyZ', 'KeyS', 'KeyX', 'KeyD', 'KeyC', 'KeyV', 'KeyG', 'KeyB', 'KeyH', 'KeyN', 'KeyJ', 'KeyM',
+                    'KeyQ', 'Digit2', 'KeyW', 'Digit3', 'KeyE', 'KeyR', 'Digit5', 'KeyT', 'Digit6', 'KeyY', 'Digit7', 'KeyU'];
+      const m = {}; rows.forEach((c, i) => { m[c] = i; }); return m;
+    })());
+  }
+  baseNote() {
+    if (this._base != null) return this._base;
+    const s2 = this.surface;
+    this._base = s2.lo != null ? s2.lo : s2.S[0];
+    return this._base;
+  }
+  keyDown(code) {
+    const off = EarGame.KEYMAP[code];
+    if (off == null) return;
+    const midi = this.baseNote() + off;
+    if (this.held[midi]) return;
+    let sp = null;
+    if (this.surface.slotOf) { const sl = this.surface.slotOf(midi); if (sl) sp = { x: sl.cx, y: sl.y + 16 }; }
+    else { const s3 = this.surface.spotsFor(midi)[0]; if (s3) sp = s3; }
+    this.press(midi, sp);
+  }
+  keyUp(code) { const off = EarGame.KEYMAP[code]; if (off != null) this.release(this.baseNote() + off); }
+  begin(audioTime) { this.startTime = audioTime; }
+  win(k) { return EAR_JUDGE[k] * (this.mods.windowMult || 1); }
+  judgeDt(dt) { const a = Math.abs(dt); if (a <= this.win('perfect')) return 'perfect'; if (a <= this.win('great')) return 'great'; if (a <= this.win('good')) return this.mods.tuner ? 'great' : 'good'; return 'miss'; }
+
+  // ---- what should be lit right now, and what the player is allowed a hint on
+  ghostsNow() {
+    if (this.phase !== 'response') return {};
+    const g = {}; const ns = this.expect || [];
+    if (this.hint.ghosts === 'all') { for (const n of ns) if (!n.judged) g[n.midi] = 1; }
+    else if (this.hint.ghosts === 'first') { const n = ns.find(x => !x.judged); if (n) g[n.midi] = 1; }
+    return g;
+  }
+
+  update(dt) {
+    if (this.startTime != null) this.now = Audio.now() - this.startTime;
+    // `events` is what happened THIS frame, not a running total: the crowd
+    // reads it every tick to decide whether to cheer, tip or walk off.
+    this.events = { perfects: 0, misses: 0, cheer: 0 };
+    this.phaseT += dt;
+    const beatPos = ((this.now % this.beat) + this.beat) % this.beat;
+    this.beatPulse = 1 - beatPos / this.beat;
+    const bi = Math.floor(this.now / this.beat);
+    this.onBeat = bi !== this.lastBeat; this.lastBeat = bi;
+    for (const k in this.lit) { this.lit[k] -= dt * 3.5; if (this.lit[k] <= 0) delete this.lit[k]; }
+    for (const k in this.flashes) { this.flashes[k] = Math.max(0, this.flashes[k] - dt); }
+    for (const p of this.popups) p.t += dt; this.popups = this.popups.filter(p => p.t < (p.big ? 1.1 : 0.6));
+    for (const b of this.bursts) b.t += dt * 1.4; this.bursts = this.bursts.filter(b => b.t < 1);
+    this.wrongT = Math.max(0, this.wrongT - dt);
+    this.fx.update(dt);
+
+    switch (this.phase) {
+      case 'lead':
+        // count the band in, then start the first call
+        if (this.now >= 0) { this.startCall(); }
+        break;
+      case 'call': {
+        // play the phrase at the player, lighting each note as it sounds
+        const p = this.phrase;
+        for (const n of p.notes) {
+          if (n.played) continue;
+          if (this.phaseT >= n.t) {
+            n.played = true; this.lit[n.midi] = 1;
+            Audio.note(this.mods.voiceOverride || this.voice || 'piano', n.midi, 0, Math.max(0.22, n.dur), 0.5);
+            if (this.hooks.onDemo) this.hooks.onDemo(n);
+          }
+        }
+        if (this.phaseT >= this.phraseLen) {
+          this.repeat++;
+          if (this.repeat < this.hint.callRepeats) { for (const n of p.notes) n.played = false; this.phaseT = 0; }
+          else this.startResponse();
+        }
+        break;
+      }
+      case 'response': {
+        // anything you did not play in time is a missed note
+        for (const n of this.expect) {
+          if (n.judged) continue;
+          if (this.phaseT > n.t + this.win('good') + 0.02) { n.judged = true; this.applyJudge('miss', n); }
+        }
+        if (this.phaseT >= this.phraseLen + 0.25) this.endPhrase();
+        break;
+      }
+    }
+  }
+  startCall() {
+    const p = this.phrase; for (const n of p.notes) n.played = false;
+    this.phase = 'call'; this.phaseT = 0; this.repeat = 0;
+    if (this.hooks.onPhase) this.hooks.onPhase('call', this.pi, this.phrases.length);
+  }
+  startResponse() {
+    this.phase = 'response'; this.phaseT = 0;
+    this.expect = this.phrase.notes.map(n => ({ midi: n.midi, t: n.t, dur: n.dur, judged: false }));
+    if (this.hooks.onPhase) this.hooks.onPhase('response', this.pi, this.phrases.length);
+  }
+  endPhrase() {
+    this.pi++;
+    if (this.pi >= this.phrases.length) { this.finished = true; this.phase = 'done'; return; }
+    this.startCall();
+  }
+  // ---- the player played a pitch
+  press(midi, spot) {
+    if (this.finished) return null;
+    this.held[midi] = true;
+    if (this.phase !== 'response') {
+      // noodling between phrases still makes a sound, it just does not score
+      Audio.note(this.voice || 'piano', midi, 0, 0.3, 0.3);
+      this.lit[midi] = 0.6;
+      return null;
+    }
+    // the nearest note still owed, that this pitch could be
+    let best = null, bestD = Infinity;
+    for (const n of this.expect) {
+      if (n.judged || n.midi !== midi) continue;
+      const d = Math.abs(this.phaseT - n.t); if (d < bestD) { bestD = d; best = n; }
+    }
+    const w = this.win('good') + 0.06;
+    if (best && bestD <= w) {
+      const j = this.judgeDt(this.phaseT - best.t);
+      best.judged = true; best.hit = j !== 'miss';
+      Audio.note(this.voice || 'piano', midi, 0, Math.max(0.25, best.dur), j === 'perfect' ? 0.6 : 0.45);
+      this.lit[midi] = 1;
+      this.applyJudge(j, best, { spot });
+      return j;
+    }
+    // Wrong note, or right note at the wrong moment. Both cost you, and the
+    // game says which so you can hear what you did.
+    const owed = this.expect.find(n => !n.judged);
+    const wrongPitch = !best;
+    Audio.note(this.voice || 'piano', midi, 0, 0.22, 0.3);
+    Audio.ui('error');
+    this.lit[midi] = 0.8;
+    this.wrongT = 0.6; this.lastWrong = { midi, want: owed ? owed.midi : null, pitch: wrongPitch };
+    this.applyJudge('miss', owed || { midi, t: this.phaseT }, { wrong: true, spot, pitch: wrongPitch });
+    if (owed && wrongPitch) owed.judged = true;
+    return 'miss';
+  }
+  release(midi) { delete this.held[midi]; }
+
+  // Two judgements in the same instant would print on top of each other and
+  // read as neither, so a new popup steps up off any that are still on screen.
+  pushPopup(p) {
+    let y = p.y;
+    for (let guard = 0; guard < 6; guard++) {
+      if (!this.popups.some(q => Math.abs(q.y - y) < 11 && Math.abs((q.x || 0) - (p.x || 0)) < 80)) break;
+      y -= 12;
+    }
+    p.y = y; this.popups.push(p);
+  }
+  applyJudge(j, note, opts = {}) {
+    this.counts[j]++;
+    const sp = opts.spot || this.receptors.main || { x: W / 2, y: H - 120 };
+    if (j === 'miss') {
+      if (this.safetyLeft > 0 && this.combo > 0) { this.safetyLeft--; this.popups.push({ text: 'SAFETY NET!', color: '#6fb8ff', t: 0, big: true }); }
+      else this.combo = 0;
+      this.events.misses++;
+      this.hype = clamp(this.hype - 7 * (this.mods.missMult || 1), 0, 100);
+      this.fx.burst(sp.x, sp.y, 7, { color: '#ff5a5a', speed: 50, life: 0.4, kind: 'px', gravity: 150 });
+      const label = opts.wrong ? (opts.pitch ? 'WRONG NOTE' : 'OFF THE BEAT') : 'MISSED';
+      this.pushPopup({ text: label, color: '#ff5a5a', t: 0, x: sp.x, y: sp.y - 18 });
+    } else {
+      this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
+      if (j === 'perfect') this.events.perfects++;
+      let gain = (j === 'perfect' ? 2.6 : j === 'great' ? 1.5 : 0.5) * this.hypeScale;
+      if (j === 'great' && this.mods.earplugs) gain = 2.6 * this.hypeScale;
+      this.hype = clamp(this.hype + gain, 0, 100);
+      const col = j === 'perfect' ? '#ffe14d' : j === 'great' ? '#6ff08a' : '#6fb8ff';
+      this.fx.burst(sp.x, sp.y, j === 'perfect' ? 12 : 6, { color: [col, '#fff'], speed: j === 'perfect' ? 90 : 55, life: 0.45, kind: j === 'perfect' ? 'spark' : 'px', gravity: 60, size: 2 });
+      this.fx.ring(sp.x, sp.y, col, 3, j === 'perfect' ? 18 : 12, 0.28);
+      this.pushPopup({ text: j.toUpperCase(), color: col, t: 0, x: sp.x, y: sp.y - 18 });
+      for (const ms of [10, 25, 50, 100]) if (this.combo === ms && this.lastMilestone < ms) {
+        this.lastMilestone = ms;
+        this.bursts.push({ x: sp.x, y: sp.y - 44, t: 0, text: ms >= 100 ? 'BY EAR!' : ms >= 50 ? 'LOCKED IN!' : ms >= 25 ? 'GOT IT!' : 'NICE!', color: ms >= 50 ? '#ff5a5a' : '#ffd24a', scale: 1 + ms / 160 });
+        this.events.cheer++;
+        if (this.mods.fx) this.mods.fx.shake.hit(4 + ms / 25, 0.25);
+        if (this.hooks.onMilestone) this.hooks.onMilestone(ms);
+      }
+    }
+    if (this.hooks.onJudge) this.hooks.onJudge(note, j, {});
+  }
+  // ---------- Rendering ----------
+  // The instrument fills the bottom of the frame at a size you could actually
+  // play, the venue stays visible behind it, and the only readout is a slim
+  // strip showing the shape of the phrase you are working on.
+  draw(ctx, A) {
+    const isKeys = this.surface instanceof PianoSurface;
+    const kh = A.touch ? 104 : 96;
+    const ky = A.y + A.h - kh - (A.touch ? 20 : 26);
+    const kw = Math.min(A.w - 60, isKeys ? 720 : 470);
+    const kx = A.x + (A.w - kw) / 2;
+    const g = this.surface.layout(kx, ky, kw, kh);
+    // a pool of light on the instrument, so it reads as the lit thing on stage
+    lightPool(ctx, g.x + g.w / 2, g.y + g.h / 2, g.w * 0.7, '#ffe0a0', 0.1);
+    this.receptors.main = { x: g.x + g.w / 2, y: g.y - 10 };
+
+    const ghosts = this.ghostsNow();
+    if (isKeys) {
+      this.surface.draw(ctx, { lit: this.lit, ghost: ghosts, held: this.held });
+      for (const m in this.lit) { const sl = this.surface.slotOf(+m); if (sl) this.receptors[m] = { x: sl.cx, y: sl.y + 12 }; }
+    } else {
+      // on a neck, a pitch can live in more than one place: show the easiest
+      const lit = {}, gh = {};
+      for (const m in this.lit) { const sp = this.surface.spotsFor(+m)[0]; if (sp) { lit[m] = { sp, k: this.lit[m] }; this.receptors[m] = { x: sp.x, y: sp.y }; } }
+      for (const m in ghosts) { const sp = this.surface.spotsFor(+m)[0]; if (sp) gh[m] = sp; }
+      this.surface.draw(ctx, { lit, ghost: gh, t: this.now });
+    }
+
+    this.drawPhraseStrip(ctx, A, g);
+    this.drawPrompt(ctx, A, g);
+    ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y, A.w, A.h); ctx.clip();
+    this.fx.draw(ctx);
+    for (const b of this.bursts) { speedLines(ctx, b.x, b.y, 26 * b.scale, 70 * b.scale, 14, b.color, this.now, 0.35 * (1 - b.t)); comicBurst(ctx, b.x, b.y, b.text, b.color, b.t, b.scale); }
+    ctx.restore();
+    for (const p of this.popups) {
+      const k = p.t / (p.big ? 1.1 : 0.6), pop = k < 0.15 ? 1 + (0.15 - k) * 4 : 1;
+      ctx.globalAlpha = clamp(1 - k * 0.85 + 0.15, 0, 1);
+      ctx.save(); ctx.translate(Math.round(p.x != null ? p.x : A.x + A.w / 2), Math.round((p.y != null ? p.y : A.y + 60) - k * 14));
+      ctx.scale(pop, 1 / Math.max(0.7, pop));
+      drawText(ctx, p.text, 0, 0, p.color, { align: 'center', scale: p.big ? 2 : 1, outline: '#1a1410' });
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+    if (this.now < 0) {
+      const left = Math.ceil(-this.now / this.beat), s2 = left > 0 ? String(left) : 'GO';
+      ctx.globalAlpha = 0.9;
+      drawText(ctx, s2, A.x + A.w / 2, A.y + A.h / 2 - 60, '#fff', { align: 'center', scale: 6, outline: '#1a1410' });
+      ctx.globalAlpha = 1;
+    }
+  }
+  // The phrase, written out as dots on a pitch ladder: how high each note sits
+  // and when it lands. During your turn the dots you have already played fill
+  // in, and the ones you have not are blank, so you can see what you owe.
+  drawPhraseStrip(ctx, A, g) {
+    const ns = this.phrase.notes; if (!ns.length) return;
+    const w = Math.min(A.w - 120, 400), h = 58;
+    const x = Math.round(A.x + (A.w - w) / 2), y = Math.round(g.y - h - 22);
+    rect(ctx, x, y, w, h, 'rgba(10,8,18,0.86)');
+    frame(ctx, x, y, w, h, '#6a5f9a');
+    rect(ctx, x + 1, y + h - 2, w - 2, 1, '#2a2440');
+    rect(ctx, x + 1, y + 1, w - 2, 1, '#6a5f9a');
+    const lo = Math.min(...ns.map(n => n.midi)), hi = Math.max(...ns.map(n => n.midi));
+    const span = Math.max(7, hi - lo);
+    const px0 = x + 10, px1 = x + w - 10, len = this.phraseLen;
+    // pitch rails, one per octave, so you can see the shape rise and fall
+    for (let m = Math.ceil(lo / 12) * 12; m <= hi; m += 12) {
+      const ry = Math.round(y + h - 8 - ((m - lo) / span) * (h - 18));
+      ctx.globalAlpha = 0.22; rect(ctx, px0, ry, px1 - px0, 1, '#9a90d0'); ctx.globalAlpha = 1;
+      drawText(ctx, 'C' + octaveOf(m), px0 - 2, ry - 3, '#6a5f9a', { align: 'right', font: 'small' });
+    }
+    const answering = this.phase === 'response';
+    const exp = this.expect || [];
+    ns.forEach((n, i) => {
+      const nx = Math.round(px0 + (n.t / len) * (px1 - px0));
+      const ny = Math.round(y + h - 8 - ((n.midi - lo) / span) * (h - 18));
+      const e = answering ? exp[i] : null;
+      const done = e && e.judged, ok = e && e.hit;
+      let col = '#5a5490';
+      if (this.phase === 'call') col = n.played ? '#6fb8ff' : '#3a3560';
+      else if (answering) col = done ? (ok ? '#6be585' : '#ff5a5a') : '#ffd24a';
+      rect(ctx, nx - 3, ny - 3, 7, 7, '#12101c');
+      rect(ctx, nx - 2, ny - 2, 5, 5, col);
+      rect(ctx, nx - 2, ny - 2, 5, 1, lighten(col, 0.3));
+      if (!done && answering) { ctx.globalAlpha = 0.5; rect(ctx, nx - 1, ny - 1, 3, 1, '#fff6c8'); ctx.globalAlpha = 1; }
+    });
+    // the playhead, running through the phrase
+    const k = clamp(this.phaseT / len, 0, 1);
+    const hx = Math.round(px0 + k * (px1 - px0));
+    rect(ctx, hx, y + 2, 1, h - 4, this.phase === 'call' ? '#6fb8ff' : '#ffd24a');
+    rect(ctx, hx - 2, y + 2, 5, 2, this.phase === 'call' ? '#6fb8ff' : '#ffd24a');
+  }
+  drawPrompt(ctx, A, g) {
+    const p = this.prompt; if (!p.text) return;
+    const beat = this.phase === 'call' ? 0 : this.beatPulse * 2;
+    const sc = this.phaseT < 0.4 ? 3 + (0.4 - this.phaseT) * 6 : 3;
+    const pw = textWidth(p.text, { scale: Math.round(sc) }) + 28;
+    const py2 = Math.round(g.y - 126 - beat);
+    rect(ctx, A.x + A.w / 2 - pw / 2, py2 - 6, pw, Math.round(sc) * 7 + 12, 'rgba(10,8,18,0.8)');
+    frame(ctx, A.x + A.w / 2 - pw / 2, py2 - 6, pw, Math.round(sc) * 7 + 12, p.color);
+    drawText(ctx, p.text, A.x + A.w / 2, py2, p.color, { align: 'center', scale: Math.round(sc), outline: '#1a1410' });
+    // how far through the tune you are
+    const n = this.phrases.length, cw2 = 8;
+    const bx = Math.round(A.x + A.w / 2 - (n * cw2) / 2);
+    for (let i = 0; i < n; i++) rect(ctx, bx + i * cw2, Math.round(g.y - 100 - beat), cw2 - 2, 4, i < this.pi ? '#6be585' : i === this.pi ? '#ffd24a' : '#3a3560');
+    // and what went wrong, named, for the half second after it happens
+    if (this.wrongT > 0 && this.lastWrong) {
+      ctx.globalAlpha = clamp(this.wrongT / 0.6, 0, 1);
+      const lw = this.lastWrong;
+      const msg = lw.pitch && lw.want != null
+        ? 'YOU PLAYED ' + noteName(lw.midi) + '  -  IT WANTED ' + noteName(lw.want)
+        : 'RIGHT NOTE, WRONG TIME';
+      drawText(ctx, msg, A.x + A.w / 2, Math.round(g.y - 90), '#ff8a6a', { align: 'center', outline: '#1a1410' });
+      ctx.globalAlpha = 1;
+    }
+  }
+  // A whole phrase played clean is worth saying out loud.
+  results() {
+    const c = this.counts, total = c.perfect + c.great + c.good + c.miss;
+    return { ...c, total, acc: total ? (c.perfect + c.great * 0.75 + c.good * 0.4) / total : 0, maxCombo: this.maxCombo };
+  }
+}
+
 // ===== js/sim/crowd.js =====
 // ---------- Passers-by, traffic, watchers, coins, ambient particles ----------
 'use strict';
@@ -4577,7 +5474,10 @@ class Crowd {
     this.peds.push({ x: anywhere ? r.range(20, W - 20) : (dir > 0 ? -24 : W + 24), dir, row, spec: randomBugSpec(r), speed: r.range(16, 30), state: 'walk', t: r.range(0, 10), watchT: 0, tipT: r.range(2, 5), generous: r.range(0.6, 1.6), attention: r.range(0.5, 1.4), stopX: null, bob: r.range(0, 6), tipped: 0, walkT: 0 });
   }
   spawnCar() { const r = this.rng, dir = r.sign(); const kind = this.venue.cablecar && r.chance(0.25) ? 'cable' : 'car'; this.cars.push({ x: dir > 0 ? -70 : W + 70, dir, speed: kind === 'cable' ? 22 : r.range(40, 75), seed: r.int(1, 9999), kind, lane: dir > 0 ? 1 : 0 }); }
-  update(dt, hype, ev, wind) {
+  update(dt, hype, ev, wind, playing) {
+    // Passers-by drop coins for playing, not for standing there listening to
+    // your own band. A mode with a listen half would otherwise earn double.
+    this.paying = playing !== false;
     this.time += dt; this.hype = hype;
     const traffic = this.venue.traffic * this.mods.crowd * (this.mods.bossMod === 'rushHour' ? 2 : 1);
     this.spawnAcc += dt * traffic * 0.42; while (this.spawnAcc >= 1) { this.spawnAcc -= 1; if (this.peds.length < 26) this.spawn(); }
@@ -4604,7 +5504,7 @@ class Crowd {
     if (ev.cheer) { this.cheerFlash = 1; for (const p of this.watchers) this.tip(p, ev.cheer); Audio.applause(clamp(this.watchers.length / 8, 0.2, 1)); for (let i = 0; i < 40; i++) this.fx.add({ x: this.L.stageX + (this.rng() - 0.5) * 240, y: this.L.groundY - 90 - this.rng() * 40, vx: (this.rng() - 0.5) * 30, vy: 20 + this.rng() * 30, life: 2, color: ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff'][i % 5], kind: 'confetti', gravity: 15 }); }
     this.cheerFlash = Math.max(0, this.cheerFlash - dt * 2);
     this.peds = this.peds.filter(p => p.x > -40 && p.x < W + 40);
-    for (const c of this.coins) { c.t += dt / c.dur; if (c.t >= 1 && !c.done) { c.done = true; this.earned += c.value; this.tipCount++; Audio.ui(c.bill ? 'bill' : 'coin'); this.fx.text(this.L.hatX, this.L.hatY - 10, '+' + fmtMoney(c.value), c.bill ? '#9af09a' : '#ffe680', { life: 1 }); this.fx.burst(this.L.hatX, this.L.hatY - 2, 6, { color: ['#ffe680', '#fff'], speed: 40, life: 0.4, kind: 'spark', gravity: 80, up: 30 }); } }
+    for (const c of this.coins) { c.t += dt / c.dur; if (c.t >= 1 && !c.done) { c.done = true; if (this.paying) this.earned += c.value; this.tipCount++; Audio.ui(c.bill ? 'bill' : 'coin'); this.fx.text(this.L.hatX, this.L.hatY - 10, '+' + fmtMoney(c.value), c.bill ? '#9af09a' : '#ffe680', { life: 1 }); this.fx.burst(this.L.hatX, this.L.hatY - 2, 6, { color: ['#ffe680', '#fff'], speed: 40, life: 0.4, kind: 'spark', gravity: 80, up: 30 }); } }
     this.coins = this.coins.filter(c => !c.done);
     for (const pg of this.pigeons) { pg.t += dt; if (pg.t > 3 && this.rng.chance(dt * 0.6)) { pg.t = 0; pg.hop = 0.25; pg.dir = this.rng.sign(); } if (pg.hop > 0) { pg.hop -= dt; pg.x += pg.dir * 30 * dt; } const near = this.peds.some(p => Math.abs(p.x - pg.x) < 14); if (near && pg.hop <= 0) { pg.hop = 0.3; pg.dir = this.rng.sign(); } pg.x = clamp(pg.x, 10, W - 10); }
     // ambient: leaves / fog / steam
@@ -6889,14 +7789,41 @@ class GigScene {
     this.difficulty = clamp(Math.round(1 + r.day * 0.8 + (this.mode === 'elite' ? 1 : 0) + (this.mode === 'boss' ? 2 : 0)), 1, 7);
     const leader = r.members[0], fam = INSTRUMENTS[leader.instrument].family;
     const pool = r.buffs.genre ? TUNE_BY_GENRE(r.buffs.genre) : TUNE_KEYS.filter(k => this.difficulty >= 4 || !TUNES[k].hard);
-    this.tuneKey = r.rng.pick(pool.length ? pool : TUNE_KEYS);
-    this.song = songFromTune(this.tuneKey, { bpm: TUNES[this.tuneKey].bpm + r.day * 2 });
-    this.bars = this.mode === 'boss' ? Math.max(12, this.song.bars) : this.song.bars;
+    // ---- the crate: what this room has records of tonight
+    const src = (pool.length >= 8 ? pool : TUNE_KEYS).slice();
+    this.crate = r.rng.shuffle(src).slice(0, 8);
+    // a tune you have played before is still in the crate, but marked, so you
+    // can choose between something you know and something you do not
+    this.known = r.playedTunes || (r.playedTunes = {});
+    this.setlist = [];
+    this.songIdx = 0;
+    // the tally adds up across the whole show
+    this.showTotals = { perfect: 0, great: 0, good: 0, miss: 0, maxCombo: 0 };
+    this.setSong(this.crate[0]);
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
-    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.fx = new Particles();
+    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
     this.cam = new Camera(); this.cutIn = null;
     this.train = { x: -700, t: r.rng.range(4, 9) };
+  }
+  // Point the scene at one tune: everything downstream reads this.song.
+  setSong(key) {
+    const r = Game.run;
+    this.tuneKey = key;
+    this.song = songFromTune(key, { bpm: TUNES[key].bpm + r.day * 2 });
+    this.bars = this.mode === 'boss' ? Math.max(12, this.song.bars) : this.song.bars;
+  }
+  // A show is three songs. Each one is short, so the set has shape.
+  get setSize() { return 3; }
+  toggleSong(key) {
+    const i = this.setlist.indexOf(key);
+    if (i >= 0) { this.setlist.splice(i, 1); Audio.ui('back'); return; }
+    if (this.setlist.length >= this.setSize) { Audio.ui('error'); return; }
+    this.setlist.push(key); Audio.ui('select');
+    // a taste of what you just picked, so choosing is a musical decision
+    const t2 = TUNES[key]; const beat = 60 / t2.bpm;
+    let at = Audio.now() + 0.02;
+    for (const [m, b] of t2.notes.slice(0, 6)) { if (m > 0) Audio.note('piano', m, at, beat * b * 0.9, 0.34); at += beat * b * 0.6; }
   }
   layout() {
     const t = Game.touch;
@@ -6906,11 +7833,12 @@ class GigScene {
     const lead = Game.run && Game.run.members[0];
     const lv = lead && (INSTRUMENTS[lead.instrument] || {}).view;
     this.openKit = lv === 'kit';
-    this.openStage = this.openKit || lv === 'sheet';
+    this.openEar = lv === 'keys' || lv === 'fret';
+    this.openStage = this.openKit || this.openEar || lv === 'sheet';
     if (this.openStage) {
       // A kit is tapped on the drums, so it never needs pads. Anything read off
       // a page still does on a phone: the pads sit at the bottom of the scene.
-      const needPads = t && !this.openKit;
+      const needPads = t && !this.openKit && !this.openEar;
       this.L = { top: false, open: true, stageTop: 26, stageBottom: H,
                  groundY: t ? (needPads ? 330 : 372) : 396, rows: [0, -10, -20],
                  streetY: t ? (needPads ? 356 : 420) : 446, streetH: needPads ? 56 : 94,
@@ -6934,17 +7862,42 @@ class GigScene {
   }
   startPlay() {
     const r = Game.run; Audio.init(); Audio.setStageReverb(false);
+    if (this.setlist.length < this.setSize) { Audio.ui('error'); this.setWarn = 1.4; return; }
     for (const k in this.useItems) if (this.useItems[k]) { const i = r.consumables.indexOf(k); if (i >= 0) { r.consumables.splice(i, 1); CONSUMABLES[k].use(r); } }
+    this.songIdx = 0;
+    this.startSong(0);
+  }
+  // Run one song of the set. Called again for each, so the show is continuous.
+  startSong(idx) {
+    const r = Game.run;
+    this.songIdx = idx;
+    this.setSong(this.setlist[idx]);
+    this.known[this.tuneKey] = (this.known[this.tuneKey] || 0) + 1;
     this.performers = r.members.filter((m, i) => this.active[i]); if (!this.performers.length) this.performers = [r.members[0]];
     const leader = r.members[0], mates = this.performers.filter(m => !m.leader);
     const sections = []; let mi = 0;
     for (let b = 0; b < this.bars; b += 4) { const spot = (b / 4) % 2 === 1 && mates.length; if (spot) { const m = mates[mi++ % mates.length]; sections.push({ instrument: m.instrument, startBar: b, endBar: Math.min(this.bars, b + 4), qte: true, member: m }); } else sections.push({ instrument: leader.instrument, instr: gearInstrument(leader.instrument, leader.quality), startBar: b, endBar: Math.min(this.bars, b + 4), member: leader }); }
     this.sections = sections;
     const mods = r.gigMods(this.performers, this.difficulty, this.bossMod); mods.fx = { shake: Game.shake };
+    mods.maxPhrases = 3;
     const notes = chartFromMelody(this.song, sections, this.difficulty, r.rng, { bombMult: (this.bossMod === 'heckler' ? 3 : 1) * (mods.bombMult || 1), starRate: mods.starRate || 0.08 });
     this.mods = mods;
-    this.S = new ScoreState(r, { instrument: leader.instrument, genre: this.song.genre, tune: this.tuneKey, performers: this.performers.length, band: this.performers, venue: this.venue, mode: this.mode, bossMod: this.bossMod, mods, battle: !!(r.pendingGig && r.pendingGig.battle) });
-    this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
+    if (!this.S) this.S = new ScoreState(r, { instrument: leader.instrument, genre: this.song.genre, tune: this.tuneKey, performers: this.performers.length, band: this.performers, venue: this.venue, mode: this.mode, bossMod: this.bossMod, mods, songs: this.setSize, battle: !!(r.pendingGig && r.pendingGig.battle) });
+    else this.S.setSection(false);
+    // Instruments you actually play are run by ear: the band states a phrase
+    // and you answer it on the real thing. Everything else keeps its chart.
+    const lInstr = gearInstrument(leader.instrument, leader.quality);
+    if (lInstr.game === 'ear') {
+      this.surface = makeSurface(lInstr, this.song);
+      this.rhythm = new EarGame(this.song, this.surface, mods, {
+        onJudge: (n, j) => { const a = this.S.onHit({ midi: n.midi, star: false }, j, {}); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, '#fff', { life: 0.6 }); },
+        onPhase: (ph) => { if (ph === 'response') { this.cam.hit(2); Audio.ui('tick'); } },
+        onMilestone: (ms) => { this.cutIn = { t: 0, ms }; this.cam.hit(3); this.cam.push(1.12, 0, -14, (Math.random() - 0.5) * 0.02); this.camHold = 1.1; },
+      });
+      this.rhythm.voice = lInstr.voice;
+      this.rhythm.instr = lInstr; this.rhythm.instrKey = leader.instrument; this.rhythm.member = leader;
+      this.earMode = true;
+    } else this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
       onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
@@ -6955,16 +7908,26 @@ class GigScene {
         this.camHold = 1.1;
       },
     });
+    this.S.setSection(false);
     const wmul = (WEATHERS[r.weather] || WEATHERS.clear).tipMult;
     this.crowd = new Crowd(this.venue, Object.assign({}, mods, { bossMod: this.bossMod, range: 1, crowd: mods.crowd * wmul }), r.rng, { groundY: this.L.groundY, rows: this.L.rows, streetY: this.L.streetY, streetH: this.L.streetH, stageX: this.stageX, hatX: this.hatX, hatY: this.L.groundY - 6 });
     const start = Audio.now() + 0.6 + this.song.leadIn; this.rhythm.begin(start);
-    this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); const ins = sec ? sec.instrument : null; return { drums: ins === 'drums', bass: ins === 'bass' }; });
+    if (this.earMode) {
+      // the band vamps round the changes for as long as the lesson takes, and
+      // drops out under a call so the phrase is the only thing you can hear
+      const steps = Math.ceil(this.rhythm.totalLength / (this.song.beat / 4)) + 32;
+      this.backing = new Backing(this.song, start - this.song.leadIn, () => {
+        const quiet = this.rhythm.phase === 'call';
+        return { bass: quiet, chords: quiet };
+      }, { loop: true, steps });
+    } else this.backing = new Backing(this.song, start - this.song.leadIn, (t) => { const sec = sections.find(s => t - start >= s.start - this.song.leadIn - 0.001 && t - start < s.end - this.song.leadIn); const ins = sec ? sec.instrument : null; return { drums: ins === 'drums', bass: ins === 'bass' }; });
     this.phase = 'play'; this.padKey = null; this.quakeT = 3;
     this.pauseBtn = new Btn(8, this.L.rhythmY + 6, 34, 20, 'II', () => this.togglePause(), { color: '#3a3560', hi: '#5a5490', lo: '#2a2540', ol: '#1a1430' });
     this.pauseButtons = [new Btn(W / 2 - 150, 240, 140, 34, 'RESUME', () => this.togglePause(), { scale: 2 }), new Btn(W / 2 + 10, 240, 140, 34, 'BAIL OUT', () => this.quit(), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 })];
   }
   update(dt) {
     this.t += dt; this.fx.update(dt, Game.wind.px);
+    if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
       this.backing.update(); this.rhythm.update(dt);
@@ -6980,11 +7943,18 @@ class GigScene {
           if (this.shotT <= 0) {
             const bar = this.song.beat * 4;
             this.shotT = bar * (2 + Math.floor(Math.random() * 3));
-            const pool = hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
+            const pool = this.earMode ? ['wide', 'wide', 'low'] : hy > 0.6 ? ['tight', 'tight', 'low', 'wide', 'over'] : ['wide', 'wide', 'tight', 'low'];
             this.shot = pool[Math.floor(Math.random() * pool.length)];
           }
           const kx = this.stageX + (this.openKit ? 244 : 120);
-          const SHOTS = {
+          // With an instrument in your hands the shot only breathes: a big pan
+          // would drag the venue off the frame behind a keyboard that cannot
+          // move with it. A kit stands in the scene, so it can take real moves.
+          const SHOTS = this.earMode ? {
+            wide: { z: 1.0,  x: 0,  y: 0,  r: 0.003 },
+            low:  { z: 1.06, x: 0,  y: 12, r: 0.008 },
+            tight: { z: 1.08, x: Math.round((kx - W / 2) * 0.25), y: -8, r: -0.005 },
+          } : {
             wide:  { z: 1.0,  x: 0,             y: 0,   r: 0.004 },
             tight: { z: 1.26, x: kx - W / 2,    y: -18, r: -0.006 },
             low:   { z: 1.16, x: kx - W / 2 - 40, y: 24, r: 0.012 },
@@ -7001,15 +7971,41 @@ class GigScene {
       }
       if (this.cutIn) { this.cutIn.t += dt; if (this.cutIn.t > 1.5) this.cutIn = null; }
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
-      this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v);
-      this.S.watcherTick(dt, this.crowd.watchers.length);
+      this.crowd.update(dt, this.rhythm.hype, this.rhythm.events, Game.wind.v, !this.earMode || this.rhythm.phase === 'response');
+      this.S.watcherTick(dt, this.crowd.watchers.length, !this.earMode || this.rhythm.phase === 'response');
       if (this.bossMod === 'quake') { this.quakeT -= dt; if (this.quakeT <= 0) { this.quakeT = 4 + Math.random() * 5; Game.shake.hit(6, 0.6); Audio.drum('stomp', 0, 0.6); } }
       this.train.t -= dt; if (this.train.t < 0 && this.venue.kind === 'subway') { this.train.x += dt * 300; if (this.train.x > W + 400) { this.train.x = -700; this.train.t = 7 + Math.random() * 8; } }
-      if (this.rhythm.finished) this.finish();
+      if (this.rhythm.finished) this.songDone();
+    } else if (this.phase === 'break') {
+      // a beat between numbers: the crowd claps, you catch your breath
+      this.songBreak.t += dt;
+      this.crowd.update(dt, 70, { perfects: 0, misses: 0, cheer: 1 }, Game.wind.v);
+      if (this.songBreak.t > 2.4) { this.songBreak = null; this.startSong(this.songIdx + 1); }
     } else if (this.phase === 'tally') { this.tallyT += dt; this.advanceTally(); }
   }
+  // One song down. Bank it, put the next record on, and only tally the show
+  // once all three have been played.
+  songDone() {
+    const res = this.rhythm.results();
+    const T = this.showTotals;
+    T.perfect += res.perfect; T.great += res.great; T.good += res.good; T.miss += res.miss;
+    T.maxCombo = Math.max(T.maxCombo, res.maxCombo);
+    if (this.backing) this.backing.stopped = true;
+    if (this.songIdx + 1 < this.setlist.length) {
+      this.songBreak = { t: 0, next: this.setlist[this.songIdx + 1] };
+      this.phase = 'break';
+      Audio.applause(0.6, 1.1);
+      return;
+    }
+    this.finish();
+  }
   finish() {
-    const r = Game.run, res = this.rhythm.results(); this.res = res;
+    const r = Game.run, live = this.rhythm.results(), T = this.showTotals;
+    // the tally is the whole show, not the last song of it
+    const res = { perfect: T.perfect, great: T.great, good: T.good, miss: T.miss, maxCombo: Math.max(T.maxCombo, live.maxCombo) };
+    res.total = res.perfect + res.great + res.good + res.miss;
+    res.acc = res.total ? (res.perfect + res.great * 0.75 + res.good * 0.4) / res.total : 0;
+    this.res = res;
     const total = this.S.finish({ combo: this.rhythm.combo, maxCombo: res.maxCombo, misses: res.miss, watchers: this.crowd.watchers.length, hype: this.rhythm.hype, acc: res.acc });
     const tips = Math.round(this.crowd.earned * (this.mods.tipMult || 1) * 4) / 4;
     this.tips = tips; this.earned = total + tips;
@@ -7068,6 +8064,8 @@ class GigScene {
     if (this.phase === 'prep') {
       if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
       if (this.backBtn && this.backBtn.hit(x, y)) { this.backBtn.onTap(); return; }
+      for (const sv of (this.sleeves || [])) if (x >= sv.x && x < sv.x + sv.w && y >= sv.y && y < sv.y + sv.h) { this.toggleSong(sv.key); return; }
+      for (const sl of (this.setSlots || [])) if (x >= sl.x && x < sl.x + sl.w && y >= sl.y && y < sl.y + sl.h) { const k = this.setlist[sl.i]; if (k) this.toggleSong(k); return; }
       for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) { this.toggleMember(l.i); return; }
       return;
     }
@@ -7078,18 +8076,44 @@ class GigScene {
     // A kit is played by hitting the drums themselves, mouse or finger alike.
     const drum = this.drumAt(x, y);
     if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    // Keys and necks are played on the instrument: the note under your finger
+    // is the note that sounds, exactly as it would be in the room.
+    if (this.earMode && this.surface) {
+      const hit = this.surface.noteAt(x, y);
+      if (hit != null) {
+        const midi = typeof hit === 'object' ? hit.m : hit;
+        const sp = typeof hit === 'object' ? this.surface.spot(hit.str, hit.fret) : (() => { const sl = this.surface.slotOf(midi); return sl ? { x: sl.cx, y: sl.y + 16 } : null; })();
+        this.earPointers.set(id, midi);
+        this.rhythm.press(midi, sp);
+        return;
+      }
+    }
     if (Game.touch && this.rhythm.section.qte) { this.padPointers.set(id, 'Space'); this.rhythm.keyDown('Space'); }
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
+    if (this.earMode && this.surface && this.earPointers.has(id)) {
+      const hit = this.surface.noteAt(x, y);
+      const midi = hit == null ? null : (typeof hit === 'object' ? hit.m : hit);
+      const prevM = this.earPointers.get(id);
+      if (midi !== prevM) {
+        this.rhythm.release(prevM);
+        if (midi == null) this.earPointers.delete(id);
+        else { this.earPointers.set(id, midi); this.rhythm.press(midi, null); }
+      }
+      return;
+    }
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
     if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
     if (next === prev) return;
     this.rhythm.keyUp(prev);
     if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
-  pointerUp(x, y, id) { const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
+  pointerUp(x, y, id) {
+    const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
+    const m = this.earPointers.get(id); if (m !== undefined) { this.earPointers.delete(id); this.rhythm.release(m); }
+  }
   hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
   toggleMember(i) {
     const r = Game.run; if (i == null || !r.members[i]) return;
@@ -7116,12 +8140,29 @@ class GigScene {
     if (wk.tint) { ctx.fillStyle = wk.tint; ctx.fillRect(0, L.stageTop, W, L.stageBottom - L.stageTop); }
     
   }
+  // Between numbers: the record you just played, and the one going on next.
+  drawBreak(ctx) {
+    const L = this.L, b = this.songBreak, k = clamp(b.t / 0.4, 0, 1);
+    this.drawStage(ctx);
+    ctx.globalAlpha = 0.55 * k; rect(ctx, 0, 0, W, H, '#0a0812'); ctx.globalAlpha = 1;
+    const cy = H / 2 - 10;
+    const slide = (1 - easeOutBack(k)) * 90;
+    drawText(ctx, 'SONG ' + (this.songIdx + 2) + ' OF ' + this.setlist.length, W / 2, cy - 108 + slide, '#cfc9e6', { align: 'center', scale: 2 });
+    // the sleeve of what is coming, big
+    const S = 120;
+    drawSleeve(ctx, b.next, W / 2 - S / 2, cy - 66 + slide, S, { selected: true });
+    const t2 = TUNES[b.next];
+    drawText(ctx, t2.title.toUpperCase(), W / 2, cy + 66 + slide, '#ffd98a', { align: 'center', scale: 3, outline: '#1a1410' });
+    drawText(ctx, t2.composer.toUpperCase(), W / 2, cy + 92 + slide, '#b8aed0', { align: 'center' });
+    if (b.t > 1.5) { ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6); drawText(ctx, 'COUNTING IN', W / 2, cy + 114 + slide, '#6be585', { align: 'center' }); ctx.globalAlpha = 1; }
+    this.fx.draw(ctx);
+  }
   // The set read-outs live outside the camera: the shot moves, the HUD does not.
   drawSetHud(ctx) {
     const L = this.L; if (!this.rhythm) return;
       // ---- the hype gauge: a brass-cased meter with real ticks and a needle
-      const hh = L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
-      const hx = W - 34, hy = L.open ? H - 58 - hh - 10 : L.stageTop + 8;
+      const hh = this.earMode ? 132 : L.open ? 150 : Math.min(130, L.stageBottom - L.stageTop - 30);
+      const hx = W - 34, hy = this.earMode ? 92 : L.open ? H - 58 - hh - 10 : L.stageTop + 8;
       const hype = this.rhythm.hype, hot = hype > 70, warm = hype > 40;
       const hcol = hot ? '#ff5a9a' : warm ? '#ffd166' : '#6fb8ff';
       rect(ctx, hx - 4, hy - 12, 20, hh + 18, '#171320');
@@ -7140,7 +8181,7 @@ class GigScene {
       for (let i = 0; i <= 8; i++) { const ty = hy + hh - Math.round(hh * i / 8); rect(ctx, hx + 12, ty, i % 2 ? 2 : 4, 1, '#8f83b4'); }
       frame(ctx, hx - 1, hy - 1, 14, hh + 2, '#4a4270');
       if (hype > 80 && Math.random() < 0.6) this.fx.add({ x: hx + 6 + (Math.random() - 0.5) * 8, y: hy + hh - fill, vx: 0, vy: -40, life: 0.5, color: '#ff9030', kind: 'fire', size: 3, gravity: 0 });
-      const rdY = L.open ? H - 58 : L.stageTop + 6;
+      const rdY = this.earMode ? 32 : L.open ? H - 58 : L.stageTop + 6;
       rect(ctx, W - 196, rdY, 156, 44, 'rgba(10,8,20,0.74)'); frame(ctx, W - 196, rdY, 156, 44, '#3a3560');
       rect(ctx, W - 195, rdY + 1, 154, 1, '#5a5490');
       drawText(ctx, fmtNum(this.S.applause), W - 48, rdY + 4, '#fff', { align: 'right', scale: 3 });
@@ -7182,28 +8223,42 @@ class GigScene {
       if (on) { ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 4 + i); ringPx(ctx, x, y - 34, 32, '#ffd24a'); ctx.globalAlpha = 1; }
       this.lineup.push({ x: x - 34, y: y - 96, w: 68, h: 120, i });
     });
-    // ---- a compact plaque for the song, top left
-    const G = GENRES[this.song.genre];
-    const title = this.song.name.toUpperCase();
-    const pw = Math.max(280, textWidth(title, { scale: 3 }) + 36);
-    rect(ctx, 16, 38, pw, 62, 'rgba(18,14,24,0.62)'); rect(ctx, 16, 38, pw, 2, '#c8a03a'); rect(ctx, 16, 98, pw, 2, '#5a4a18');
-    rect(ctx, 16, 38, 3, 62, '#c8a03a');
-    drawText(ctx, title, 28, 46, '#ffd98a', { scale: 3 });
-    drawText(ctx, this.song.composer.toUpperCase(), 28, 76, '#b8aed0', { font: 'small' });
-    { const m0 = Game.run.members[0], t2 = gearTier(m0.quality);
-      const gw = textWidth(t2.short) + 12;
-      rect(ctx, 16, 104, gw, 14, t2.color); frame(ctx, 16, 104, gw, 14, '#1a1410');
-      drawText(ctx, t2.short, 22, 107, '#fdf6e2');
-      drawText(ctx, INSTRUMENTS[m0.instrument].name.toUpperCase() + '  ' + gearInstrument(m0.instrument, m0.quality).lanes + ' LANES', 22 + gw, 107, '#cfc6b0', { font: 'small' }); }
-    const gx = 28 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 10;
-    rect(ctx, gx, 73, textWidth(G.name.toUpperCase(), { font: 'small' }) + 10, 11, G.color);
-    drawText(ctx, G.name.toUpperCase(), gx + 5, 76, '#1a1410', { font: 'small' });
-    for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), 16 + pw - 24 - i * 20, 76, 16, 14);
-    // venue read-out as two icons, not a sentence
-    ctx.drawImage(icon('coin'), 16 + pw + 14, 48, 13, 12);
-    drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', 16 + pw + 32, 50, '#f0e0b0');
-    ctx.drawImage(icon('heart'), 16 + pw + 14, 70, 12, 10);
-    drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', 16 + pw + 32, 70, '#f0e0b0');
+    // ---- the crate: flip through the records and build a three-song set
+    this.sleeves = []; this.setSlots = [];
+    const SZ = 74, gap = 10, n2 = this.crate.length;
+    const totalW = n2 * SZ + (n2 - 1) * gap;
+    const cx0 = Math.round((W - totalW) / 2), cy0 = 60;
+    // the crate itself, with a divider card behind the records
+    rect(ctx, cx0 - 14, cy0 - 12, totalW + 28, SZ + 40, 'rgba(30,20,16,0.82)');
+    frame(ctx, cx0 - 14, cy0 - 12, totalW + 28, SZ + 40, '#6a4a2c');
+    rect(ctx, cx0 - 13, cy0 - 11, totalW + 26, 2, '#9a7048');
+    rect(ctx, cx0 - 14, cy0 + SZ + 24, totalW + 28, 4, '#4a3220');
+    this.crate.forEach((k, i) => {
+      const x = cx0 + i * (SZ + gap), y = cy0 + (this.setlist.includes(k) ? -6 : 0);
+      const chosen = this.setlist.indexOf(k);
+      drawSleeve(ctx, k, x, y, SZ, { selected: chosen >= 0 });
+      if (chosen >= 0) {
+        rect(ctx, x + SZ - 15, y - 4, 15, 13, '#d9a520'); frame(ctx, x + SZ - 15, y - 4, 15, 13, '#1a1410');
+        drawText(ctx, String(chosen + 1), x + SZ - 8, y - 1, '#2a2010', { align: 'center' });
+      }
+      // how many times you have played it: a tune you know is worth less
+      const plays = this.known[k] || 0;
+      if (plays > 0) { rect(ctx, x, y + SZ - 9, 30, 9, 'rgba(10,8,16,0.8)'); drawText(ctx, 'x' + plays, x + 3, y + SZ - 7, '#8a80b0', { font: 'small' }); }
+      this.sleeves.push({ x, y, w: SZ, h: SZ, key: k });
+    });
+    // the set, written on a strip of tape stuck to the floor monitor
+    const slotY = cy0 + SZ + 34, sw = 172;
+    const sx0 = Math.round(W / 2 - (this.setSize * (sw + 8) - 8) / 2);
+    for (let i = 0; i < this.setSize; i++) {
+      const x = sx0 + i * (sw + 8), k = this.setlist[i];
+      rect(ctx, x, slotY, sw, 22, k ? '#e8dcbc' : 'rgba(20,16,26,0.7)');
+      frame(ctx, x, slotY, sw, 22, k ? '#9a8a60' : '#4a4268');
+      drawText(ctx, String(i + 1) + '.', x + 6, slotY + 7, k ? '#8a7a50' : '#5a5480');
+      if (k) drawText(ctx, TUNES[k].title.toUpperCase().slice(0, 20), x + 22, slotY + 7, '#3a2e18');
+      else drawText(ctx, 'PICK A RECORD', x + 22, slotY + 7, '#5a5480');
+      this.setSlots.push({ x, y: slotY, w: sw, h: 22, i });
+    }
+    if (this.setWarn > 0) { ctx.globalAlpha = clamp(this.setWarn, 0, 1); drawText(ctx, 'PICK ' + this.setSize + ' SONGS FIRST', W / 2, slotY + 28, '#ff8a6a', { align: 'center', outline: '#1a1410' }); ctx.globalAlpha = 1; }
     if (this.bossMod) {
       const bm = BOSS_MODS[this.bossMod], bw = textWidth(bm.name.toUpperCase() + '  ' + bm.desc) + 40;
       rect(ctx, W / 2 - bw / 2, 112, bw, 20, bm.color); frame(ctx, W / 2 - bw / 2, 112, bw, 20, '#1a1410');
@@ -7242,6 +8297,7 @@ class GigScene {
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
     if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
+    if (this.phase === 'break') { this.drawBreak(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       const rA = { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, backdrop: this.V.far,
         overlay: !!L.overlay, kit: L.open ? { cx: this.stageX + 244, baseY: L.groundY - 34, width: Math.round(W * 0.62) } : null };
@@ -7250,8 +8306,11 @@ class GigScene {
       if (L.open) {
         this.cam.apply(ctx, W / 2, L.groundY - 40);
         this.drawStage(ctx);
-        this.rhythm.draw(ctx, rA);
+        // The kit stands in the scene, so it rides the shot. An instrument in
+        // your hands does not: it stays put while the camera moves behind it.
+        if (!this.earMode) this.rhythm.draw(ctx, rA);
         this.cam.done(ctx);
+        if (this.earMode) this.rhythm.draw(ctx, rA);
       } else {
         this.rhythm.draw(ctx, rA);
         this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);
@@ -7260,13 +8319,16 @@ class GigScene {
       }
       this.drawSetHud(ctx);
       if (this.cutIn) this.drawCutIn(ctx);
-      const p = clamp(this.rhythm.now / this.song.length, 0, 1);
+      const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
       const barY = L.open ? 25 : (L.top ? L.stageBottom : L.stageTop - 4);
       rect(ctx, 0, barY, W, 5, '#1b1626'); rect(ctx, 0, barY, W, 1, '#332b46');
       rect(ctx, 0, barY + 1, Math.round(W * p), 4, '#ffd24a');
       rect(ctx, 0, barY + 1, Math.round(W * p), 1, '#fff2b0');
       // where each section starts, so the run of the set is readable at a glance
-      for (const sec of this.rhythm.sections) {
+      if (this.earMode) {
+        const n = this.rhythm.phrases.length;
+        for (let i = 1; i < n; i++) rect(ctx, Math.round(W * i / n), barY, 1, 5, '#6a5f9a');
+      } else for (const sec of this.rhythm.sections) {
         const sx = Math.round(W * clamp(sec.start / this.song.length, 0, 1));
         rect(ctx, sx, barY, 1, 5, sec.qte ? '#ff9f68' : '#6a5f9a');
       }

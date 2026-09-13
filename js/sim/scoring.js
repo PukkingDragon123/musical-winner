@@ -43,7 +43,9 @@ class ScoreState {
   onBombDodged() { this.applause += 6; }
   onRoll() { this.applause += 6; this.rollHits++; }
   onQte(judge) { const a = judge === 'perfect' ? 30 : judge === 'great' ? 20 : judge === 'good' ? 10 : 0; this.applause += a; if (a) this.qteHits++; return a; }
-  watcherTick(dt, watchers) { this.watchers = watchers; this.applause += watchers * 3 * dt * this.mods.watcherApplause; }
+  // The crowd only cheers while you are actually playing. Without this, a mode
+  // that spends half its time listening would earn twice as much for it.
+  watcherTick(dt, watchers, playing) { this.watchers = watchers; if (playing === false) return; this.applause += watchers * 3 * dt * this.mods.watcherApplause; }
   onCheer() { this.cheers++; this.addMult(this.mods.cheerMult, 'Crowd cheer'); }
   finish(state) {
     this.combo = state.combo; this.maxCombo = state.maxCombo; this.misses = state.misses; this.watchers = state.watchers; this.hype = state.hype; this.acc = state.acc;
@@ -56,6 +58,10 @@ class ScoreState {
     let mult = this.baseMult + this.multAdd; for (const t of this.times) mult *= t;
     this.mult = Math.round(mult * 100) / 100;
     const venue = this.info.venue || { wealth: 1 }; let dollars = this.applause * this.mult / PAYOUT_DIV * venue.wealth;
+    // A show is several songs, but it is still one night's pay: normalise by
+    // the song count and hand back a modest bonus for playing a longer set.
+    const songs = this.info.songs || 1;
+    if (songs > 1) dollars *= (1 + (songs - 1) * 0.35) / songs;
     if (this.info.mode === 'elite') dollars *= 1.25 * this.mods.eliteBonus; if (this.info.mode === 'boss') dollars *= 1.6;
     if (this.info.bossMod === 'cops') dollars *= 1.4;
     this.basePay = Math.round(dollars * 4) / 4;
