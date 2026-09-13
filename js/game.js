@@ -11,7 +11,7 @@ class RunState {
     this.seed = seed; this.rng = makeRng(seed);
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
-    this.pos = 'mission'; this.tickets = 7; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
+    this.pos = 'mission'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -21,14 +21,16 @@ class RunState {
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
-    s.pos = 'mission'; s.tickets = 7; s.weather = 'clear'; s.doneNodes = {};
+    s.pos = 'mission'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
     return s;
   }
   newDay() {
     const bonus = collectMods(this).tickets || 0;
+    this.staminaMax = 46 + bonus * 6; this.stamina = this.staminaMax;
     this.tickets = 7 + bonus; this.doneNodes = {};
     this.weather = this.day === 0 ? 'clear' : this.rng.pick(WEATHER_KEYS);
   }
+  rest(n) { this.stamina = clamp(this.stamina + n, 0, this.staminaMax); }
   hasCharm(k) { return this.charms.includes(k); }
   addCharm(k) { if (this.charms.includes(k) || this.charms.length >= this.charmSlots) return false; this.charms.push(k); return true; }
   removeCharm(k) { const i = this.charms.indexOf(k); if (i >= 0) this.charms.splice(i, 1); }
@@ -54,14 +56,14 @@ class RunState {
   }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }

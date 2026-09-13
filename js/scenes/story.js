@@ -439,28 +439,127 @@ class FlightScene {
     rect(ctx, 0, top + h - 14, W, 14, '#8a867e');
     ctx.restore();
   }
+  // ---- SFO, an hour before the flight
+  drawGate(ctx) {
+    const t = this.t;
+    if (!this.gate) {
+      const r = makeRng(515);
+      this.gate = {
+        waiting: [0, 1, 2, 3, 4, 5, 6].map(i => ({ spec: randomBugSpec(r), row: i, asleep: r.chance(0.3), kid: r.chance(0.3), o: r.range(0, 6) })),
+        walkers: [0, 1, 2].map(i => ({ spec: randomBugSpec(r), x: r.range(0, W), sp: r.range(14, 26) * r.sign(), bag: r.chance(0.6), o: r.range(0, 6) })),
+        clerk: randomBugSpec(r), barista: randomBugSpec(r),
+      };
+    }
+    const G = this.gate;
+    // ---- terminal shell
+    vgrad(ctx, 0, 0, W, 330, '#e6e6ee', '#c6c8d4');
+    rect(ctx, 0, 0, W, 34, '#b8bcc8'); rect(ctx, 0, 32, W, 3, '#8f94a2');
+    for (let x = 24; x < W; x += 120) { rect(ctx, x, 0, 6, 34, '#9aa0ae'); }
+    // strip lights in the ceiling
+    for (let x = 60; x < W; x += 150) { rect(ctx, x, 6, 90, 6, '#fffbe8'); lightPool(ctx, x + 45, 20, 130, '#fff4c0', 0.12); }
+    // ---- glass wall onto the apron, with the plane
+    rect(ctx, 0, 34, W, 250, '#7fb3dc');
+    vgrad(ctx, 4, 38, W - 8, 242, '#b9dcf2', '#7fb3dc');
+    // distant hills and runway
+    ctx.fillStyle = '#9ab89a'; ctx.beginPath(); ctx.moveTo(0, 150); ctx.lineTo(200, 120); ctx.lineTo(420, 152); ctx.lineTo(700, 118); ctx.lineTo(W, 148); ctx.lineTo(W, 200); ctx.lineTo(0, 200); ctx.fill();
+    rect(ctx, 0, 196, W, 88, '#8f97a4'); rect(ctx, 0, 196, W, 3, '#a8b0bc');
+    for (let x = 0; x < W; x += 60) rect(ctx, x, 238, 34, 3, '#e8e4d0');
+    // the aircraft
+    const px0 = 230 + Math.sin(t * 0.4) * 6;
+    rect(ctx, px0, 186, 392, 46, '#f2f2f8'); rect(ctx, px0, 186, 392, 6, '#ffffff');
+    rect(ctx, px0, 214, 392, 8, '#2f5a9a');
+    ctx.fillStyle = '#f2f2f8'; ctx.beginPath(); ctx.moveTo(px0 + 392, 186); ctx.lineTo(px0 + 452, 200); ctx.lineTo(px0 + 452, 224); ctx.lineTo(px0 + 392, 232); ctx.fill();
+    ctx.fillStyle = '#2f5a9a'; ctx.beginPath(); ctx.moveTo(px0 + 352, 186); ctx.lineTo(px0 + 402, 138); ctx.lineTo(px0 + 424, 138); ctx.lineTo(px0 + 400, 186); ctx.fill();
+    for (let i = 0; i < 13; i++) rect(ctx, px0 + 30 + i * 26, 198, 13, 11, '#8ec8f0');
+    rect(ctx, px0 + 96, 232, 150, 30, '#c8c8d4'); circle(ctx, px0 + 120, 250, 13, '#3a3a48'); circle(ctx, px0 + 120, 250, 7, '#8a8a98');
+    rect(ctx, px0 + 8, 224, 34, 16, '#c8c8d4');
+    // jet bridge reaching in from the right
+    rect(ctx, px0 + 300, 196, 320, 26, '#b8bcc8'); rect(ctx, px0 + 300, 196, 320, 4, '#d4d8e2');
+    for (let x = px0 + 310; x < px0 + 620; x += 26) rect(ctx, x, 200, 10, 16, '#8ec8f0');
+    // ground crew
+    for (const gx of [px0 + 60, px0 + 300]) { drawShadow(ctx, gx, 268, 20, 0.2); drawBugAt(ctx, G.clerk, gx, 268, { pose: Math.floor(t * 2) % 2 ? 'point' : 'idle', scale: 0.8, rate: 1.6 }); }
+    // mullions
+    rect(ctx, 0, 280, W, 8, '#8f94a2');
+    for (let x = 0; x < W; x += 128) { rect(ctx, x, 34, 7, 250, '#c8ccd8'); rect(ctx, x + 1, 34, 2, 250, '#eef0f6'); }
+    ctx.globalAlpha = 0.16; for (let x = -200; x < W; x += 160) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(x, 284); ctx.lineTo(x + 70, 34); ctx.lineTo(x + 110, 34); ctx.lineTo(x + 40, 284); ctx.fill(); } ctx.globalAlpha = 1;
+    // ---- floor
+    vgrad(ctx, 0, 288, W, H - 288, '#d8d4cc', '#b0aca6');
+    for (let x = 0; x < W; x += 48) rect(ctx, x, 288, 1, H - 288, '#c4c0b8');
+    for (let y = 300; y < H; y += 34) rect(ctx, 0, y, W, 1, '#c4c0b8');
+    ctx.globalAlpha = 0.12; for (let x = 0; x < W; x += 90) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x, 300, 30, H - 300); } ctx.globalAlpha = 1;
+    // ---- duty free, left
+    rect(ctx, 12, 210, 300, 150, '#f2ead6'); frame(ctx, 12, 210, 300, 150, '#8a7450');
+    rect(ctx, 12, 210, 300, 26, '#7a2a5a'); rect(ctx, 14, 212, 296, 2, '#a8467e');
+    drawText(ctx, 'DUTY FREE', 162, 217, '#ffd9ea', { align: 'center', scale: 2, shadow: '#4a1636' });
+    for (let i = 0; i < 3; i++) {
+      const sy = 262 + i * 34; rect(ctx, 20, sy, 284, 5, '#b09a6e'); rect(ctx, 20, sy, 284, 2, '#d8c79c');
+      const rr = makeRng(60 + i * 3);
+      for (let x = 26; x < 296; x += 30) {
+        const k = rr.pick(['bottle', 'bottle', 'coffee', 'book', 'poster']);
+        ctx.drawImage(itemCanvas(k), 0, 0, 32, 32, x, sy - 28, 28, 28);
+      }
+    }
+    drawShadow(ctx, 268, 360, 28, 0.2);
+    drawBugAt(ctx, G.barista, 268, 360, { pose: 'idle', expr: 'happy', scale: 1.1, rate: 1.4 });
+    rect(ctx, 236, 344, 62, 18, '#8a5f36'); rect(ctx, 236, 344, 62, 4, '#b5834f');
+    // ---- gate desk, right
+    rect(ctx, 660, 258, 284, 102, '#31537f'); rect(ctx, 660, 258, 284, 6, '#4a75a8');
+    rect(ctx, 668, 266, 268, 30, '#12213a');
+    const blink = Math.floor(t * 2) % 2 === 0;
+    drawText(ctx, 'GATE A12', 678, 272, '#ffb340', { scale: 2 });
+    if (blink) drawText(ctx, 'BOARDING', 838, 272, '#6be585', { align: 'center', scale: 2 });
+    for (let i = 0; i < 3; i++) drawText(ctx, ['SFO  0740  ON TIME', 'LAX  0815  DELAYED', 'PDX  0905  ON TIME'][i], 676, 302 + i * 16, i === 1 ? '#e0785a' : '#cfe0f0', { font: 'small' });
+    drawShadow(ctx, 790, 372, 30, 0.2);
+    drawBugAt(ctx, G.clerk, 790, 372, { pose: 'idle', expr: 'happy', scale: 1.2, rate: 1.3 });
+    // ---- planters
+    for (const bx of [340, 620]) {
+      rect(ctx, bx, 300, 54, 32, '#9a7a52'); rect(ctx, bx, 300, 54, 4, '#b89a70'); frame(ctx, bx, 300, 54, 32, '#6a5236');
+      circle(ctx, bx + 16, 294, 15, '#4f8a56'); circle(ctx, bx + 36, 290, 13, '#3f7a48'); circle(ctx, bx + 26, 280, 12, '#6fae72');
+      circle(ctx, bx + 12, 284, 7, '#6fae72');
+    }
+    // ---- seating rows with travellers
+    const rowY = [402, 470];
+    for (let r2 = 0; r2 < 2; r2++) {
+      const y = rowY[r2];
+      rect(ctx, 60, y, 840, 8, '#5f6672'); rect(ctx, 60, y, 840, 3, '#7d8493');
+      for (let i = 0; i < 8; i++) { const sx = 72 + i * 106; rect(ctx, sx, y - 26, 84, 26, '#3f6ea8'); rect(ctx, sx, y - 26, 84, 3, '#5b8fcc'); rect(ctx, sx + 38, y + 8, 8, 22, '#5f6672'); }
+      rect(ctx, 88, y + 30, 8, 6, '#4a5058'); rect(ctx, 864, y + 30, 8, 6, '#4a5058');
+    }
+    G.waiting.forEach((p, i) => {
+      const row = i < 4 ? 0 : 1, y = rowY[row] - 4;
+      const x = 104 + (i % 4) * 212 + (row ? 60 : 0);
+      drawShadow(ctx, x, y + 4, 26, 0.18);
+      drawBugAt(ctx, p.spec, x, y + 2, { pose: p.asleep ? 'sad' : 'idle', expr: p.asleep ? 'sleepy' : null, scale: p.kid ? 0.85 : 1.25, rate: p.asleep ? 0.7 : 1.6, phase: p.o });
+      if (p.asleep) { ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 2 + i); drawText(ctx, 'Z', x + 18, y - 48 - (t * 8 % 14), '#6a7080', { scale: 2 }); ctx.globalAlpha = 1; }
+      // backpack on the floor beside them
+      if (i % 2 === 0) ctx.drawImage(itemCanvas('bag'), 0, 0, 32, 32, x + 22, y - 20, 26, 26);
+      if (p.kid) { const kx = x + 34; drawShadow(ctx, kx, y + 6, 16, 0.16); drawBugAt(ctx, p.spec, kx, y + 4, { pose: Math.floor(t * 3 + i) % 2 ? 'cheer' : 'idle2', expr: 'happy', scale: 0.6, rate: 4.2, phase: i }); }
+    });
+    // ---- travellers walking past
+    G.walkers.forEach((wk, i) => {
+      wk.x += wk.sp * (1 / 60); if (wk.x < -40) wk.x = W + 40; if (wk.x > W + 40) wk.x = -40;
+      drawShadow(ctx, wk.x, 520, 30, 0.2);
+      drawBugAt(ctx, wk.spec, wk.x, 518, { pose: Math.floor(t * 5 + i) % 2 ? 'walk1' : 'walk2', flip: wk.sp < 0, scale: 1.35, rate: 3.4, phase: wk.o });
+      if (wk.bag) { ctx.drawImage(itemCanvas('bag'), 0, 0, 32, 32, wk.x + (wk.sp < 0 ? -34 : 12), 492, 24, 24); rect(ctx, wk.x + (wk.sp < 0 ? -22 : 22), 470, 2, 24, '#4a4050'); }
+    });
+    // ---- you, with your case, heading for the gate
+    const yx = 470 + Math.sin(t * 0.5) * 10;
+    drawShadow(ctx, yx, 520, 46, 0.28);
+    drawBugAt(ctx, this.you.spec, yx, 518, { pose: Math.floor(t * 4) % 2 ? 'walk1' : 'walk2', instrument: this.you.instrument, scale: 2.1, expr: 'sad', rate: 3.2 });
+    ctx.drawImage(itemCanvas('bag'), 0, 0, 32, 32, yx + 30, 492, 30, 30);
+    if (t > 1.2) bubble(ctx, yx + 54, 404, 'ONE WAY.', {});
+    // ---- hanging sign
+    rect(ctx, 380, 34, 220, 34, '#12213a'); frame(ctx, 380, 34, 220, 34, '#3a4050');
+    rect(ctx, 470, 34, 2, 10, '#8a8a98'); rect(ctx, 510, 34, 2, 10, '#8a8a98');
+    drawText(ctx, 'GATES A1 - A20', 490, 44, '#ffd9a0', { align: 'center', scale: 2 });
+    ctx.drawImage(icon('arrowR'), 578, 44, 10, 18);
+    grade(ctx, 0, 0, W, H, '#cfe0ff', 0.1);
+    vignette(ctx, 0.36);
+  }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0d0b18'); const L = this.L;
     this.drawCabin(ctx, L.seatTop, L.seatH);
-    if (this.phase === 'board') {
-      // airport gate
-      vgrad(ctx, 0, 0, W, H, '#2a3448', '#151a26');
-      rect(ctx, 0, 320, W, H - 320, '#3a4050'); rect(ctx, 0, 320, W, 4, '#5a6070');
-      for (let x = 0; x < W; x += 44) rect(ctx, x, 324, 2, H - 324, '#2e3440');
-      rect(ctx, 0, 70, W, 246, '#1a2030');
-      for (let i = 0; i < 6; i++) { const wx = 40 + i * 156; rect(ctx, wx, 86, 128, 200, '#4a7ab0'); rect(ctx, wx + 4, 90, 120, 192, '#6aa0d8'); }
-      const px0 = 200 + Math.sin(this.t * 0.6) * 8;
-      rect(ctx, px0, 186, 380, 44, '#e8e8f0'); rect(ctx, px0 + 352, 166, 66, 34, '#e8e8f0'); rect(ctx, px0 + 90, 228, 130, 32, '#c8c8d4');
-      for (let i = 0; i < 11; i++) rect(ctx, px0 + 34 + i * 30, 200, 14, 12, '#8ec8f0');
-      rect(ctx, 280, 20, 400, 40, '#12161f'); frame(ctx, 280, 20, 400, 40, '#3a4050');
-      const blink = Math.floor(this.t * 2) % 2 === 0;
-      drawText(ctx, 'SFO   SAN FRANCISCO', 296, 32, '#ffb340', { scale: 2 });
-      if (blink) drawText(ctx, 'BOARDING', 580, 32, '#6be585', { scale: 2 });
-      drawShadow(ctx, 300, 470, 44); drawBugAt(ctx, this.you.spec, 300, 470, { pose: Math.floor(this.t * 4) % 2 ? 'walk1' : 'walk2', instrument: this.you.instrument, scale: 2.3 });
-      ctx.drawImage(propCanvas('suitcase'), 336, 440, 36, 28);
-      bubble(ctx, 360, 386, 'ONE WAY.', {});
-      return;
-    }
+    if (this.phase === 'board') { this.drawGate(ctx); return; }
     // cabin seats
     const seatY = L.seatTop + L.seatH;
     vgrad(ctx, 0, seatY, W, H - seatY, '#2a3040', '#1a1f2b');

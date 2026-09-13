@@ -73,7 +73,15 @@ class RhythmGame {
   }
   playHit(note, j, hold) {
     const k = this.section.instrument; const ins = INSTRUMENTS[k];
-    if (k === 'drums') { Audio.drum(note.type === 'ka' ? 'ka' : 'don', 0, j === 'perfect' ? 0.9 : 0.7); return null; }
+    if (k === 'drums') {
+      // each lane is a different piece of the kit, so it should sound like one
+      const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
+      const v = j === 'perfect' ? 0.95 : j === 'great' ? 0.8 : 0.6;
+      Audio.drum(piece === 'kick' ? 'bigkick' : piece, 0, v);
+      if (piece === 'kick') Audio.drum('kick', 0, v * 0.6);
+      if (piece === 'crash') Audio.drum('hat', 0, v * 0.4);
+      return null;
+    }
     const vel = j === 'perfect' ? 0.55 : j === 'great' ? 0.45 : 0.35;
     const dur = hold ? Math.max(0.3, note.dur) + 0.3 : (k === 'tambourine' ? 0.1 : 0.35);
     return Audio.note(this.mods.voiceOverride || ins.voice || 'guitar', note.midi, 0, dur, vel);
@@ -100,7 +108,7 @@ class RhythmGame {
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && n.lane === lane && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
       if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.5, 0, 100); this.playHit(roll, 'great'); const r = this.receptorOf(roll); this.fx.burst(r.x, r.y, 4, { color: '#ffd166', speed: 50, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0, x: r.x, y: r.y - 14 }); if (this.hooks.onRoll) this.hooks.onRoll(); this.flashes[lane] = 0.15; return; }
       const n = this.findNote(x => x.lane === lane && x.type !== 'roll');
-      if (!n) { if (this.now > 0) { Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
+      if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(pc === 'kick' ? 'bigkick' : pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       const j = this.judgeDt(this.now - n.t); n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
       this.applyJudge(j, n);
@@ -301,13 +309,13 @@ class RhythmGame {
     const instr = this.instrument, L = instr.lanes, kind = this.section.instrument;
     const hw = new Highway(A, L, { touch: A.touch, pads: A.pads });
     this.hw = hw;
-    const cols = []; for (let l = 0; l < L; l++) cols.push(LANE_COLORS[l % LANE_COLORS.length]);
+    const cols = []; for (let l = 0; l < L; l++) cols.push(instr.view === 'kit' ? KIT_COLORS[l % KIT_COLORS.length] : LANE_COLORS[l % LANE_COLORS.length]);
     // lane floor glow
     for (let l = 0; l < L; l++) {
       const steps = 10;
       for (let i = 0; i < steps; i++) {
         const k0 = i / steps, k1 = (i + 1) / steps; const a = hw.pos(l, k0), b = hw.pos(l, k1);
-        ctx.globalAlpha = 0.1 + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
+        ctx.globalAlpha = (instr.view === 'kit' ? 0.2 : 0.1) + (this.flashes[l] > 0 ? this.flashes[l] * 0.5 : 0) * (1 - k0);
         ctx.fillStyle = cols[l]; ctx.beginPath();
         ctx.moveTo(a.x - a.w / 2 + 1, a.y); ctx.lineTo(a.x + a.w / 2 - 1, a.y); ctx.lineTo(b.x + b.w / 2 - 1, b.y); ctx.lineTo(b.x - b.w / 2 + 1, b.y); ctx.closePath(); ctx.fill();
         ctx.globalAlpha = 1;
@@ -323,6 +331,7 @@ class RhythmGame {
       }
       for (let l = 0; l <= L; l++) { const steps = 12; for (let i = 0; i < steps; i++) { const k0 = i / steps, k1 = (i + 1) / steps; const x0 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k0), x1 = hw.cx + (hw.laneCx(Math.min(l, L - 1)) + (l === L ? hw.laneW / 2 : -hw.laneW / 2) - hw.cx) * persp(k1); line(ctx, x0, perspY(k0, hw.nearY, hw.farY), x1, perspY(k1, hw.nearY, hw.farY), 'rgba(120,110,190,0.35)'); } }
       if (kind === 'piano') drawKeyboard(ctx, hw, this, { keys: instr.keys, laneColors: cols });
+      if (instr.view === 'kit') drawDrumKit(ctx, hw, this, { colors: KIT_COLORS, padNames: instr.padNames });
     }
     // receptors
     for (let l = 0; l < L; l++) {

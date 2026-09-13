@@ -181,11 +181,21 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
       const bomb = !star && rng.chance(bombRate) && beats <= 0.5;
       switch (instr.game) {
         case 'lanes': {
-          const L = instr.lanes; let lane = clamp(Math.round(rel * (L - 1)), 0, L - 1);
+          const L = instr.lanes, kit = instr.view === 'kit';
+          let lane = clamp(Math.round(rel * (L - 1)), 0, L - 1);
           if (L <= 2) lane = rel > 0.5 ? L - 1 : 0;
           if (lane === lastLane && rng.chance(0.25) && L > 2) lane = clamp(lane + rng.sign(), 0, L - 1);
           lastLane = lane;
           if (bomb) { notes.push({ t, lane: clamp(lane + rng.sign(), 0, L - 1), dur: 0, type: 'bomb', midi }); break; }
+          if (kit) {
+            // A kit has no sustain. Downbeats land as kick, and now and then
+            // the crash rides on top of them.
+            const onBeat = Math.abs(((t - secStart) / beat) % 2) < 0.02;
+            if (onBeat && rng.chance(0.5)) lane = 0;
+            notes.push({ t, lane, dur: 0, type: 'tap', midi, star });
+            if (onBeat && difficulty >= 3 && rng.chance(0.22) && lane !== 3) { notes.push({ t, lane: 3, dur: 0, type: 'tap', midi, chord: true }); notes[notes.length - 2].chord = true; }
+            break;
+          }
           if (isLong && difficulty >= 2) { notes.push({ t, lane, dur: dur - beat * 0.15, type: 'hold', midi, star }); break; }
           notes.push({ t, lane, dur: 0, type: 'tap', midi, star });
           if (L >= 6 && difficulty >= 3 && beats >= 1 && rng.chance(0.22)) { const l2 = clamp(lane + (lane < L - 2 ? 2 : -2), 0, L - 1); notes.push({ t, lane: l2, dur: 0, type: 'tap', midi: midi + 4, chord: true }); notes[notes.length - 2].chord = true; }

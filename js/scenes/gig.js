@@ -95,7 +95,14 @@ class GigScene {
   }
   next() { Game.go(() => new DraftScene(this), 'vinyl'); }
   key(code) {
-    if (this.phase === 'prep') { this.menu.key(code); return; }
+    if (this.phase === 'prep') {
+      if (['Enter', 'Space'].includes(code)) this.startPlay();
+      else if (code === 'Escape') Game.go(() => new CityScene(), 'slideR');
+      else if (code === 'ArrowLeft' || code === 'KeyA') { this.prepSel = ((this.prepSel || 0) - 1 + Game.run.members.length) % Game.run.members.length; Audio.ui('move'); }
+      else if (code === 'ArrowRight' || code === 'KeyD') { this.prepSel = ((this.prepSel || 0) + 1) % Game.run.members.length; Audio.ui('move'); }
+      else if (code === 'KeyX' || code === 'ArrowUp' || code === 'ArrowDown') this.toggleMember(this.prepSel || 0);
+      return;
+    }
     if (this.phase === 'tally') { if (!this.tallyDone) { if (['Enter', 'Space'].includes(code)) this.tallyT = 999; return; } if (['Enter', 'Space'].includes(code)) this.next(); return; }
     if (code === 'Escape') { this.togglePause(); return; }
     if (this.paused) { if (code === 'KeyQ') this.quit(); return; }
@@ -106,7 +113,12 @@ class GigScene {
   quit() { if (Audio.ctx) Audio.ctx.resume(); this.backing.stop(); this.rhythm.finished = true; this.paused = false; this.S.applause *= 0.5; this.finish(); }
   padAt(x, y) { return this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h); }
   pointerDown(x, y, id) {
-    if (this.phase === 'prep') { this.menu.click(x, y); return; }
+    if (this.phase === 'prep') {
+      if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
+      if (this.backBtn && this.backBtn.hit(x, y)) { this.backBtn.onTap(); return; }
+      for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) { this.toggleMember(l.i); return; }
+      return;
+    }
     if (this.phase === 'tally') { if (!this.tallyDone) { this.tallyT = 999; return; } this.next(); return; }
     if (this.paused) { for (const b of this.pauseButtons) if (b.hit(x, y)) { b.onTap(); return; } return; }
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
@@ -115,7 +127,15 @@ class GigScene {
   }
   pointerMove(x, y, id) { if (this.phase !== 'play' || this.paused) return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
   pointerUp(x, y, id) { const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
-  hover(x, y) { if (this.phase === 'prep') this.menu.hover(x, y); }
+  hover(x, y) { if (this.phase === 'prep') for (const l of (this.lineup || [])) if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) this.prepSel = l.i; }
+  toggleMember(i) {
+    const r = Game.run; if (i == null || !r.members[i]) return;
+    if (i === 0) { Audio.ui('error'); return; }                 // the leader always plays
+    const onCount = this.active.filter(Boolean).length;
+    if (this.active[i] && onCount <= 1) { Audio.ui('error'); return; }
+    this.active[i] = !this.active[i]; Audio.ui(this.active[i] ? 'select' : 'back');
+    this.prepSel = i;
+  }
   drawStage(ctx) {
     const L = this.L; drawVenue(ctx, this.V, L, this.t, Game.wind, this.venue);
     ctx.save(); ctx.beginPath(); ctx.rect(0, L.stageTop, W, L.stageBottom - L.stageTop); ctx.clip();
@@ -142,33 +162,77 @@ class GigScene {
       ctx.drawImage(icon('coin'), W - 128, L.stageTop + 33, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 110, L.stageTop + 35, '#ffd24a');
     }
   }
+  // Standing outside the venue before the set. The scene does the talking:
+  // the band is on the pavement, you tap a bug to put them in or out.
+  drawPrep(ctx) {
+    const r = Game.run, t = this.t, L = this.L;
+    // the venue, full frame
+    const big = Object.assign({}, L, { top: false, stageTop: 26, stageBottom: H, groundY: 424, rows: [0, -10, -20], streetY: 474, streetH: 66, compact: false });
+    const saved = this.L; this.L = big;
+    drawVenue(ctx, this.V, big, t, Game.wind, this.venue);
+    if (this.crowd) { this.crowd.drawCars(ctx, 0); this.crowd.drawPeds(ctx, [2, 1, 0]); this.crowd.drawCars(ctx, 1); }
+    this.L = saved;
+    // ---- the band, lined up on the pavement
+    this.lineup = [];
+    const n = r.members.length, spacing = Math.min(112, 760 / Math.max(1, n));
+    r.members.forEach((m, i) => {
+      const x = W / 2 - (n - 1) * spacing / 2 + i * spacing, y = 424;
+      const on = this.active[i];
+      drawShadow(ctx, x, y, on ? 44 : 34, on ? 0.3 : 0.18);
+      if (!on) ctx.globalAlpha = 0.55;
+      drawBugAt(ctx, m.spec, x, y, {
+        pose: on ? (Math.floor(t * 3 + i) % 2 ? 'play' : 'play2') : 'sad',
+        expr: on ? null : 'sad',
+        instrument: on && m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null,
+        scale: on ? 1.9 : 1.5, rate: on ? 2.6 : 1.2, phase: i * 1.4 });
+      if (on && m.instrument === 'drums') ctx.drawImage(propInstrument('drums'), x - 40, y - 46, 80, 60);
+      if (on && m.instrument === 'piano') ctx.drawImage(propInstrument('piano'), x - 38, y - 32, 76, 40);
+      ctx.globalAlpha = 1;
+      // name plate and stamina, right under their feet
+      const nm = m.name.toUpperCase(), nw = textWidth(nm) + 14;
+      rect(ctx, x - nw / 2, y + 6, nw, 13, on ? '#4f8032' : 'rgba(16,14,24,0.7)');
+      frame(ctx, x - nw / 2, y + 6, nw, 13, on ? '#7fc45a' : '#4a4268');
+      drawText(ctx, nm, x, y + 9, on ? '#f2ffe4' : '#a89fc0', { align: 'center' });
+      uiBar(ctx, x - 22, y + 21, 44, 6, m.stamina / 100, m.stamina > 50 ? '#6fbf4a' : '#e0783a');
+      if (on) { ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 4 + i); ringPx(ctx, x, y - 34, 32, '#ffd24a'); ctx.globalAlpha = 1; }
+      this.lineup.push({ x: x - 34, y: y - 96, w: 68, h: 120, i });
+    });
+    // ---- a compact plaque for the song, top left
+    const G = GENRES[this.song.genre];
+    const title = this.song.name.toUpperCase();
+    const pw = Math.max(280, textWidth(title, { scale: 3 }) + 36);
+    rect(ctx, 16, 38, pw, 62, 'rgba(18,14,24,0.62)'); rect(ctx, 16, 38, pw, 2, '#c8a03a'); rect(ctx, 16, 98, pw, 2, '#5a4a18');
+    rect(ctx, 16, 38, 3, 62, '#c8a03a');
+    drawText(ctx, title, 28, 46, '#ffd98a', { scale: 3 });
+    drawText(ctx, this.song.composer.toUpperCase(), 28, 76, '#b8aed0', { font: 'small' });
+    const gx = 28 + textWidth(this.song.composer.toUpperCase(), { font: 'small' }) + 10;
+    rect(ctx, gx, 73, textWidth(G.name.toUpperCase(), { font: 'small' }) + 10, 11, G.color);
+    drawText(ctx, G.name.toUpperCase(), gx + 5, 76, '#1a1410', { font: 'small' });
+    for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), 16 + pw - 24 - i * 20, 76, 16, 14);
+    // venue read-out as two icons, not a sentence
+    ctx.drawImage(icon('coin'), 16 + pw + 14, 48, 13, 12);
+    drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', 16 + pw + 32, 50, '#f0e0b0');
+    ctx.drawImage(icon('heart'), 16 + pw + 14, 70, 12, 10);
+    drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', 16 + pw + 32, 70, '#f0e0b0');
+    if (this.bossMod) {
+      const bm = BOSS_MODS[this.bossMod], bw = textWidth(bm.name.toUpperCase() + '  ' + bm.desc) + 40;
+      rect(ctx, W / 2 - bw / 2, 112, bw, 20, bm.color); frame(ctx, W / 2 - bw / 2, 112, bw, 20, '#1a1410');
+      ctx.drawImage(icon('skull'), W / 2 - bw / 2 + 6, 115, 13, 12);
+      drawText(ctx, bm.name.toUpperCase() + '  ' + bm.desc, W / 2 + 10, 118, '#1a1410', { align: 'center' });
+    }
+    // ---- one button, and a one-line nudge
+    vignette(ctx, 0.34);
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
+    drawText(ctx, 'TAP A BUG TO SIT THEM OUT', W / 2, H - 74, '#e8dcc0', { align: 'center', outline: '#1a1410' });
+    ctx.globalAlpha = 1;
+    this.startBtn = new Btn(W / 2 - 130, H - 58, 260, 40, 'START THE SET', () => this.startPlay(), { scale: 3 });
+    this.startBtn.draw(ctx);
+    this.backBtn = new Btn(16, H - 50, 96, 30, 'LEAVE', () => Game.go(() => new CityScene(), 'slideR'), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 });
+    this.backBtn.draw(ctx);
+  }
   draw(ctx) {
     rect(ctx, 0, 0, W, H, '#0b0916'); const L = this.L;
-    if (this.phase === 'prep') {
-      this.drawStage(ctx);
-      const PH = 172 + (this.bossMod ? 22 : 0) + this.menu.items.length * (Game.touch ? 22 : 20);
-      const PY = L.top ? 156 : Math.max(24, L.stageTop - PH - 16);
-      const inner = uiPanel(ctx, 24, PY, W - 48, Math.min(PH, L.top ? H - 162 : L.stageTop - 32), { title: this.node.name });
-      const G = GENRES[this.song.genre];
-      drawText(ctx, this.song.name.toUpperCase(), inner.x + 12, inner.y + 8, '#7a4a10', { scale: 3 });
-      drawText(ctx, this.song.composer.toUpperCase(), inner.x + 12, inner.y + 38, UI.inkSoft);
-      rect(ctx, inner.x + 12 + textWidth(this.song.composer.toUpperCase()) + 12, inner.y + 36, textWidth(G.name.toUpperCase()) + 12, 12, G.color);
-      drawText(ctx, G.name.toUpperCase(), inner.x + 12 + textWidth(this.song.composer.toUpperCase()) + 18, inner.y + 38, '#1a1410');
-      for (let i = 0; i < this.difficulty; i++) ctx.drawImage(icon('star'), inner.x + inner.w - 22 - i * 20, inner.y + 8, 16, 14);
-      ctx.drawImage(icon('coin'), inner.x + inner.w - 148, inner.y + 34, 13, 12); drawText(ctx, this.venue.wealth >= 1.5 ? 'RICH' : this.venue.wealth >= 1 ? 'OK' : 'THIN', inner.x + inner.w - 130, inner.y + 36, UI.ink);
-      ctx.drawImage(icon('heart'), inner.x + inner.w - 70, inner.y + 35, 12, 10); drawText(ctx, this.venue.traffic >= 1.3 ? 'BUSY' : 'QUIET', inner.x + inner.w - 52, inner.y + 36, UI.ink);
-      let y = inner.y + 56;
-      if (this.bossMod) { const bm = BOSS_MODS[this.bossMod]; rect(ctx, inner.x + 12, y, inner.w - 24, 18, bm.color); ctx.drawImage(icon('skull'), inner.x + 16, y + 3, 13, 12); drawText(ctx, bm.name.toUpperCase() + ': ' + bm.desc, inner.x + 34, y + 5, '#1a1410'); y += 24; }
-      // lineup portraits
-      const r = Game.run;
-      r.members.forEach((m, i) => { const x = inner.x + 14 + i * 52, on = this.active[i];
-        circle(ctx, x + 18, y + 20, 19, on ? '#4f8032' : '#5a5060'); ctx.save(); ctx.beginPath(); ctx.arc(x + 18, y + 20, 18, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, x + 18, y + 42, { pose: on ? 'play' : 'idle', scale: 1.1, bounce: 0 }); ctx.restore();
-        if (!on) { ctx.globalAlpha = 0.45; circle(ctx, x + 18, y + 20, 18, '#101018'); ctx.globalAlpha = 1; }
-        uiBar(ctx, x + 2, y + 42, 32, 6, m.stamina / 100, m.stamina > 50 ? '#6fbf4a' : '#ff5a5a');
-      });
-      this.menu.draw(ctx, inner.x + 14, y + 56, inner.w - 28, Game.touch ? 22 : 20, 'list');
-      Game.drawHud(ctx); return;
-    }
+    if (this.phase === 'prep') { this.drawPrep(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: L.top, pads: this.pads, backdrop: this.V.far });
       this.drawStage(ctx);

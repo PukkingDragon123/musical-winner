@@ -1,6 +1,7 @@
 // ---------- Instruments ----------
 'use strict';
 const LANE_COLORS = ['#ff6b6b', '#ffd166', '#6be585', '#5bc0ff', '#c58bff', '#ff9f68'];
+const KIT_COLORS = ['#e0563f', '#e8a33a', '#c2c8d6', '#f2cf4a'];   // kick, tom, snare, crash
 const INSTRUMENTS = {
   guitar:     { name: 'Guitar', game: 'lanes', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'], voice: 'guitar', price: 40, tipMult: 1.0, family: 'strings',
                 desc: 'Four lanes of falling notes. Hold the long ones, catch the gold stars, dodge the bombs.' },
@@ -10,8 +11,9 @@ const INSTRUMENTS = {
                 desc: 'Six lanes with two-note chords. For virtuosos.' },
   tambourine: { name: 'Tambourine', game: 'lanes', lanes: 1, keys: ['Space'], keyNames: ['SPACE'], voice: 'tambourine', price: 12, tipMult: 0.7, family: 'percussion',
                 desc: 'One lane. Hit the beat and shake the hold notes. Humble but honest.' },
-  drums:      { name: 'Taiko Drums', game: 'taiko', keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'], voice: null, price: 60, tipMult: 1.1, family: 'percussion',
-                desc: 'Red DON = F or J, blue KA = D or K. Big notes need both hands. Mash the rolls.' },
+  drums:      { name: 'Drum Kit', game: 'lanes', view: 'kit', lanes: 4, keys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], keyNames: ['D', 'F', 'J', 'K'],
+                padNames: ['KICK', 'TOM', 'SNARE', 'CRASH'], drumFor: ['kick', 'tom', 'snare', 'crash'], voice: null, price: 60, tipMult: 1.1, family: 'percussion',
+                desc: 'Four pieces of a real kit. Hit the drum the note lands on, right on the beat.' },
   sax:        { name: 'Saxophone', game: 'wind', keys: ['Space'], keyNames: ['SPACE'], voice: 'sax', price: 55, tipMult: 1.15, family: 'horns',
                 desc: 'Hold SPACE through each phrase and release on the end marker. Watch your breath.' },
   trumpet:    { name: 'Trumpet', game: 'valves', keys: ['KeyJ', 'KeyK', 'KeyL'], keyNames: ['J', 'K', 'L'], voice: 'trumpet', price: 50, tipMult: 1.1, family: 'horns',

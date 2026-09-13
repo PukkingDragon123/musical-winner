@@ -129,3 +129,68 @@ const WEATHER_KEYS = Object.keys(WEATHERS);
   for (const n of NODES) { n.x = Math.round(n.x * S); n.y = Math.round(n.y * S); }
   for (const d of MAP_DETAILS) { d.x *= S; d.y *= S; }
 })();
+
+// ---------- Walkable tile grid, derived from the drawn map ----------
+// Roads, plazas and parks are walkable; water and building footprints are not.
+const TILE = 24;
+const GW = Math.floor(MAPW / TILE), GH = Math.floor(MAPH / TILE);
+let _grid = null;
+function tileGrid(mapCanvas) {
+  if (_grid) return _grid;
+  const g = mapCanvas.getContext('2d');
+  const data = g.getImageData(0, 0, MAPW, MAPH).data;
+  const at = (x, y) => { const i = (y * MAPW + x) * 4; return [data[i], data[i + 1], data[i + 2]]; };
+  const walk = new Uint8Array(GW * GH);
+  const cost = new Uint8Array(GW * GH);
+  for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+    // sample a few points inside the tile and take the majority verdict
+    let road = 0, land = 0, blocked = 0;
+    for (const [ox, oy] of [[12, 12], [5, 5], [19, 5], [5, 19], [19, 19]]) {
+      const [r, gg, b] = at(Math.min(MAPW - 1, tx * TILE + ox), Math.min(MAPH - 1, ty * TILE + oy));
+      if (b > r + 24 && b > 170) blocked++;                      // water
+      else if (r > 245 && gg > 240 && b > 235) road++;           // white road
+      else if (r > 245 && gg > 220 && b < 215) road++;           // yellow arterial
+      else if (gg > r && gg > 150 && r < 225) land++;            // park
+      else if (r > 215 && gg > 210 && b > 195) land++;           // pale ground
+      else blocked++;                                            // buildings, bridges, ink
+    }
+    const i = ty * GW + tx;
+    walk[i] = (road + land) >= 3 ? 1 : 0;
+    cost[i] = road >= 2 ? 1 : 2;                                 // cutting across a park tires you out
+  }
+  _grid = { walk, cost, w: GW, h: GH };
+  // POIs must always stand on something you can reach
+  for (const n of NODES) {
+    const tx = clamp(Math.round(n.x / TILE), 0, GW - 1), ty = clamp(Math.round(n.y / TILE), 0, GH - 1);
+    n.tx = tx; n.ty = ty;
+    _grid.walk[ty * GW + tx] = 1;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = tx + dx, ny = ty + dy;
+      if (nx >= 0 && ny >= 0 && nx < GW && ny < GH) _grid.walk[ny * GW + nx] = 1;
+    }
+  }
+  return _grid;
+}
+function tileWalkable(gr, tx, ty) { return tx >= 0 && ty >= 0 && tx < gr.w && ty < gr.h && !!gr.walk[ty * gr.w + tx]; }
+function tileCost(gr, tx, ty) { return gr.cost[ty * gr.w + tx] || 1; }
+// Breadth-first route between two tiles, returning the tiles after the start.
+function tileRoute(gr, ax, ay, bx, by, limit = 4000) {
+  if (ax === bx && ay === by) return [];
+  const start = ay * gr.w + ax, goal = by * gr.w + bx;
+  const prev = new Int32Array(gr.w * gr.h).fill(-1);
+  const q = [start]; prev[start] = start; let head = 0, seen = 0;
+  while (head < q.length && seen++ < limit) {
+    const cur = q[head++]; if (cur === goal) break;
+    const cx = cur % gr.w, cy = (cur / gr.w) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!tileWalkable(gr, nx, ny)) continue;
+      const ni = ny * gr.w + nx; if (prev[ni] !== -1) continue;
+      prev[ni] = cur; q.push(ni);
+    }
+  }
+  if (prev[goal] === -1) return null;
+  const out = []; let cur = goal;
+  while (cur !== start) { out.push({ tx: cur % gr.w, ty: (cur / gr.w) | 0 }); cur = prev[cur]; }
+  return out.reverse();
+}

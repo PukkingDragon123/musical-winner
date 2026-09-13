@@ -28,10 +28,15 @@ San Francisco drawn like a street map: white roads with names, beige blocks, gre
 the bay, Chinatown, the Mission, Twin Peaks, the Sunset, piers and the Golden Gate. Cars and
 pedestrians move along the roads; weather rolls through.
 
-You travel on **Uber tickets** — one per hop, two for a long one, seven a day. Pins mark
-venues to play, music shops, food (Dumpling Dynasty, Burrito Beetle, Sourdough Sam's),
-open mics to recruit, events, rest stops and street-corner pickups. Tickets run out, night
-falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
+You walk it, tile by tile. Drag a route out from the band and it draws itself along the
+streets with a chevron ribbon and the price in **stamina** at the end; roads are cheap, cutting
+across a park costs double. Walkable ground is read straight off the drawn map, so the band
+follows real streets and never crosses the bay. Stamina runs down as you go and a coffee at
+any music shop buys some back.
+
+Pins mark venues to play, music shops, food (Dumpling Dynasty, Burrito Beetle, Sourdough
+Sam's), open mics to recruit, events, rest stops and street-corner pickups. Stamina runs out,
+night falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
 
 ## Playing
 
@@ -50,7 +55,7 @@ keys, valves and bow.
 | Instrument | Keys |
 |---|---|
 | Guitar / Bass / Keyboard / Tambourine | `D F J K` / `F J` / `S D F J K L` / `Space` |
-| Taiko Drums | `F J` don, `D K` ka |
+| Drum Kit | `D` kick, `F` tom, `J` snare, `K` crash |
 | Saxophone | hold `Space` |
 | Trumpet | `J K L` valve combos |
 | Violin | `↑/W` up bow, `↓/S` down bow |
@@ -60,12 +65,29 @@ Gold stars pay triple, red bombs cost you, roll bars are mashed. Applause x Mult
 tallied Balatro-style. **After every set you draft one of three abilities** — more stars,
 forgiven misses, per-perfect multipliers, chord bonuses, tip doublers, extra Uber tickets.
 
+## Rooms, not menus
+
+Most screens are a place rather than a panel. The **music shop** is a room: a pegboard of
+hanging guitars, four shelves of stock, gold records on the wall, a counter with a register, a
+tip jar and a funko, a snail behind it and other bugs browsing. What is for sale hangs on the
+board or stands on the counter with a paper price tag, and you buy it by pointing at the thing
+itself.
+
+The **restaurant** hands you a torn-edge paper menu with the dishes drawn on it. Order, and the
+food actually takes time: while it cooks you can tap a bandmate to talk to them or take the
+warm-up, a short practice set that carries into your next gig. The **airport** has a duty free,
+a departures board, planters, travellers asleep across the seats with backpacks at their feet
+and kids bouncing beside them.
+
 ## Look
 
-960x540 internal, integer-scaled, every pixel drawn in code. Bugs breathe, squash and bounce
-on a shared animation clock, and switch expression with what is happening: focused mid-set,
-grinning on a high combo, shocked on a drop, sad backstage. Scenes carry vignettes, warm and
-cool colour grades, pooled light from every practical lamp, drifting motes and dust.
+960x540 internal, integer-scaled, every pixel drawn in code. The cast is built from big round
+eyes, chunky limbs and one strong silhouette apiece: the drummer is a moose beetle whose
+antlers are half his height, the elder carries a staff and a medallion, the firefly's abdomen
+glows. Bugs breathe, squash and bounce on a shared animation clock, and switch expression with
+what is happening: focused mid-set, grinning on a high combo, shocked on a drop, sad backstage.
+Items are drawn at 32x32 in ornate gold slots. Scenes carry vignettes, colour grades, pooled
+light from every practical lamp, drifting motes and dust.
 
 ## Mobile
 

@@ -25,13 +25,14 @@ class ShopScene {
     for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
     const ik = rng.pick(PLAYABLE.filter(k => k !== r.members[0].instrument)); const q = rng.int(1, Math.min(3, 1 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q * 0.3) * pm) });
     if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
+    stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
     this.node.stock = stock;
   }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
-  cardLabel(s) { return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
-  cardDesc(s) { return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
-  canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
+  cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
+  cardDesc(s) { if (s.kind === 'rest') return 'Sit down, drink it hot. Back on your feet with +' + s.restores + ' stamina.'; return s.kind === 'charm' ? CHARMS[s.key].desc : s.kind === 'voucher' ? VOUCHERS[s.key].desc + ' (permanent)' : s.kind === 'use' ? CONSUMABLES[s.key].desc : s.kind === 'instrument' ? INSTRUMENTS[s.key].desc + ' Quality stars raise applause.' : s.member.spec.species + ' with a ' + INSTRUMENTS[s.member.instrument].name + ', skill ' + s.member.skill + '. Bandmates take spotlights and add Mult, but eat dinner too.'; }
+  canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
     r.money -= s.price; s.sold = true; Audio.ui('cash');
@@ -40,6 +41,7 @@ class ShopScene {
     else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
     else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
     else if (s.kind === 'recruit') { r.members.push(s.member); this.msg = s.member.name + ' joins the band!'; }
+    else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
   reroll() { const r = Game.run; const p = this.rerollPrice(); if (r.money < p) { this.msg = 'Not enough cash to reroll.'; Audio.ui('error'); return; } r.money -= p; this.node.rerolls++; this.restock(); this.sel = 0; Audio.ui('select'); this.msg = 'Fresh stock!'; }
@@ -53,42 +55,169 @@ class ShopScene {
   }
   click(x, y) {
     for (const b of this.buttons) if (b.hit(x, y)) { b.onTap(); return; }
-    this.cards.forEach((c, i) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === i) this.buy(this.items[i]); else { this.sel = i; Audio.ui('move'); } } });
+    (this.cards || []).forEach((c) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === c.i) this.buy(this.items[c.i]); else { this.sel = c.i; Audio.ui('move'); } } });
   }
-  hover(x, y) { this.cards && this.cards.forEach((c, i) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) this.sel = i; }); }
-  draw(ctx) {
-    const r = Game.run; drawTownBackdrop(ctx, this.t, 'day', 13);
-    // shop front
-    rect(ctx, 0, 90, W, 302, '#3a2418'); for (let x = 0; x < W; x += 34) rect(ctx, x, 90, 2, 302, '#2a1a10'); rect(ctx, 0, 90, W, 9, '#5a3a1e');
-    for (let i = 0; i < 16; i++) { const k = PLAYABLE[i % PLAYABLE.length]; const s = bugCanvas(HERO_PRESETS.buzz, 'idle', k); }
-    for (let i = 0; i < 9; i++) { const k = ['amp', 'speaker', 'micstand', 'amp'][i % 4], c = propCanvas(k); ctx.drawImage(c, 28 + i * 104, 352 - c.height * 1.5 - (k === 'speaker' ? 10 : 0), c.width * 1.5, c.height * 1.5); }
-    drawBugAt(ctx, HERO_PRESETS.gary, 840, 392, { pose: 'idle', scale: 1.6 });
-    uiRibbon(ctx, W / 2, 30, 'AMOEBUG RECORDS', { scale: 3 });
-    // cards
-    const items = this.items; const cw = 124, gap = 10; const total = items.length * (cw + gap) - gap; let cx = Math.round((W - total) / 2);
-    this.cards = [];
+  hover(x, y) { this.cards && this.cards.forEach((c) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) this.sel = c.i; }); }
+  // Where each piece of stock physically sits in the room.
+  displaySpots() {
+    const items = this.items, out = [];
+    // three hang on the pegboard, the rest stand on the counter
+    const peg = [[116, 140], [236, 140], [356, 140]];
+    const top = [[560, 318], [664, 318], [768, 318]];
     items.forEach((s, i) => {
-      const x = cx + i * (cw + gap), y = 72; const sel = i === this.sel; const yy = y - (sel ? 6 : 0);
-      this.cards.push({ x, y: yy, w: cw, h: 140 });
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 4, yy + 6, cw, 140);
-      rect(ctx, x, yy, cw, 140, sel ? UI.goldHi : UI.woodLo); rect(ctx, x + 3, yy + 3, cw - 6, 134, s.kind === 'voucher' ? '#d8c8a0' : UI.paper);
-      const rar = s.kind === 'charm' ? CHARMS[s.key].rarity : s.kind === 'voucher' ? 'voucher' : s.kind === 'recruit' ? 'recruit' : 'item';
-      const rc = { common: '#4d86c6', uncommon: '#4f8032', rare: '#c8433a', voucher: '#8a2a5a', recruit: '#b07030', item: '#6b5138' }[rar];
-      rect(ctx, x + 3, yy + 3, cw - 6, 14, rc); drawText(ctx, rar.toUpperCase(), x + cw / 2, yy + 6, '#fff', { align: 'center' });
-      if (s.kind === 'recruit') drawBugAt(ctx, s.member.spec, x + cw / 2, yy + 92, { pose: sel ? 'play' : 'idle', instrument: s.member.instrument, scale: 1.3 });
-      else { uiSlot(ctx, x + cw / 2 - 24, yy + 24, 48, { selected: false }); const ic = icon(s.kind === 'charm' ? CHARMS[s.key].icon : s.kind === 'voucher' ? VOUCHERS[s.key].icon : s.kind === 'use' ? CONSUMABLES[s.key].icon : 'case'); ctx.drawImage(ic, x + cw / 2 - 17, yy + 30, 34, 30); if (s.kind === 'instrument') { const bc = bugCanvas(HERO_PRESETS.stag, 'play', s.key); ctx.drawImage(bc, x + cw / 2 - 26, yy + 22, 52, 70); } }
-      drawWrapped(ctx, this.cardLabel(s).toUpperCase(), x + 6, yy + 98, 19, UI.ink, 11);
-      const afford = r.money >= s.price; rect(ctx, x + 3, yy + 120, cw - 6, 16, afford ? UI.green : '#8a8a7a'); drawText(ctx, fmtMoney(s.price), x + cw / 2, yy + 124, '#fff', { align: 'center', scale: 2 });
+      const p = i < 3 ? peg[i] : top[Math.min(2, i - 3)];
+      out.push({ s, i, x: p[0], y: p[1], hung: i < 3 });
     });
-    if (!items.length) drawText(ctx, 'SOLD OUT - REROLL FOR NEW STOCK', W / 2, 130, '#f4efe0', { align: 'center', scale: 2, outline: '#1a1410' });
-    // detail panel
-    const inner = uiPanel(ctx, 24, 226, W - 48, 140);
-    const s = items[this.sel];
-    if (s) { drawText(ctx, this.cardLabel(s).toUpperCase(), inner.x + 12, inner.y + 8, '#7a4a10', { scale: 2 }); drawWrapped(ctx, this.cardDesc(s), inner.x + 12, inner.y + 34, 96, UI.ink, 13); const why = this.canBuy(s); if (why) drawText(ctx, why, inner.x + 12, inner.y + inner.h - 36, '#b02a2a'); }
-    drawText(ctx, this.msg, inner.x + 12, inner.y + inner.h - 18, UI.inkSoft);
-    this.buttons = [new Btn(inner.x + inner.w - 370, inner.y + inner.h - 38, 110, 30, 'BUY', () => { const it = items[this.sel]; if (it) this.buy(it); }, { scale: 2 }), new Btn(inner.x + inner.w - 250, inner.y + inner.h - 38, 138, 30, 'REROLL ' + fmtMoney(this.rerollPrice()), () => this.reroll(), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }), new Btn(inner.x + inner.w - 102, inner.y + inner.h - 38, 94, 30, 'LEAVE', () => Game.go(() => new CityScene(), 'slideR'), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 })];
+    return out;
+  }
+  itemArt(s) {
+    if (s.kind === 'instrument') return itemForInstrument(s.key);
+    if (s.kind === 'rest') return 'coffee';
+    if (s.kind === 'use') return ({ bread: 'bread', coffee: 'coffee', burrito: 'burrito' })[s.key] || 'bottle';
+    if (s.kind === 'voucher') return 'book';
+    if (s.kind === 'charm') return ({ tipJar: 'tipjar', luckyPick: 'pick', drumsticks: 'drums', shield: 'strings' })[s.key] || 'star';
+    return 'bag';
+  }
+  draw(ctx) {
+    const r = Game.run, t = this.t;
+    // ---- room shell
+    vgrad(ctx, 0, 0, W, 340, '#5c4a63', '#463a52');
+    for (let x = 0; x < W; x += 26) { rect(ctx, x, 26, 1, 314, '#3f3549'); rect(ctx, x + 13, 26, 1, 314, '#6a5872'); }
+    rect(ctx, 0, 0, W, 26, '#33293d'); rect(ctx, 0, 24, W, 4, '#251d2e');
+    rect(ctx, 0, 316, W, 8, '#6d5a3c'); rect(ctx, 0, 316, W, 3, '#8f7650');
+    // ceiling lamps throwing pools on the floor
+    for (const lx of [200, 480, 760]) {
+      rect(ctx, lx - 1, 0, 2, 16, '#2a2232');
+      const m = 1 + Math.sin(t * 2 + lx) * 0.02;
+      ctx.fillStyle = '#c8b06a'; ctx.beginPath(); ctx.moveTo(lx - 16 * m, 30); ctx.lineTo(lx + 16 * m, 30); ctx.lineTo(lx + 9, 16); ctx.lineTo(lx - 9, 16); ctx.closePath(); ctx.fill();
+      circle(ctx, lx, 29, 5, '#fff4c0');
+      lightPool(ctx, lx, 40, 150, '#ffe6a0', 0.13);
+    }
+    // ---- floor
+    vgrad(ctx, 0, 324, W, H - 324, '#6a4a34', '#432c1f');
+    for (let i = 0; i < 22; i++) { const k = i / 22; line(ctx, W / 2 + (k - 0.5) * W * 0.7, 324, W / 2 + (k - 0.5) * W * 2.4, H, '#3a2417'); }
+    for (let y = 348; y < H; y += 30) { ctx.globalAlpha = 0.3; rect(ctx, 0, y, W, 1, '#33200f'); ctx.globalAlpha = 1; }
+    // ---- pegboard wall of instruments (left)
+    rect(ctx, 24, 44, 424, 250, '#c8a266'); frame(ctx, 24, 44, 424, 250, '#7a5a30');
+    rect(ctx, 27, 47, 418, 244, '#d8b378');
+    for (let py = 56; py < 286; py += 12) for (let px2 = 36; px2 < 440; px2 += 12) px(ctx, px2, py, '#a8854c');
+    rect(ctx, 24, 44, 424, 4, '#e2c48f'); rect(ctx, 24, 290, 424, 4, '#6a4a24');
+    // guitars and gear hanging as stock, so the wall is never bare
+    {
+      const rr = makeRng(19);
+      const hang = ['guitar', 'bass', 'violin', 'trumpet', 'sax'];
+      for (let i = 0; i < hang.length; i++) {
+        const hx = 66 + i * 80, hy = 240;
+        rect(ctx, hx - 1, hy - 46, 2, 18, '#8a7048'); circle(ctx, hx, hy - 48, 3, '#c8ccd8');
+        ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.sin(this.t * 0.6 + i) * 0.025);
+        ctx.drawImage(itemCanvas(hang[i]), 0, 0, 32, 32, -28, -28, 56, 56);
+        ctx.restore();
+      }
+      // a rack of picks and strings pinned along the bottom rail
+      for (let i = 0; i < 9; i++) { const px2 = 62 + i * 40; ctx.drawImage(itemCanvas(rr.chance(0.5) ? 'pick' : 'strings'), 0, 0, 32, 32, px2, 268, 20, 20); }
+    }
+    // shop name board over the pegboard
+    rect(ctx, 108, 30, 256, 26, '#2f4a38'); frame(ctx, 108, 30, 256, 26, '#1c2e22');
+    rect(ctx, 110, 32, 252, 2, '#4e7059');
+    drawText(ctx, 'AMOEBUG RECORDS', 236, 38, '#f3e6c0', { align: 'center', scale: 2, shadow: '#16241b' });
+    // ---- shelving (right)
+    rect(ctx, 500, 44, 436, 250, '#6b4a2c'); frame(ctx, 500, 44, 436, 250, '#3f2a17');
+    rect(ctx, 504, 48, 428, 242, '#7d5834');
+    for (let i = 0; i < 4; i++) {
+      const sy = 92 + i * 52;
+      rect(ctx, 504, sy, 428, 6, '#5b3c22'); rect(ctx, 504, sy, 428, 2, '#9a7047');
+      // goods on the shelf, deterministic per row
+      const rr = makeRng(31 + i * 7);
+      for (let x = 514; x < 924; x += rr.int(30, 46)) {
+        const kind = rr.pick(['box', 'box', 'bottle', 'record', 'amp', 'book']);
+        if (kind === 'box') { const w = rr.int(16, 26), h = rr.int(18, 30), c = rr.pick(['#c4402f', '#3f7fa8', '#d8a83a', '#4f8a56', '#8a5a9a']);
+          rect(ctx, x, sy - h, w, h, c); rect(ctx, x, sy - h, w, 2, lighten(c, 0.25)); rect(ctx, x, sy - 3, w, 3, darken(c, 0.2));
+          rect(ctx, x + 3, sy - h + 5, w - 6, 5, '#f2ead6'); }
+        else if (kind === 'bottle') { ctx.drawImage(itemCanvas('bottle'), 0, 0, 32, 32, x, sy - 30, 30, 30); }
+        else if (kind === 'record') { circle(ctx, x + 12, sy - 12, 11, '#241c28'); circle(ctx, x + 12, sy - 12, 4, rr.pick(['#e0b84a', '#c4402f', '#3f7fa8'])); circle(ctx, x + 12, sy - 12, 1, '#241c28'); }
+        else if (kind === 'amp') { ctx.drawImage(itemCanvas('amp'), 0, 0, 32, 32, x, sy - 28, 28, 28); }
+        else { ctx.drawImage(itemCanvas('book'), 0, 0, 32, 32, x, sy - 28, 28, 28); }
+      }
+    }
+    // framed pictures between the two walls
+    for (let i = 0; i < 3; i++) {
+      const fx2 = 456, fy = 60 + i * 76;
+      rect(ctx, fx2, fy, 38, 52, '#8a6a3a'); frame(ctx, fx2, fy, 38, 52, '#4a3418');
+      rect(ctx, fx2 + 4, fy + 4, 30, 44, i === 1 ? '#2a3a5a' : '#e8dcc0');
+      if (i === 1) { circle(ctx, fx2 + 19, fy + 22, 9, '#e0b84a'); circle(ctx, fx2 + 19, fy + 22, 2, '#2a3a5a'); }
+      else { drawBugAt(ctx, i ? HERO_PRESETS.duke : HERO_PRESETS.merc, fx2 + 19, fy + 46, { pose: 'cheer', scale: 0.62, bounce: 0 }); }
+    }
+    // ---- the shopkeeper, standing behind where the counter will be
+    const cty = 336;
+    drawShadow(ctx, 838, 404, 40, 0.22);
+    drawBugAt(ctx, HERO_PRESETS.gary, 838, 404, { pose: 'idle', scale: 2.1, expr: 'happy', rate: 1.3 });
+    // ---- counter
+    rect(ctx, 0, cty, W, 16, '#8a5f36'); rect(ctx, 0, cty, W, 4, '#b5834f');
+    rect(ctx, 0, cty + 16, W, 74, '#5e3d22');
+    for (let x = 0; x < W; x += 64) { rect(ctx, x, cty + 20, 2, 66, '#472d18'); rect(ctx, x + 30, cty + 30, 28, 40, '#6a4728'); frame(ctx, x + 30, cty + 30, 28, 40, '#472d18'); }
+    rect(ctx, 0, cty + 88, W, 4, '#3a2414');
+    // counter clutter: register, tip jar, funko, receipts, plant
+    rect(ctx, 60, cty - 34, 52, 34, '#4a4756'); rect(ctx, 62, cty - 32, 48, 14, '#8fd0e0'); rect(ctx, 66, cty - 12, 40, 8, '#2e2c38');
+    for (let i = 0; i < 4; i++) rect(ctx, 68 + i * 9, cty - 10, 6, 4, '#c8ccd8');
+    ctx.drawImage(itemCanvas('tipjar'), 0, 0, 32, 32, 136, cty - 40, 40, 40);
+    if (Math.sin(t * 1.4) > 0.9) { ctx.globalAlpha = 0.6; circle(ctx, 156, cty - 30, 10, '#ffe6a0'); ctx.globalAlpha = 1; }
+    drawText(ctx, 'TIPS', 156, cty + 2, '#f0d8a0', { align: 'center', font: 'small' });
+    ctx.drawImage(itemCanvas('funko'), 0, 0, 32, 32, 196, cty - 42, 42, 42);
+    rect(ctx, 196, cty - 4, 42, 5, '#c4402f');
+    rect(ctx, 252, cty - 12, 26, 12, '#f2ead6'); rect(ctx, 252, cty - 12, 26, 2, '#d8cfb4'); rect(ctx, 264, cty - 22, 2, 12, '#8a8a98');
+    rect(ctx, 872, cty - 22, 22, 22, '#a8643a'); circle(ctx, 883, cty - 30, 12, '#4f8a56'); circle(ctx, 876, cty - 34, 6, '#6fae72');
+    // ---- other shoppers, browsing
+    const shoppers = this._shoppers || (this._shoppers = (() => { const rr = makeRng(77); return [0, 1, 2].map(i => ({ spec: randomBugSpec(rr), x: 150 + i * 250, o: rr.range(0, 6) })); })());
+    shoppers.forEach((sh, i) => {
+      const x = sh.x + Math.sin(t * 0.5 + sh.o) * 22;
+      drawShadow(ctx, x, 494, 34, 0.24);
+      drawBugAt(ctx, sh.spec, x, 494, { pose: Math.floor(t * 1.2 + i) % 3 === 0 ? 'point' : 'idle', flip: Math.cos(t * 0.5 + sh.o) < 0, scale: 1.5, rate: 1.7, phase: sh.o });
+    });
+    // ---- your band, waiting by the door
+    drawParty(ctx, 150, 516, t);
+    // ---- the stock, as objects you can actually see
+    const spots = this.displaySpots();
+    this.cards = [];
+    spots.forEach((sp) => {
+      const sel = sp.i === this.sel, s = sp.s;
+      const lift = sel ? Math.round(Math.sin(t * 5) * 2) - 3 : 0;
+      const y = sp.y + lift;
+      if (sp.hung) { rect(ctx, sp.x - 1, sp.y - 44, 2, 20, '#6a5a3a'); circle(ctx, sp.x, sp.y - 46, 3, '#c8ccd8'); }
+      if (s.kind === 'recruit') {
+        drawShadow(ctx, sp.x, y + 34, 34, 0.25);
+        drawBugAt(ctx, s.member.spec, sp.x, y + 34, { pose: sel ? 'cheer' : 'idle', expr: sel ? 'happy' : null, instrument: s.member.instrument, scale: 1.5, rate: sel ? 3.4 : 1.6 });
+      } else {
+        uiItemSlot(ctx, sp.x - 27, y - 27, 54, this.itemArt(s), { selected: sel });
+      }
+      // price tag on a string
+      const price = fmtMoney(s.price), afford = r.money >= s.price;
+      const tw = textWidth(price) + 12;
+      rect(ctx, sp.x - tw / 2, y + 30, tw, 13, afford ? '#f3e6c0' : '#b0a894'); frame(ctx, sp.x - tw / 2, y + 30, tw, 13, '#6a5a3a');
+      drawText(ctx, price, sp.x, y + 33, afford ? '#3a2a1a' : '#7a7060', { align: 'center' });
+      this.cards.push({ x: sp.x - 30, y: y - 32, w: 60, h: 74, i: sp.i });
+    });
+    if (!spots.length) drawText(ctx, 'SOLD OUT', W / 2, 150, '#f4efe0', { align: 'center', scale: 3, outline: '#1a1410' });
+    // ---- atmosphere
+    this.motes || (this.motes = new Motes(22, 31));
+    this.motes.update(1 / 60, t); this.motes.draw(ctx, t, '#ffe6b0');
+    grade(ctx, 0, 0, W, H, '#ffc98a', 0.1);
+    vignette(ctx, 0.42);
+    // ---- one line of chrome, no more
+    const sItem = this.items[this.sel];
+    rect(ctx, 0, H - 40, W, 40, 'rgba(24,18,28,0.88)'); rect(ctx, 0, H - 40, W, 2, '#c8a03a');
+    if (sItem) {
+      uiItemSlot(ctx, 8, H - 37, 34, sItem.kind === 'recruit' ? 'bag' : this.itemArt(sItem), {});
+      drawText(ctx, this.cardLabel(sItem).toUpperCase(), 50, H - 34, '#ffd98a', { scale: 2 });
+      drawText(ctx, this.cardDesc(sItem).slice(0, 78), 50, H - 15, '#cfc6b0', { font: 'small' });
+      const why = this.canBuy(sItem);
+      if (why) drawText(ctx, why, 50, H - 15, '#ff8a7a', { font: 'small' });
+    } else drawText(ctx, this.msg, 12, H - 22, '#cfc6b0');
+    this.buttons = [
+      new Btn(W - 300, H - 34, 92, 28, 'BUY', () => { const it = this.items[this.sel]; if (it) this.buy(it); }, { scale: 2 }),
+      new Btn(W - 202, H - 34, 104, 28, 'REROLL ' + fmtMoney(this.rerollPrice()), () => this.reroll(), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }),
+      new Btn(W - 92, H - 34, 84, 28, 'LEAVE', () => Game.go(() => new CityScene(), 'slideR'), { color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14', scale: 2 }),
+    ];
     for (const b of this.buttons) b.draw(ctx);
-    drawParty(ctx, 90, 442, this.t);
     Game.drawHud(ctx);
   }
 }

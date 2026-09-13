@@ -128,7 +128,7 @@ const CONCERT_MOVEMENTS = [
   { key: 'guitar', title: 'II. THE RIFF', bpm: 112, bars: 8, genre: 'rock', style: 'rock', instrument: 'guitar', difficulty: 2, root: 58, prog: [0, 4, 5, 3],
     tutorial: 'GUITAR: same idea, four lanes. Gold STAR notes are worth triple. Red BOMBS: do not touch.' },
   { key: 'opera', title: 'III. THE OPERA', bpm: 132, bars: 8, genre: 'rock', style: 'opera', instrument: 'drums', difficulty: 3, root: 60, prog: [0, 3, 0, 4, 5, 3, 4, 4],
-    tutorial: 'TAIKO: red DON = F or J. Blue KA = D or K. Big notes: both DON keys. Mash the gold ROLL bars.' },
+    tutorial: 'DRUM KIT: four pieces, four lanes. Hit the drum the note lands on. Kick and crash together is worth double.' },
   { key: 'horns', title: 'IV. THE FANFARE', bpm: 120, bars: 8, genre: 'rock', style: 'rock', instrument: 'trumpet', difficulty: 2, root: 60, prog: [0, 4, 3, 4],
     tutorial: 'TRUMPET: each note shows lit valves. Press exactly those keys (J K L) together, on the beat.' },
   { key: 'band', title: 'V. THE BAND', bpm: 128, bars: 8, genre: 'rock', style: 'concert', instrument: 'guitar', difficulty: 3, root: 58, prog: [0, 4, 5, 3], band: true,

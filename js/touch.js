@@ -11,7 +11,8 @@ function buildPads(instr, area, qte) {
   const add = (fx, fw, code, label, color, sub) => pads.push({ x: Math.round(x + w * fx), y, w: Math.round(w * fw) - 3, h, code, label, color, sub });
   if (qte) { add(0.1, 0.8, 'Space', 'TAP', '#5bc0ff', 'HIT THE RING'); return pads; }
   switch (instr.game) {
-    case 'lanes': { const L = instr.lanes; for (let i = 0; i < L; i++) add(i / L, 1 / L, instr.keys[i], instr.keyNames[i], LANE_COLORS[i]); break; }
+    case 'lanes': { const L = instr.lanes, kit = instr.view === 'kit';
+      for (let i = 0; i < L; i++) add(i / L, 1 / L, instr.keys[i], kit ? instr.padNames[i] : instr.keyNames[i], (kit ? KIT_COLORS : LANE_COLORS)[i % (kit ? KIT_COLORS.length : LANE_COLORS.length)]); break; }
     case 'taiko': add(0, 0.22, 'KeyD', 'KA', '#5bc0ff'); add(0.22, 0.28, 'KeyF', 'DON', '#ff6b6b'); add(0.50, 0.28, 'KeyJ', 'DON', '#ff6b6b'); add(0.78, 0.22, 'KeyK', 'KA', '#5bc0ff'); break;
     case 'wind': add(0.1, 0.8, 'Space', 'BLOW', '#e0b040', 'HOLD THE PAD'); break;
     case 'valves': add(0.14, 0.24, 'KeyJ', '1', '#f0c040'); add(0.38, 0.24, 'KeyK', '2', '#f0c040'); add(0.62, 0.24, 'KeyL', '3', '#f0c040'); break;

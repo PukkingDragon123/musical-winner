@@ -150,3 +150,58 @@ function drawViolinBody(ctx, x, y, dir, hold, t) {
   rect(ctx, x - 46, by, 92, 2, '#6a4020'); rect(ctx, x - 46, by + 2, 92, 1, '#f0e8d0');
   rect(ctx, x + 44, by - 2, 6, 7, '#3a2010');
 }
+
+// ---------- A real drum kit drawn into the play area ----------
+// Each lane's receptor IS a drum, so hitting a note means hitting that drum.
+function drawDrumKit(ctx, hw, R, opts) {
+  const L = 4, cols = opts.colors || ['#e0563f', '#e8a33a', '#c8ccd8', '#f2cf4a'];
+  const names = opts.padNames || ['KICK', 'TOM', 'SNARE', 'CRASH'];
+  const baseY = hw.nearY;
+  // the rug the kit stands on
+  ctx.fillStyle = '#4a2436'; ctx.beginPath();
+  ctx.moveTo(hw.cx - hw.nearW * 0.62, baseY + 46); ctx.lineTo(hw.cx + hw.nearW * 0.62, baseY + 46);
+  ctx.lineTo(hw.cx + hw.nearW * 0.34, baseY - 16); ctx.lineTo(hw.cx - hw.nearW * 0.34, baseY - 16); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5e2f44'; ctx.fillRect(hw.cx - hw.nearW * 0.6, baseY + 30, hw.nearW * 1.2, 3);
+  for (let l = 0; l < L; l++) {
+    const p = hw.pos(l, 0), cx = p.x, w = p.w;
+    const flash = R.flashes[l] || 0;
+    const squash = 1 - flash * 0.35;
+    const kind = l === 3 ? 'cymbal' : l === 0 ? 'kick' : 'drum';
+    R.receptors[l] = { x: cx, y: baseY + 2 };
+    if (kind === 'cymbal') {
+      // a brass disc on a stand, tipping when struck
+      const tilt = flash * 0.5 * Math.sin(R.now * 40);
+      ctx.save(); ctx.translate(cx, baseY - 6); ctx.rotate(tilt);
+      const rw = w * 0.52;
+      ctx.fillStyle = '#8a6a18'; ctx.beginPath(); ctx.ellipse(0, 3, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = cols[l]; ctx.beginPath(); ctx.ellipse(0, 0, rw, rw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(-rw * 0.3, -1, rw * 0.3, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#a8801a'; ctx.beginPath(); ctx.ellipse(0, 0, rw * 0.2, rw * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      rect(ctx, cx - 1, baseY - 4, 2, 46, '#8a8a98');
+      rect(ctx, cx - 8, baseY + 40, 16, 2, '#6a6a78');
+      if (flash > 0) { ctx.globalAlpha = flash; circle(ctx, cx, baseY - 6, Math.round(rw * 0.9), '#fff6c0'); ctx.globalAlpha = 1; }
+    } else {
+      const rw = w * (kind === 'kick' ? 0.54 : 0.46), rh = rw * (kind === 'kick' ? 0.92 : 0.62) * squash;
+      const top = baseY + 6 - rh;
+      // shell
+      ctx.fillStyle = darken(cols[l], 0.3); ctx.beginPath(); ctx.ellipse(cx, top + rh, rw, rh * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = cols[l]; ctx.fillRect(Math.round(cx - rw), Math.round(top), Math.round(rw * 2), Math.round(rh));
+      ctx.fillStyle = lighten(cols[l], 0.22); ctx.fillRect(Math.round(cx - rw), Math.round(top), 3, Math.round(rh));
+      ctx.fillStyle = darken(cols[l], 0.2); ctx.fillRect(Math.round(cx + rw - 3), Math.round(top), 3, Math.round(rh));
+      // lugs
+      for (let i = -1; i <= 1; i++) rect(ctx, cx + i * rw * 0.6 - 1, top + rh * 0.3, 3, rh * 0.4, '#c8ccd8');
+      // head
+      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d9d1bd'; ctx.beginPath(); ctx.ellipse(cx, top - 1, rw * 0.74, rw * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c8ccd8'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.stroke ? 0 : 0; ctx.fill();
+      ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.ellipse(cx, top, rw - 2, rw * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+      if (flash > 0) { ctx.globalAlpha = flash * 0.9; ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(cx, top, rw, rw * 0.34, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+      if (kind === 'kick') { const pd = Math.round(rw * 0.32); ctx.fillStyle = '#2e2a36'; ctx.beginPath(); ctx.ellipse(cx, top + 2, pd, pd * 0.34, 0, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // name on a little plate that sits on the shell, where it is readable
+    const nw = textWidth(names[l], { font: 'small' }) + 8;
+    rect(ctx, cx - nw / 2, baseY + 14, nw, 9, flash > 0 ? '#5a4a20' : '#231c30');
+    drawText(ctx, names[l], cx, baseY + 16, flash > 0 ? '#fff6c0' : '#cfc6e4', { align: 'center', font: 'small' });
+  }
+}

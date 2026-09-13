@@ -1,7 +1,7 @@
 // ---------- UI kit: parchment panels, wooden frames, green buttons, gold slots ----------
 'use strict';
 const UI = {
-  paper: '#e6d3a3', paperHi: '#f3e4bc', paperLo: '#d4bd88', paperLine: '#c9ad74',
+  paper: '#f0e2bc', paperHi: '#fbf2d8', paperLo: '#d8c49a', paperLine: '#c9ad74',
   wood: '#5a3a1e', woodHi: '#8a5a30', woodLo: '#3a2410', woodMid: '#6e4622',
   ink: '#3a2a1a', inkSoft: '#6b5138', inkFaint: '#9a7d55',
   green: '#78b04a', greenHi: '#a8d56a', greenLo: '#4f8032', greenOl: '#2a4a1c',
@@ -9,7 +9,8 @@ const UI = {
   blue: '#4d86c6', blueHi: '#86b6e8', blueLo: '#2f5a8a',
   gold: '#d9a520', goldHi: '#f6d95a', goldLo: '#8a6010', goldOl: '#4a3208',
   slot: '#6a4a2a', slotHi: '#8a6438', slotLo: '#4a3018',
-  header: '#4a6e3a', headerHi: '#6f9a58',
+  header: '#5d8c56', headerHi: '#7fae74',
+  line: '#33402f', lineHi: '#8a9a72',
 };
 
 let _paperTex = null;
@@ -20,31 +21,33 @@ function paperTexture() {
   for (let i = 0; i < 520; i++) { x.fillStyle = r.chance(0.5) ? UI.paperHi : UI.paperLo; x.globalAlpha = 0.35; x.fillRect(r.int(0, 63), r.int(0, 63), r.int(1, 3), 1); }
   x.globalAlpha = 1; _paperTex = x.createPattern(c, 'repeat'); return _paperTex;
 }
-// Wooden-framed parchment panel. opts: {title, close, dark}
+// Cream panel with a hard dark border and a coloured title bar.
+// opts: {title, close, color}
 function uiPanel(ctx, x, y, w, h, opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-  // drop shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 3, y + 4, w, h);
-  // wood frame
-  rect(ctx, x, y, w, h, UI.woodLo);
-  rect(ctx, x + 1, y + 1, w - 2, h - 2, UI.wood);
-  rect(ctx, x + 1, y + 1, w - 2, 1, UI.woodHi); rect(ctx, x + 1, y + 1, 1, h - 2, UI.woodHi);
-  rect(ctx, x + 2, y + h - 3, w - 4, 1, UI.woodLo); rect(ctx, x + w - 3, y + 2, 1, h - 4, UI.woodLo);
-  // corner nails
-  for (const [nx, ny] of [[x + 2, y + 2], [x + w - 4, y + 2], [x + 2, y + h - 4], [x + w - 4, y + h - 4]]) { rect(ctx, nx, ny, 2, 2, UI.woodLo); px(ctx, nx, ny, '#a07a48'); }
-  // paper
-  const px0 = x + 4, py0 = y + 4, pw = w - 8, ph = h - 8;
-  ctx.fillStyle = paperTexture(); ctx.fillRect(px0, py0, pw, ph);
-  rect(ctx, px0, py0, pw, 1, UI.paperHi); rect(ctx, px0, py0 + ph - 1, pw, 1, UI.paperLo); rect(ctx, px0 + pw - 1, py0, 1, ph, UI.paperLo);
-  // burnt edge speckle
-  ctx.fillStyle = 'rgba(90,58,30,0.18)'; for (let i = 0; i < pw; i += 7) { ctx.fillRect(px0 + i, py0 + 1, 3, 1); ctx.fillRect(px0 + ((i + 3) % pw), py0 + ph - 2, 2, 1); }
+  ctx.fillStyle = 'rgba(12,10,18,0.38)'; ctx.fillRect(x + 4, y + 5, w, h);
+  // hard outer border, then a mid rail, then the cream field
+  rect(ctx, x, y, w, h, UI.line);
+  rect(ctx, x + 2, y + 2, w - 4, h - 4, UI.lineHi);
+  rect(ctx, x + 3, y + 3, w - 6, h - 6, UI.paper);
+  // inner bevel: light at the top-left, shadowed at the bottom-right
+  rect(ctx, x + 3, y + 3, w - 6, 1, UI.paperHi); rect(ctx, x + 3, y + 3, 1, h - 6, UI.paperHi);
+  rect(ctx, x + 3, y + h - 4, w - 6, 1, UI.paperLo); rect(ctx, x + w - 4, y + 3, 1, h - 6, UI.paperLo);
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 4, y + 4, w - 8, h - 8); ctx.clip();
+  ctx.globalAlpha = 0.5; ctx.fillStyle = paperTexture(); ctx.fillRect(x + 4, y + 4, w - 8, h - 8); ctx.globalAlpha = 1; ctx.restore();
+  // corner studs
+  for (const [nx, ny] of [[x + 3, y + 3], [x + w - 5, y + 3], [x + 3, y + h - 5], [x + w - 5, y + h - 5]]) rect(ctx, nx, ny, 2, 2, UI.line);
+  let top = y + 3;
   if (opts.title) {
-    const th = 13;
-    rect(ctx, px0, py0, pw, th, UI.paperLo); rect(ctx, px0, py0 + th, pw, 1, UI.wood); rect(ctx, px0, py0 + th - 1, pw, 1, UI.paperLine);
-    drawText(ctx, opts.title, x + w / 2, py0 + 3, UI.ink, { align: 'center' });
-    if (opts.close) { uiCloseBox(ctx, x + w - 15, y + 5); }
+    const th = 17, col = opts.color || UI.header;
+    rect(ctx, x + 3, y + 3, w - 6, th, col);
+    rect(ctx, x + 3, y + 3, w - 6, 1, lighten(col, 0.2));
+    rect(ctx, x + 3, y + 2 + th, w - 6, 2, UI.line);
+    drawText(ctx, opts.title, x + w / 2, y + 8, '#fdf6e2', { align: 'center', shadow: darken(col, 0.35) });
+    if (opts.close) uiCloseBox(ctx, x + w - 19, y + 6);
+    top = y + 5 + th;
   }
-  return { x: px0, y: py0 + (opts.title ? 15 : 0), w: pw, h: ph - (opts.title ? 15 : 0) };
+  return { x: x + 6, y: top + 2, w: w - 12, h: h - (top - y) - 8 };
 }
 function uiCloseBox(ctx, x, y) {
   rect(ctx, x, y, 10, 10, UI.woodLo); rect(ctx, x + 1, y + 1, 8, 8, UI.red); rect(ctx, x + 1, y + 1, 8, 1, UI.redHi);

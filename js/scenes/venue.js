@@ -29,11 +29,40 @@ function buildVenue(venue, seed, dayT) {
     mx.drawImage(propCanvas('sign', 0), 300, 176, 21, 33); mx.drawImage(propCanvas('bench'), 480, 218, 45, 21);
     function ctx2glow(c, x, y) { c.globalAlpha = 0.15; circle(c, x, y + 14, 16, '#ffe680'); c.globalAlpha = 1; }
   } else if (venue.kind === 'park') {
-    rect(mx, 0, 176, W + 260, 74, '#5aa050'); rect(mx, 0, 176, W + 260, 3, '#7ac060');
-    for (let i = 0; i < 70; i++) rect(mx, r.int(0, W + 260), r.int(182, 246), 3, 2, '#7fb85a');
-    for (let x = 0; x < W + 260; x += 100) { const tc = treeCanvas(r.pick(['round', 'round', 'light', 'palm', 'cypress']), 0); mx.drawImage(tc, x + r.int(-12, 12), 96 + r.int(-6, 6), 58, 81); }
-    mx.drawImage(propCanvas('bench'), 380, 220, 45, 21); mx.drawImage(propCanvas('bench'), 760, 220, 45, 21);
-    if (venue.ggpark) { rect(mx, 580, 140, 90, 60, '#e0d8c0'); rect(mx, 586, 134, 78, 9, '#c8b090'); rect(mx, 610, 158, 30, 42, '#4a3a2a'); }
+    // ---- lawn, in bands so it reads as depth rather than a flat green wall
+    rect(mx, 0, 168, W + 260, 82, '#5aa050');
+    vgrad(mx, 0, 168, W + 260, 82, '#78bb63', '#4e9147');
+    rect(mx, 0, 168, W + 260, 3, '#8fcf76');
+    for (let i = 0; i < 220; i++) { const gx = r.int(0, W + 260), gy = r.int(174, 248); rect(mx, gx, gy, 2, 2, r.chance(0.5) ? '#7fb85a' : '#4a8a42'); }
+    // a winding path with a gravel edge
+    mx.strokeStyle = '#d8ceb0'; mx.lineWidth = 22; mx.lineCap = 'round'; mx.beginPath();
+    mx.moveTo(-20, 246); for (let x = 0; x < W + 280; x += 60) mx.lineTo(x, 222 + Math.sin(x * 0.012) * 16); mx.stroke();
+    mx.strokeStyle = '#c2b694'; mx.lineWidth = 26; mx.globalAlpha = 0.35; mx.stroke(); mx.globalAlpha = 1; mx.lineWidth = 1;
+    // ---- a back row of full trees with trunks and a front row of shrubs
+    for (let x = -20; x < W + 280; x += 88) {
+      const kind = r.pick(['round', 'round', 'light', 'palm', 'cypress']);
+      const tc = treeCanvas(kind, 0), tx = x + r.int(-14, 14), ty = 104 + r.int(-8, 8);
+      rect(mx, tx + 24, ty + 54, 7, 26, '#6a4a2a'); rect(mx, tx + 24, ty + 54, 2, 26, '#8a6a44');
+      mx.drawImage(tc, tx, ty, 56, 74);
+    }
+    for (let x = 10; x < W + 260; x += 54) { const bs = r.int(11, 19); circle(mx, x + r.int(-8, 8), 200 + r.int(-4, 6), bs, '#3f7a3a'); circle(mx, x - 4, 194, Math.round(bs * 0.6), '#5da24f'); }
+    // flower beds
+    for (let i = 0; i < 9; i++) { const fx2 = r.int(20, W + 220), fy = r.int(196, 240);
+      circle(mx, fx2, fy, 9, '#3f7a3a');
+      for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28; circle(mx, fx2 + Math.cos(a) * 5, fy + Math.sin(a) * 4, 2, r.pick(['#e8563f', '#f2cf4a', '#e07ab0', '#f0f0e0'])); } }
+    // ---- benches, bins, a drinking fountain and a bandstand
+    for (const bx of [220, 520, 830, 1140]) { mx.drawImage(propCanvas('bench'), bx, 218, 45, 21); drawShadow(mx, bx + 22, 240, 42, 0.16); }
+    mx.drawImage(propCanvas('trash'), 400, 214, 18, 24);
+    mx.drawImage(propCanvas('lamp'), 690, 150, 18, 69);
+    rect(mx, 960, 206, 14, 30, '#8a9aa8'); rect(mx, 958, 202, 18, 6, '#a8b8c4'); circle(mx, 967, 200, 4, '#bcd8e8');
+    if (venue.ggpark) {
+      // the conservatory: a glasshouse dome at the back
+      rect(mx, 560, 130, 120, 72, '#e8e2cc'); frame(mx, 560, 130, 120, 72, '#c8bfa0');
+      for (let gx = 566; gx < 676; gx += 14) rect(mx, gx, 136, 10, 60, '#cfe4dc');
+      mx.fillStyle = '#e8e2cc'; mx.beginPath(); mx.moveTo(556, 130); mx.quadraticCurveTo(620, 86, 684, 130); mx.fill();
+      for (let k = 0; k < 5; k++) { mx.strokeStyle = '#c8bfa0'; mx.beginPath(); mx.moveTo(620, 92); mx.lineTo(566 + k * 27, 130); mx.stroke(); }
+      rect(mx, 606, 168, 28, 34, '#4a3a2a'); rect(mx, 606, 168, 28, 3, '#6a5a44');
+    }
   } else if (venue.kind === 'pier') {
     rect(mx, 0, 0, W + 260, 176, '#3a6a9a'); for (let y = 8; y < 174; y += 7) for (let x = (y * 7) % 28; x < W + 260; x += 28) rect(mx, x, y, 12, 2, '#5a8ab8');
     mx.drawImage(propCanvas('boat'), 180, 86, 45, 18); mx.drawImage(propCanvas('sailboat'), 700, 56, 24, 27); mx.drawImage(propCanvas('sailboat'), 1020, 100, 24, 27);

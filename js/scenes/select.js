@@ -3,7 +3,7 @@
 const ROSTER = [
   { key: 'merc', title: 'THE SHOWMAN', instrument: 'piano', stats: [4, 5, 2], charm: 'tipJar', money: 10, tagline: 'Owns the front of the stage.' },
   { key: 'stag', title: 'THE GUITARIST', instrument: 'guitar', stats: [5, 3, 3], charm: 'luckyPick', money: 6, tagline: 'Built the guitar himself.' },
-  { key: 'dot', title: 'THE ENGINE', instrument: 'drums', stats: [3, 3, 5], charm: 'drumsticks', money: 8, tagline: 'Hits everything. Twice.' },
+  { key: 'tank', title: 'THE ENGINE', instrument: 'drums', stats: [3, 3, 5], charm: 'drumsticks', money: 8, tagline: 'Hits everything. Twice.' },
   { key: 'slim', title: 'THE QUIET ONE', instrument: 'bass', stats: [4, 3, 4], charm: 'shield', money: 12, tagline: 'Says nothing. Plays everything.' },
 ];
 const STAT_NAMES = ['RHYTHM', 'CHARM', 'GRIT'];
@@ -58,7 +58,7 @@ class TitleScene {
     if (Game.touch) items.push({ label: 'TURN SCREEN', onSelect: () => { Game.rotateOverride = !Game.rotated; Game.resize(); } });
     this.menu = new Menu(items);
     const r = makeRng(3);
-    this.band = ROSTER.concat([{ key: 'duke', instrument: 'sax' }, { key: 'fitz', instrument: 'trumpet' }, { key: 'cici', instrument: 'violin' }, { key: 'roly', instrument: 'tambourine' }])
+    this.band = ROSTER.concat([{ key: 'duke', instrument: 'sax' }, { key: 'fitz', instrument: 'trumpet' }, { key: 'cici', instrument: 'violin' }, { key: 'roly', instrument: 'tambourine' }, { key: 'elder', instrument: null }, { key: 'glow', instrument: null }, { key: 'pinch', instrument: null }, { key: 'scout', instrument: null }, { key: 'smoke', instrument: null }, { key: 'dot', instrument: 'tambourine' }])
       .map((c, i) => ({ spec: HERO_PRESETS[c.key], x: 60 + i * 118, inst: c.instrument, o: r.range(0, 6) }));
     this.fx = new Particles(); this.motes = new Motes(34, 9);
   }
