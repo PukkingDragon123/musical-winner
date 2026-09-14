@@ -90,6 +90,15 @@ class RhythmGame {
     for (const n of this.notes) { if (n.judged || n.sec !== this.secIdx) continue; if (n.t - this.now > w + 0.4) break; if (!pred(n)) continue; const d = Math.abs(n.t - this.now); if (d <= w && d < bestD) { best = n; bestD = d; } }
     return best;
   }
+  // A kit is rhythm and nothing else. Aiming a mouse at a particular drum
+  // inside one beat is a second, harder game bolted on top of the first, so
+  // it is gone: this is the drum the chart wants right now, and a strike
+  // anywhere — open air, any key — is routed to it and scores in full.
+  dueLane() {
+    if (!this.instrument || this.instrument.view !== 'kit') return null;
+    const n = this.findNote(x => x.type !== 'roll' && x.type !== 'bomb');
+    return n ? n.lane : null;
+  }
   playHit(note, j, hold) {
     const k = this.section.instrument; const ins = this.section.instr || INSTRUMENTS[k];
     if (k === 'drums') {
@@ -132,6 +141,9 @@ class RhythmGame {
     if (g === 'lanes' || g === 'bow') {
       let lane = instr.keys.indexOf(code);
       if (g === 'bow') lane = (code === 'ArrowUp' || code === 'KeyW') ? 1 : (code === 'ArrowDown' || code === 'KeyS') ? 0 : -1;
+      // On a kit every key is a stick. One that is not a piece plays whatever
+      // the chart is asking for, so nobody loses a beat hunting for a letter.
+      if (lane < 0 && instr.view === 'kit') { const d = this.dueLane(); lane = d != null ? d : Math.floor(instr.lanes / 2); }
       if (lane < 0) return;
       const roll = this.notes.find(n => n.type === 'roll' && n.sec === this.secIdx && n.lane === lane && this.now >= n.t - 0.05 && this.now <= n.t + n.dur + 0.05);
       if (roll) { roll.judged = true; roll.hits = (roll.hits || 0) + 1; this.hype = clamp(this.hype + 0.5, 0, 100); this.playHit(roll, 'great'); const r = this.receptorOf(roll); this.fx.burst(r.x, r.y, 4, { color: '#ffd166', speed: 50, life: 0.3 }); this.popups.push({ text: 'ROLL x' + roll.hits, color: '#ffd166', t: 0, x: r.x, y: r.y - 14 }); if (this.hooks.onRoll) this.hooks.onRoll(); this.flashes[lane] = 0.15; return; }
@@ -446,7 +458,7 @@ class RhythmGame {
     // a hint only while the first few notes go by
     if (this.now < this.song.beat * 8) {
       ctx.globalAlpha = clamp(1 - this.now / (this.song.beat * 8), 0, 1) * 0.85;
-      drawText(ctx, A.touch ? 'TAP THE DRUM THAT LIGHTS UP, ON THE COUNT' : 'HIT THE DRUM THAT LIGHTS UP, ON THE COUNT',
+      drawText(ctx, A.touch ? 'TAP ANYWHERE ON THE COUNT - ANY KEY, ANY DRUM' : 'HIT ON THE COUNT - ANYWHERE, ANY KEY',
         cx, ribBot + 7, '#fff2c8', { align: 'center', font: 'small', outline: '#1a1410' });
       ctx.globalAlpha = 1;
     }
@@ -607,7 +619,14 @@ class RhythmGame {
       }
     }
     const isString = kind === 'guitar' || kind === 'bass';
-    if (isString) drawFretboard(ctx, hw, this, { bass: kind === 'bass', beat: this.song.beat, now: this.now, approach: this.approach, time: this.now, laneColors: cols, bodyColor: kind === 'bass' ? '#3a2a5a' : '#8a3a22' });
+    // Every lane instrument stands on its own instrument now. The shamisen and
+    // the koto used to play on a bare highway with nothing under the notes,
+    // which made two of the best-sounding things in the game the dullest to
+    // look at.
+    const surf = { beat: this.song.beat, now: this.now, approach: this.approach, time: this.now, laneColors: cols };
+    if (isString) drawFretboard(ctx, hw, this, Object.assign({ bass: kind === 'bass', bodyColor: kind === 'bass' ? '#3a2a5a' : '#8a3a22' }, surf));
+    else if (kind === 'shamisen') drawShamisenNeck(ctx, hw, this, surf);
+    else if (kind === 'koto') drawKotoBoard(ctx, hw, this, surf);
     else {
       for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
         const k = (b * this.song.beat - this.now) / this.approach; if (k > 1) break; if (k < 0) continue;
@@ -690,10 +709,11 @@ class RhythmGame {
     drawText(ctx, 'D K', hitX, cy - 44, '#5bc0ff', { align: 'center', font: 'small' }); drawText(ctx, 'F J', hitX, cy + 38, '#ff6b6b', { align: 'center', font: 'small' });
   }
   drawWind(ctx, A) {
-    const hitX = A.x + 110, top = A.y + (A.touch ? 22 : 34), bot = A.y + A.h - (A.touch ? 34 : 44);
-    vgrad(ctx, A.x, top - 6, A.w, bot - top + 12, '#1c1630', '#120e20');
-    for (let i = 0; i <= 4; i++) rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#2e2650');
-    const pxPerSec = (A.w - 130) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
+    const bamboo = this.section.instrument === 'shakuhachi';
+    const hitX = A.x + 150, top = A.y + (A.touch ? 22 : 34), bot = A.y + A.h - (A.touch ? 34 : 44);
+    drawPlayerStrip(ctx, A, this, { top, bot, lightX: A.x + 74, lightColor: bamboo ? '#a8d8e8' : '#ffd08a' });
+    for (let i = 0; i <= 4; i++) { ctx.globalAlpha = 0.35; rect(ctx, A.x, top + (bot - top) * i / 4, A.w, 1, '#3a3068'); ctx.globalAlpha = 1; }
+    const pxPerSec = (A.w - 170) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
     rect(ctx, hitX, top - 8, 2, bot - top + 16, this.keysDown.has('Space') ? '#ffe14d' : '#7a7290');
     this.receptors.main = { x: hitX, y: (top + bot) / 2 }; this.receptors[0] = this.receptors.main;
     for (const n of this.notes) {
@@ -707,15 +727,20 @@ class RhythmGame {
       ctx.globalAlpha = 1;
       if (n.holding && Math.random() < 0.7) this.fx.add({ x: hitX + 2, y: y + (Math.random() - 0.5) * 8, vx: 40 + Math.random() * 40, vy: (Math.random() - 0.5) * 24, life: 0.4, color: '#fff0a0', kind: 'px' });
     }
-    drawSaxBody(ctx, A.x + 44, bot + 6, this.breath, !!this.breathNote, this.now);
+    drawSaxBody(ctx, A.x + 74, bot + 4, this.breath, !!this.breathNote, this.now, this.section.instrument, A.touch ? 1.05 : 1.35);
     const bw = 130, bx = A.x + A.w - bw - 14, by = A.y + A.h - 16;
     uiBar(ctx, bx, by, bw, 9, this.breath, this.breath < 0.25 ? '#ff5a5a' : '#6fb8ff', { label: 'BREATH' });
   }
   drawValves(ctx, A) {
-    const hitX = A.x + 96, cy = A.y + A.h * 0.42;
-    vgrad(ctx, A.x, cy - 30, A.w, 60, '#1c1630', '#120e20');
+    const hitX = A.x + 96, cy = A.y + A.h * 0.38;
+    drawPlayerStrip(ctx, A, this, { top: A.y + 10, bot: A.y + A.h - (A.touch ? 18 : 26), lightX: A.x + A.w / 2, lightColor: '#ffd08a' });
+    vgrad(ctx, A.x, cy - 32, A.w, 64, 'rgba(20,14,34,0.72)', 'rgba(12,8,22,0.5)');
     const pxPerSec = (A.w - 120) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, cy - 30, 60, pxPerSec);
-    ringPx(ctx, hitX, cy, 20, '#8a80b0'); this.receptors.main = { x: hitX, y: cy }; this.receptors[0] = this.receptors.main;
+    // the receptor: a solid brass gate, not a ring floating in the dark
+    rect(ctx, hitX - 3, cy - 26, 6, 52, '#2a2038');
+    rect(ctx, hitX - 2, cy - 25, 4, 50, this.flashes.valve > 0 ? '#fff2b0' : '#d9a83c');
+    rect(ctx, hitX - 8, cy - 28, 16, 4, '#efd77e'); rect(ctx, hitX - 8, cy + 24, 16, 4, '#efd77e');
+    this.receptors.main = { x: hitX, y: cy }; this.receptors[0] = this.receptors.main;
     for (const n of this.notes) {
       if (n.sec !== this.secIdx || n.judged) continue; const x = hitX + (n.t - this.now) * pxPerSec; if (x > A.x + A.w + 20) break; if (x < A.x - 20) continue;
       ctx.globalAlpha = this.noteAlpha((n.t - this.now) / this.approach);
@@ -724,13 +749,13 @@ class RhythmGame {
       for (let v = 0; v < 3; v++) { const on = (n.combo >> v) & 1; rect(ctx, x - 10 + v * 7, cy - 8, 5, 16, on ? '#fffbe0' : '#5a4210'); if (on) drawText(ctx, this.instrument.keyNames[v], x - 9 + v * 7, cy - 2, '#1a1410', { font: 'small' }); }
       ctx.globalAlpha = 1;
     }
-    drawTrumpetBody(ctx, A.x + A.w / 2, A.y + A.h - (A.touch ? 26 : 40), this.valveMask, this.now);
+    drawTrumpetBody(ctx, A.x + A.w / 2, A.y + A.h - (A.touch ? 34 : 54), this.valveMask, this.now, A.touch ? 1.05 : 1.4);
   }
   drawBow(ctx, A) {
-    const hitX = A.x + 118, top = A.y + (A.touch ? 22 : 32), bot = A.y + A.h - (A.touch ? 30 : 44);
-    vgrad(ctx, A.x, top - 6, A.w, bot - top + 12, '#1c1630', '#120e20');
-    for (let i = 0; i < 4; i++) rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#332a58');
-    const pxPerSec = (A.w - 140) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
+    const hitX = A.x + 158, top = A.y + (A.touch ? 22 : 32), bot = A.y + A.h - (A.touch ? 30 : 44);
+    drawPlayerStrip(ctx, A, this, { top, bot, lightX: A.x + 80, lightColor: '#c8a8ff' });
+    for (let i = 0; i < 4; i++) { ctx.globalAlpha = 0.35; rect(ctx, A.x, top + (bot - top) * i / 3, A.w, 1, '#3f3468'); ctx.globalAlpha = 1; }
+    const pxPerSec = (A.w - 180) / this.approach; this.beatLinesH(ctx, hitX, A.x + A.w, top - 6, bot - top + 12, pxPerSec);
     rect(ctx, hitX, top - 8, 2, bot - top + 16, '#7a7290');
     if (this.flashes[1] > 0) { ctx.globalAlpha = this.flashes[1] * 2; rect(ctx, hitX - 4, top - 8, 10, (bot - top) / 2 + 8, '#c58bff'); ctx.globalAlpha = 1; }
     if (this.flashes[0] > 0) { ctx.globalAlpha = this.flashes[0] * 2; rect(ctx, hitX - 4, top + (bot - top) / 2, 10, (bot - top) / 2 + 8, '#6be585'); ctx.globalAlpha = 1; }
@@ -745,7 +770,7 @@ class RhythmGame {
       if (!n.holding) { circle(ctx, xs, y + 2, 11, 'rgba(0,0,0,0.3)'); circle(ctx, xs, y, 11, '#120e1c'); circle(ctx, xs, y, 10, n.star ? '#ffd24a' : col); drawText(ctx, n.dir > 0 ? '↑' : '↓', xs, y - 3, '#1a1410', { align: 'center' }); }
       ctx.globalAlpha = 1;
     }
-    drawViolinBody(ctx, A.x + 52, A.y + A.h / 2, this.keysDown.has('ArrowUp') || this.keysDown.has('KeyW') ? 1 : -1, !!Object.keys(this.holds).length, this.now);
+    drawViolinBody(ctx, A.x + 80, A.y + A.h / 2, this.keysDown.has('ArrowUp') || this.keysDown.has('KeyW') ? 1 : -1, !!Object.keys(this.holds).length, this.now, A.touch ? 1.0 : 1.3);
   }
   drawQte(ctx, A) {
     const cx = A.x + A.w / 2, cy = A.y + A.h / 2 - 6; this.receptors.main = { x: cx, y: cy }; this.receptors[0] = this.receptors.main;

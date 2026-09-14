@@ -292,6 +292,14 @@ class GigScene {
     }
     return best;
   }
+  // The drum closest to a point, hit radius or not: what a strike in open air
+  // should sound like when the chart is asking for nothing.
+  nearestDrum(x, y) {
+    const spots = this.rhythm && this.rhythm.kitSpots; if (!spots || !spots.length) return null;
+    let best = null, bestD = Infinity;
+    for (const sp of spots) { const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6; if (d < bestD) { bestD = d; best = sp; } }
+    return best;
+  }
   pointerDown(x, y, id) {
     if (this.phase === 'prep') {
       if (this.startBtn && this.startBtn.hit(x, y)) { this.startBtn.onTap(); return; }
@@ -308,6 +316,15 @@ class GigScene {
     // A kit is played by hitting the drums themselves, mouse or finger alike.
     const drum = this.drumAt(x, y);
     if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    // ...and a kit takes a strike anywhere in the scene. Hunting a small
+    // sprite with a mouse inside one beat was the whole difficulty, so a tap
+    // in open air lands on the drum the chart wants and scores in full. With
+    // nothing due it still sounds the nearest drum, so you can noodle.
+    if (this.rhythm.instrument.view === 'kit') {
+      const lane = this.rhythm.dueLane(), near = this.nearestDrum(x, y);
+      const i = lane != null ? lane : (near ? near.i : null);
+      if (i != null) { const code = this.rhythm.instrument.keys[i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    }
     // Keys and necks are played on the instrument: the note under your finger
     // is the note that sounds, exactly as it would be in the room.
     if (earPointerDown(this, x, y, id)) return;

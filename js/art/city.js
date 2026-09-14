@@ -137,6 +137,18 @@ function landmarkCanvas(kind) {
       for (let x = 0; x < 200; x++) { const c = Math.abs(((x + 50) % 100) - 50) / 50; const y = 6 + Math.round(c * c * 36); P.mRect(m, x, y, 1, 1); if (x % 6 === 0) P.mRect(m, x, y, 1, 44 - y); }
       P.fill(m, '#c8432a', { outline: null, shade: false }); P.paint(m, (x, y) => y === 44 ? '#e05a3a' : null);
     }
+    else if (kind === 'rainbow') {
+      // Rainbow Bridge: a white suspension span with a lit lower deck. Tokyo
+      // has a famous bridge of its own, and it is not painted orange.
+      P = new Pix(200, 70); const m = P.mask();
+      P.mRect(m, 0, 44, 200, 3);
+      for (const tx of [50, 150]) { P.mRect(m, tx - 5, 4, 4, 46); P.mRect(m, tx + 2, 4, 4, 46); P.mRect(m, tx - 7, 2, 15, 3); P.mRect(m, tx - 7, 20, 15, 2); }
+      for (let x = 0; x < 200; x++) { const c = Math.abs(((x + 50) % 100) - 50) / 50; const y = 4 + Math.round(c * c * 38); P.mRect(m, x, y, 1, 1); if (x % 7 === 0) P.mRect(m, x, y, 1, 44 - y); }
+      P.fill(m, '#e4e8f0', { outline: null, shade: false });
+      // the deck lights, which is the whole reason anyone looks at it
+      P.paint(m, (x, y) => y === 44 ? '#ffffff' : y === 46 ? (x % 6 === 0 ? '#8ad8ff' : '#7a86a8') : null);
+      for (let x = 3; x < 200; x += 9) P.set(x, 45, ['#8ad8ff', '#ffd24a', '#ff8ac8'][(x / 9 | 0) % 3]);
+    }
     else if (kind === 'tokyotower') {
       // a lattice tower in international orange and white
       P = new Pix(34, 84); const m = P.mask();

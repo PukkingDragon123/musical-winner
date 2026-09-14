@@ -117,9 +117,10 @@ function buildVenue(venue, seed, dayT) {
     mx.drawImage(propCanvas('seal'), 740, 218, 33, 18); mx.drawImage(propCanvas('seal'), 130, 224, 33, 18); if (venue.ferry) mx.drawImage(landmarkCanvas('ferry'), 880, 86, 33, 90);
   } else if (venue.kind === 'bridge') {
     rect(mx, 0, 0, W + 260, 180, '#4a4a8a'); for (let y = 8; y < 178; y += 7) for (let x = (y * 7) % 28; x < W + 260; x += 28) rect(mx, x, y, 12, 2, '#6a6aa8');
-    mx.drawImage(landmarkCanvas('bridge'), -60, -44, 660, 230); mx.drawImage(landmarkCanvas('bridge'), 600, -44, 660, 230);
-    rect(mx, 0, 186, W + 260, 64, '#5a5a6a'); rect(mx, 0, 186, W + 260, 6, '#c8432a'); for (let x = 0; x < W + 260; x += 86) rect(mx, x, 148, 7, 44, '#c8432a');
-    for (let x = 0; x < W + 260; x += 11) rect(mx, x, 166, 6, 2, '#c8432a');
+    mx.drawImage(landmarkCanvas('rainbow'), -60, -44, 660, 230); mx.drawImage(landmarkCanvas('rainbow'), 600, -44, 660, 230);
+    mx.drawImage(landmarkCanvas('skytree'), 940, -30, 34, 176);
+    rect(mx, 0, 186, W + 260, 64, '#5a5a6a'); rect(mx, 0, 186, W + 260, 6, '#8ad8ff'); for (let x = 0; x < W + 260; x += 86) rect(mx, x, 148, 7, 44, '#8a92a8');
+    for (let x = 0; x < W + 260; x += 11) rect(mx, x, 166, 6, 2, '#8a92a8');
   }
   V.mid = mid;
   // near props on the sidewalk (x positions, drawn behind the band row)

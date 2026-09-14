@@ -81,6 +81,31 @@ function drawFretboard(ctx, hw, R, opts = {}) {
   }
   // nut
   rect(ctx, hw.cx - hw.nearW / 2 - 10, hw.nearY - 4, hw.nearW + 20, 6, '#f0e6cc'); rect(ctx, hw.cx - hw.nearW / 2 - 10, hw.nearY - 4, hw.nearW + 20, 2, '#fffaf0');
+  // A pick riding the last string you struck, throwing sparks off it, and the
+  // amp cone underneath breathing with the low end. An electric guitar should
+  // look like it is doing something to the air.
+  let loud = 0, lastL = 0;
+  for (let l = 0; l < hw.L; l++) { const v = R.stringVib[l] || 0; if (v > loud) { loud = v; lastL = l; } }
+  if (loud > 0.04) {
+    const px2 = hw.laneCx(lastL), py2 = hw.nearY + 2 + Math.sin((opts.time || 0) * 40) * loud * 3;
+    const pcol = opts.laneColors ? opts.laneColors[lastL] : '#ffd24a';
+    ctx.globalAlpha = clamp(loud * 1.4, 0, 1);
+    // the plectrum itself, a little triangle held against the string
+    for (let i = 0; i < 7; i++) rect(ctx, px2 - (6 - i), py2 + 4 + i, (6 - i) * 2 + 1, 1, i < 2 ? '#fff4c8' : '#d9b45a');
+    rect(ctx, px2 - 7, py2 + 2, 15, 2, '#2a1e08');
+    ctx.globalAlpha = 1;
+    if (Math.random() < loud * 0.9) for (let i = 0; i < 2; i++)
+      R.fx.add({ x: px2 + (Math.random() - 0.5) * 10, y: py2, vx: (Math.random() - 0.5) * 90, vy: -30 - Math.random() * 50, life: 0.3, color: i ? '#fff8e0' : pcol, kind: 'spark', size: 2, gravity: 220 });
+  }
+  // the speaker cone in the body, pumping on the beat
+  const pump = 1 + loud * 0.35 + (R.beatPulse || 0) * 0.12;
+  const coneY = bodyTop + bh * 0.62;
+  ellipsePx(ctx, hw.cx, coneY, 26 * pump, 10 * pump, darken(col, 0.45));
+  ellipsePx(ctx, hw.cx, coneY, 23 * pump, 8.5 * pump, '#2a2430');
+  ellipsePx(ctx, hw.cx, coneY, 9 * pump, 3.4 * pump, darken(col, 0.1));
+  ctx.globalAlpha = 0.35 + loud * 0.5;
+  ellipsePx(ctx, hw.cx - 7, coneY - 3, 7 * pump, 2.4 * pump, lighten(col, 0.4));
+  ctx.globalAlpha = 1;
 }
 
 // ---------- PIANO: real keyboard at the receptor ----------
@@ -151,40 +176,454 @@ function drawTaikoDrum(ctx, x, y, r, hitDon, hitKa, t) {
   }
 }
 // ---------- SAX / TRUMPET / VIOLIN bodies ----------
-function drawSaxBody(ctx, x, y, breath, playing, t) {
-  const g = '#e0b040', gd = '#8a6010', gl = '#ffe89a';
-  const P = new Pix(1, 1); // draw directly
-  // neck + body curve
-  for (let i = 0; i < 26; i++) { const yy = y - 54 + i * 2, xx = x + Math.sin(i * 0.12) * 3; rect(ctx, xx, yy, 8, 3, g); rect(ctx, xx, yy, 8, 1, gl); rect(ctx, xx + 6, yy, 2, 3, gd); }
-  // bell
-  circle(ctx, x + 10, y + 2, 13, gd); circle(ctx, x + 10, y + 2, 12, g); circle(ctx, x + 10, y + 2, 8, '#4a3008'); circle(ctx, x + 11, y + 1, 6, '#2a1a04');
-  ctx.globalAlpha = 0.5; circle(ctx, x + 5, y - 4, 4, gl); ctx.globalAlpha = 1;
-  // keys light with breath
-  for (let i = 0; i < 6; i++) { const yy = y - 48 + i * 7, on = playing && ((Math.floor(t * 8) + i) % 3 === 0); circle(ctx, x + 10, yy, 2, on ? '#fff8d0' : '#c8a030'); }
-  // mouthpiece
-  rect(ctx, x - 2, y - 60, 6, 8, '#2a2430'); rect(ctx, x - 2, y - 60, 6, 2, '#5a5468');
-  if (playing) { ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 12); circle(ctx, x + 10, y + 2, 18, '#ffd166'); ctx.globalAlpha = 1; }
+// ---------- Real instruments, built like the kit is ----------
+// The horns and the strings used to be a handful of raw circles drawn straight
+// to the canvas, which looked nothing like the rest of the game. They are now
+// cached Pix sprites at final size with the same treatment as everything else:
+// brass gets metal, wood gets grain, and every one of them has an outline.
+
+// An alto: mouthpiece, crook, body, bow, and a bell that flares up and right.
+function saxSprite() {
+  return cached('sax|body', () => {
+    const P = new Pix(46, 108);
+    const brass = '#d9a83c', dark = '#6e4c0e';
+    // the bow, the U-turn at the bottom
+    let m = P.mask();
+    P.mEllipse(m, 23, 86, 13, 11); P.mRect(m, 10, 68, 26, 18);
+    const cut = P.mask(); P.mEllipse(cut, 23, 84, 7, 7); P.mRect(cut, 16, 60, 14, 24);
+    P.mSub(m, cut);
+    // the body tube
+    P.mRound(m, 15, 26, 13, 50, 3);
+    // the bell: a cone opening up to the right
+    for (let i = 0; i < 42; i++) {
+      const y = 78 - i, half = 4 + i * 0.19;
+      P.mRect(m, Math.round(29 - half * 0.25), y, Math.round(half * 1.5), 1);
+    }
+    P.fill(m, brass, { outline: '#241804', hi: '#ffeeae', lo: dark });
+    P.metal(m, 7, 0.14);
+    P.grain(m, 0.03, 11);
+    // the bell mouth, a dark throat with a rolled rim
+    const mouth = P.mask(); P.mEllipse(mouth, 33, 36, 10, 4);
+    P.fill(mouth, '#2a1c06', { shade: false });
+    const rim = P.mask(); P.mEllipse(rim, 33, 36, 10, 4); const inner = P.mask(); P.mEllipse(inner, 33, 36, 8, 3); P.mSub(rim, inner);
+    P.fill(rim, '#ffeeae', { shade: false });
+    // an engraved band around the bell, the way a good horn is decorated
+    for (const yy of [44, 46]) for (let x = 24; x < 43; x++) if (P.get(x, yy) != null && (x + yy) % 3) P._shift(x, yy, -0.22);
+    // the crook, curving left and up to the mouthpiece
+    const cr = P.mask();
+    for (let i = 0; i < 24; i++) { const t = i / 23; P.mEllipse(cr, 21 - t * 10 + Math.sin(t * 2.2) * 2, 26 - i, 4 - t, 3 - t * 0.8); }
+    P.fill(cr, brass, { outline: '#241804', hi: '#ffeeae', lo: dark });
+    P.metal(cr, 3, 0.12);
+    // key cups and the rods that link them
+    for (let i = 0; i < 7; i++) {
+      const yy = 32 + i * 6, xx = i % 2 ? 26 : 13;
+      const k = P.mask(); P.mEllipse(k, xx, yy, 3, 2.4);
+      P.fill(k, '#efd77e', { outline: '#3a2806' });
+      const rod = P.mask(); P.mLine(rod, xx, yy, i % 2 ? 22 : 19, yy, 1);
+      P.fill(rod, '#b8912e', { shade: false });
+    }
+    // the mouthpiece and its reed
+    const mp = P.mask(); P.mRound(mp, 7, 1, 9, 12, 3);
+    P.fill(mp, '#241f2c', { outline: '#0c0a12', hi: '#5a5468' });
+    const reed = P.mask(); P.mPoly(reed, [[8, 4], [13, 3], [13, 11], [8, 12]]);
+    P.fill(reed, '#c9a56a', { shade: false });
+    const lig = P.mask(); P.mRect(lig, 7, 7, 9, 2);
+    P.fill(lig, '#cfc6b0', { shade: false });
+    return P.toCanvas();
+  });
 }
-function drawTrumpetBody(ctx, x, y, mask, t) {
-  const g = '#f0c040', gd = '#8a6a10', gl = '#fff0a0';
-  rect(ctx, x - 40, y - 6, 62, 10, g); rect(ctx, x - 40, y - 6, 62, 3, gl); rect(ctx, x - 40, y + 2, 62, 2, gd);
-  for (let i = 0; i < 12; i++) { const r2 = 8 + i * 1.6; circle(ctx, x + 22 + i * 1.6, y - 1, r2, i % 2 ? g : gl); }
-  circle(ctx, x + 42, y - 1, 20, gd); circle(ctx, x + 41, y - 1, 18, g); circle(ctx, x + 43, y - 1, 14, '#5a4008');
-  for (let v = 0; v < 3; v++) { const vx = x - 22 + v * 14, on = (mask >> v) & 1; rect(ctx, vx, y - 20, 8, 16, gd); rect(ctx, vx + 1, y - 19 + (on ? 4 : 0), 6, 14 - (on ? 4 : 0), on ? gl : g); rect(ctx, vx + 1, y - 19 + (on ? 4 : 0), 6, 2, '#fffbe0'); }
-  rect(ctx, x - 46, y - 8, 8, 14, '#d8d4c8'); rect(ctx, x - 46, y - 8, 8, 3, '#fff');
+// A length of bamboo with five holes and a cut blowing edge. Nothing like a sax.
+function shakuhachiSprite() {
+  return cached('shaku|body', () => {
+    const P = new Pix(18, 112);
+    const m = P.mask();
+    for (let y = 0; y < 112; y++) { const half = 3 + (y / 111) * 2.6; P.mRect(m, Math.round(9 - half), y, Math.round(half * 2), 1); }
+    P.fill(m, '#c9ad78', { outline: '#3a2c14', hi: '#efd9a8', lo: '#8a6f3e' });
+    P.wood(m, 5, 0.07);
+    P.grain(m, 0.045, 17);
+    // the nodes: bamboo grows in sections and every joint shows
+    for (const ny of [22, 47, 71, 95]) {
+      const n = P.mask(); P.mRect(n, 0, ny, 18, 3);
+      const keep = P.mask(); for (let i = 0; i < n.length; i++) if (n[i] && m[i]) keep[i] = 1;
+      P.fill(keep, '#8a6f3e', { shade: false });
+      const lip = P.mask(); for (let x = 0; x < 18; x++) if (m[ny * 18 + x]) lip[ny * 18 + x] = 1;
+      P.fill(lip, '#efd9a8', { shade: false });
+    }
+    // four holes at the front, one at the back
+    for (const [hy, hx] of [[36, 9], [54, 9], [66, 9], [82, 9], [90, 6]]) {
+      const h = P.mask(); P.mEllipse(h, hx, hy, 2.2, 2);
+      P.fill(h, '#2a1e0c', { shade: false });
+      const sh = P.mask(); P.mEllipse(sh, hx, hy - 1, 2.2, 1); const in2 = P.mask(); P.mEllipse(in2, hx, hy, 1.6, 1.4); P.mSub(sh, in2);
+      P.fill(sh, '#5a4420', { shade: false });
+    }
+    // the utaguchi: the blowing edge, cut away at an angle and inlaid
+    const u = P.mask(); P.mPoly(u, [[4, 0], [13, 0], [13, 5], [7, 3]]);
+    P.fill(u, '#1c1406', { shade: false });
+    const inlay = P.mask(); P.mLine(inlay, 4, 1, 13, 4, 1);
+    P.fill(inlay, '#efe6d0', { shade: false });
+    // the root end flares, because it is cut from the bottom of the stalk
+    const root = P.mask(); P.mEllipse(root, 9, 109, 8, 3);
+    P.fill(root, '#b09055', { outline: '#3a2c14' });
+    return P.toCanvas();
+  });
 }
-function drawViolinBody(ctx, x, y, dir, hold, t) {
-  const w = '#b05a2a', wl = '#d8834a', wd = '#6a3010';
-  circle(ctx, x, y + 14, 15, wd); circle(ctx, x, y + 14, 14, w); circle(ctx, x, y - 10, 12, wd); circle(ctx, x, y - 10, 11, w);
-  rect(ctx, x - 10, y - 2, 20, 12, w); rect(ctx, x - 12, y + 2, 24, 4, wd);
-  ctx.globalAlpha = 0.35; circle(ctx, x - 5, y + 8, 6, wl); ctx.globalAlpha = 1;
-  rect(ctx, x - 2, y - 40, 4, 26, '#3a2010'); rect(ctx, x - 4, y - 46, 8, 8, '#2a1808');
-  for (let i = 0; i < 4; i++) rect(ctx, x - 5 + i * 3, y - 38, 1, 48, '#e8e0c8');
-  rect(ctx, x - 8, y + 22, 16, 3, '#2a1808');
-  // bow
-  const by = y + (dir > 0 ? -6 : 10) + Math.sin(t * 10) * (hold ? 2 : 0);
-  rect(ctx, x - 46, by, 92, 2, '#6a4020'); rect(ctx, x - 46, by + 2, 92, 1, '#f0e8d0');
-  rect(ctx, x + 44, by - 2, 6, 7, '#3a2010');
+// A Bb trumpet lying on its side: leadpipe, three casings, tuning slide, bell.
+function trumpetSprite() {
+  return cached('trumpet|body', () => {
+    const P = new Pix(104, 48);
+    const brass = '#e4b64a', dark = '#7a5610';
+    const m = P.mask();
+    P.mRect(m, 8, 20, 62, 7);                        // leadpipe and the run to the bell
+    P.mRound(m, 66, 17, 12, 13, 4);                  // the first bend
+    for (let i = 0; i < 26; i++) { const half = 4 + i * 0.62; P.mRect(m, 76 + i, Math.round(23 - half), 1, Math.round(half * 2)); }
+    P.mRect(m, 8, 30, 52, 5);                        // the bottom run back
+    P.mRound(m, 4, 19, 9, 17, 4);                    // the tuning slide crook
+    const hole = P.mask(); P.mRect(hole, 10, 27, 48, 3); P.mEllipse(hole, 8, 27, 3, 3);
+    P.mSub(m, hole);
+    P.fill(m, brass, { outline: '#2a1c04', hi: '#fff0b0', lo: dark });
+    P.metal(m, 9, 0.15);
+    // the bell mouth and its rolled rim
+    const mouth = P.mask(); P.mEllipse(mouth, 101, 23, 3, 15);
+    P.fill(mouth, '#301f04', { shade: false });
+    const rim = P.mask(); P.mEllipse(rim, 101, 23, 3, 15); const in3 = P.mask(); P.mEllipse(in3, 100, 23, 2, 13); P.mSub(rim, in3);
+    P.fill(rim, '#fff0b0', { shade: false });
+    // three valve casings standing up off the tube
+    for (let v = 0; v < 3; v++) {
+      const vx = 26 + v * 13, c = P.mask();
+      P.mRound(c, vx, 6, 9, 26, 3);
+      P.fill(c, '#d6ab44', { outline: '#2a1c04', hi: '#fff0b0', lo: dark });
+      P.metal(c, 13 + v, 0.14);
+      const cap = P.mask(); P.mRound(cap, vx - 1, 3, 11, 5, 2);
+      P.fill(cap, '#efe4c0', { outline: '#2a1c04' });
+    }
+    // the mouthpiece
+    const mp = P.mask(); P.mEllipse(mp, 2, 23, 3, 5); P.mRect(mp, 2, 21, 6, 5);
+    P.fill(mp, '#dcd6c4', { outline: '#2a1c04', hi: '#ffffff' });
+    return P.toCanvas();
+  });
+}
+// A fiddle: two bouts, a carved waist, f-holes, a scroll, and four strings.
+function violinSprite() {
+  return cached('violin|body', () => {
+    const P = new Pix(44, 122);
+    const top = '#b4652c';
+    const m = P.mask();
+    P.mEllipse(m, 22, 84, 18, 20);      // lower bout
+    P.mEllipse(m, 22, 52, 14, 15);      // upper bout
+    P.mRect(m, 10, 52, 24, 34);
+    const waist = P.mask(); P.mEllipse(waist, -2, 68, 12, 10); P.mEllipse(waist, 46, 68, 12, 10);
+    P.mSub(m, waist);
+    P.fill(m, top, { outline: '#2c1406', hi: '#e79a58', lo: '#6e360f' });
+    P.wood(m, 21, 0.08);
+    P.grain(m, 0.035, 31);
+    // purfling: the inlaid line that follows the edge all the way round
+    const edge = P.mCopy(m), inn = P.mask();
+    for (let y = 1; y < 121; y++) for (let x = 1; x < 43; x++)
+      if (m[y * 44 + x] && m[y * 44 + x - 1] && m[y * 44 + x + 1] && m[(y - 1) * 44 + x] && m[(y + 1) * 44 + x]) inn[y * 44 + x] = 1;
+    P.mSub(edge, inn);
+    P.fill(edge, '#3a1c08', { shade: false });
+    // two f-holes either side of the bridge
+    for (const sx of [13, 31]) {
+      const f = P.mask();
+      P.mLine(f, sx, 64, sx + (sx < 22 ? 1 : -1), 82, 1);
+      P.mEllipse(f, sx, 62, 2, 2); P.mEllipse(f, sx + (sx < 22 ? 1 : -1), 84, 2, 2);
+      P.fill(f, '#2a1406', { shade: false });
+    }
+    // bridge, tailpiece and chin rest
+    const br = P.mask(); P.mPoly(br, [[14, 74], [30, 74], [28, 70], [16, 70]]);
+    P.fill(br, '#d9bd84', { outline: '#5a3c14' });
+    const tp = P.mask(); P.mPoly(tp, [[17, 88], [27, 88], [25, 104], [19, 104]]);
+    P.fill(tp, '#2a2028', { outline: '#120c10', hi: '#5a4c58' });
+    const cr = P.mask(); P.mRound(cr, 9, 96, 12, 14, 4);
+    P.fill(cr, '#241a20', { outline: '#0e0a0e', hi: '#4a3c46' });
+    // neck, fingerboard, pegbox and the scroll
+    const nk = P.mask(); P.mRect(nk, 18, 20, 8, 34);
+    P.fill(nk, '#8a4a20', { outline: '#2c1406' });
+    const fb = P.mask(); P.mPoly(fb, [[18, 20], [26, 20], [28, 60], [16, 60]]);
+    P.fill(fb, '#231a20', { outline: '#0e0a0e', hi: '#453846' });
+    const pb = P.mask(); P.mRound(pb, 17, 6, 10, 16, 3);
+    P.fill(pb, '#8a4a20', { outline: '#2c1406', hi: '#c2763a' });
+    const sc = P.mask(); P.mEllipse(sc, 22, 5, 6, 5); const sh = P.mask(); P.mEllipse(sh, 23, 5, 2, 2); P.mSub(sc, sh);
+    P.fill(sc, '#a05a26', { outline: '#2c1406', hi: '#d8834a' });
+    for (let i = 0; i < 4; i++) { const pg = P.mask(); P.mEllipse(pg, i % 2 ? 29 : 15, 10 + Math.floor(i / 2) * 7, 3, 2); P.fill(pg, '#1c1418', { outline: '#0a0708' }); }
+    // four strings running the length of it
+    for (let i = 0; i < 4; i++) { const st = P.mask(); P.mLine(st, 19 + i * 2, 14, 18 + i * 3, 88, 1); P.fill(st, i > 1 ? '#cfc4a0' : '#efe8d0', { shade: false }); }
+    return P.toCanvas();
+  });
+}
+function bowSprite() {
+  return cached('bow|stick', () => {
+    const P = new Pix(116, 12);
+    const st = P.mask();
+    for (let x = 0; x < 116; x++) P.mRect(st, x, Math.round(4 + Math.sin(x / 116 * Math.PI) * 1.6), 1, 2);
+    P.fill(st, '#5a3416', { outline: '#1e1006', hi: '#8a5426' });
+    const hair = P.mask(); P.mRect(hair, 6, 2, 104, 2);
+    P.fill(hair, '#efe6cc', { shade: false });
+    const frog = P.mask(); P.mRound(frog, 0, 1, 11, 9, 2);
+    P.fill(frog, '#221a20', { outline: '#0c080c', hi: '#4a3c48' });
+    const tip = P.mask(); P.mPoly(tip, [[108, 1], [115, 3], [115, 7], [108, 9]]);
+    P.fill(tip, '#cfc4a8', { outline: '#2a2018' });
+    return P.toCanvas();
+  });
+}
+// A shamisen: a square drum of a body with a skin head, and a long fretless neck.
+function shamisenSprite() {
+  return cached('shamisen|body', () => {
+    const P = new Pix(62, 58);
+    const frame = P.mask(); P.mRound(frame, 1, 1, 60, 56, 4);
+    P.fill(frame, '#5a2f18', { outline: '#1e0e06', hi: '#8a4a24', lo: '#33190c' });
+    P.wood(frame, 41, 0.09);
+    const skin = P.mask(); P.mRound(skin, 5, 5, 52, 48, 3);
+    P.fill(skin, '#efe2c6', { outline: '#8a6f44', hi: '#fbf3de', lo: '#cbb896' });
+    P.grain(skin, 0.03, 7);
+    P.ditherTo(skin, '#dccfae', (x, y) => clamp((y - 5) / 48, 0, 1) * 0.5);
+    // the bachi-gawa: a patch stuck on where the plectrum lands, every time
+    const patch = P.mask(); P.mPoly(patch, [[26, 12], [54, 16], [54, 40], [26, 44]]);
+    P.fill(patch, '#d9c49a', { shade: false });
+    P.grain(patch, 0.04, 19);
+    const edge = P.mask(); P.mPoly(edge, [[26, 12], [54, 16], [54, 40], [26, 44]]);
+    const in4 = P.mask(); P.mPoly(in4, [[28, 14], [52, 18], [52, 38], [28, 42]]); P.mSub(edge, in4);
+    P.fill(edge, '#b09a6e', { shade: false });
+    // the bridge, standing on the skin, and the tailpiece the strings tie to
+    const brg = P.mask(); P.mPoly(brg, [[16, 34], [24, 34], [23, 28], [17, 28]]);
+    P.fill(brg, '#e0cfa0', { outline: '#6a5428' });
+    const tail = P.mask(); P.mRect(tail, 4, 26, 6, 8);
+    P.fill(tail, '#2a1c14', { outline: '#0e0806' });
+    return P.toCanvas();
+  });
+}
+function bachiSprite() {
+  return cached('bachi|plectrum', () => {
+    const P = new Pix(40, 30);
+    const m = P.mask(); P.mPoly(m, [[0, 12], [16, 8], [39, 0], [39, 29], [16, 21]]);
+    P.fill(m, '#f0e6cc', { outline: '#3a2c18', hi: '#ffffff', lo: '#c2b28c' });
+    P.grain(m, 0.03, 23);
+    const grip = P.mask(); P.mPoly(grip, [[0, 12], [12, 9], [12, 20], [0, 17]]);
+    P.fill(grip, '#3a2418', { outline: '#160c06', hi: '#6a4630' });
+    return P.toCanvas();
+  });
+}
+// A koto: thirteen strings over movable bridges on a long paulownia board.
+function kotoBridgeSprite() {
+  return cached('koto|ji', () => {
+    const P = new Pix(11, 14);
+    const m = P.mask(); P.mPoly(m, [[5, 0], [7, 0], [10, 13], [7, 13], [5, 7], [3, 13], [0, 13]]);
+    P.fill(m, '#f2e8d2', { outline: '#4a3c24', hi: '#ffffff', lo: '#c4b696' });
+    return P.toCanvas();
+  });
+}
+
+// The strip the horns and the fiddle play in used to be a flat purple void
+// with a few gridlines in it. It is a stage now: a graded back wall, slow
+// haze for the beams to show up in, a warm pool where the player stands, and
+// a floor that throws a little of it back.
+function drawPlayerStrip(ctx, A, R, opts = {}) {
+  const top = opts.top, bot = opts.bot, t = R.now || 0;
+  const h = bot - top;
+  vgrad(ctx, A.x, top - 10, A.w, h * 0.58 + 10, '#2e2154', '#1a1330');
+  vgrad(ctx, A.x, top - 10 + h * 0.58, A.w, h * 0.42 + 14, '#171026', '#0c0816');
+  // a row of flats behind, catching the edge of the light
+  for (let x = A.x; x < A.x + A.w; x += 46) {
+    ctx.globalAlpha = 0.14; rect(ctx, x, top - 8, 2, h * 0.5, '#5a4a92');
+    ctx.globalAlpha = 0.07; rect(ctx, x + 2, top - 8, 42, h * 0.5, '#463a78'); ctx.globalAlpha = 1;
+  }
+  // haze bands, drifting, positioned straight off the clock so there is no
+  // state to keep and no chance of them freezing when the song does
+  for (let i = 0; i < 5; i++) {
+    const bw = 200 + i * 60, bx = ((t * (7 + i * 3) + i * 260) % (A.w + bw)) - bw;
+    const by = top + h * (0.12 + i * 0.17), bh2 = 24 + i * 7;
+    const g = ctx.createLinearGradient(0, by, 0, by + bh2);
+    g.addColorStop(0, 'rgba(200,176,255,0)'); g.addColorStop(0.5, 'rgba(200,176,255,0.035)'); g.addColorStop(1, 'rgba(200,176,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(A.x + bx, by, bw, bh2);
+  }
+  // the floor, and the seam where it meets the wall
+  rect(ctx, A.x, bot + 2, A.w, 2, '#3a2e60');
+  rect(ctx, A.x, bot + 4, A.w, 3, '#1a1228');
+  // the pool of light the player stands in
+  if (opts.lightX != null) {
+    lightPool(ctx, opts.lightX, bot - 6, 110, opts.lightColor || '#ffd08a', 0.16 + (R.beatPulse || 0) * 0.06);
+    ctx.globalAlpha = 0.2;
+    ellipsePx(ctx, opts.lightX, bot + 3, 54, 9, opts.lightColor || '#ffd08a');
+    ctx.globalAlpha = 1;
+  }
+}
+// ---------- The horns, drawn with their sprites ----------
+function drawSaxBody(ctx, x, y, breath, playing, t, kind, sc = 1) {
+  // The shakuhachi is a stick of bamboo, not a brass instrument, and drawing
+  // one as the other was the laziest thing in here.
+  const bamboo = kind === 'shakuhachi';
+  const c = bamboo ? shakuhachiSprite() : saxSprite();
+  const sway = playing ? Math.sin(t * 3.4) * 1.5 : 0;
+  const px0 = Math.round(x - c.width / 2 + sway), py0 = Math.round(y - c.height);
+  ctx.save();
+  if (sc !== 1) { ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y); }
+  ctx.save(); ctx.translate(px0 + c.width / 2, py0 + c.height);
+  ctx.rotate((bamboo ? -0.14 : 0.06) + sway * 0.006);
+  ctx.translate(-c.width / 2, -c.height);
+  ctx.globalAlpha = 0.3; ctx.drawImage(c, 3, 4); ctx.globalAlpha = 1;   // its own shadow
+  ctx.drawImage(c, 0, 0);
+  // fingers working: a key cup or a hole goes dark as it is covered
+  if (playing) {
+    const n = bamboo ? 5 : 7;
+    for (let i = 0; i < n; i++) {
+      if ((Math.floor(t * 7) + i * 2) % 3) continue;
+      const hy = bamboo ? 36 + i * 13 : 32 + i * 6, hx = bamboo ? 9 : (i % 2 ? 26 : 13);
+      ctx.globalAlpha = 0.75; ellipsePx(ctx, hx, hy, 3, 2.4, bamboo ? '#1a1206' : '#fff8d0'); ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+  // breath: air leaving the bell, thinning as the lungs empty
+  if (playing) {
+    const bx = bamboo ? px0 + 9 : px0 + 33, by = bamboo ? py0 + 106 : py0 + 36;
+    const heat = 0.35 + breath * 0.55;
+    for (let i = 0; i < 5; i++) {
+      const k = ((t * 1.6 + i * 0.2) % 1);
+      ctx.globalAlpha = (1 - k) * heat * 0.4;
+      ellipsePx(ctx, bx + (bamboo ? 0 : k * 26), by - k * (bamboo ? 8 : 22), 4 + k * 13, 3 + k * 9, bamboo ? '#d8e8f0' : '#ffd98a');
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 0.16 + 0.1 * Math.sin(t * 11);
+    ellipsePx(ctx, bx, by, 20, 13, bamboo ? '#a8d8e8' : '#ffc44a');
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+function drawTrumpetBody(ctx, x, y, mask, t, sc = 1) {
+  const c = trumpetSprite();
+  ctx.save(); if (sc !== 1) { ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y); }
+  const px0 = Math.round(x - c.width / 2), py0 = Math.round(y - c.height / 2);
+  ctx.globalAlpha = 0.3; ctx.drawImage(c, px0 + 3, py0 + 4); ctx.globalAlpha = 1;
+  ctx.drawImage(c, px0, py0);
+  // the valves themselves ride in their casings and go down when pressed
+  for (let v = 0; v < 3; v++) {
+    const on = (mask >> v) & 1, vx = px0 + 26 + v * 13, vy = py0 + (on ? 7 : 1);
+    rect(ctx, vx - 1, vy, 11, 5, on ? '#fff8d0' : '#efe4c0');
+    rect(ctx, vx - 1, vy, 11, 2, '#ffffff');
+    rect(ctx, vx - 1, vy + 5, 11, 1, '#8a6a18');
+  }
+  if (mask) {
+    ctx.globalAlpha = 0.2 + 0.12 * Math.sin(t * 13);
+    ellipsePx(ctx, px0 + 101, py0 + 23, 16, 22, '#ffd166');
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+function drawViolinBody(ctx, x, y, dir, hold, t, sc = 1) {
+  const c = violinSprite(), b = bowSprite();
+  ctx.save(); if (sc !== 1) { ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y); }
+  const px0 = Math.round(x - c.width / 2), py0 = Math.round(y - c.height / 2);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-0.22); ctx.translate(-x, -y);
+  ctx.globalAlpha = 0.3; ctx.drawImage(c, px0 + 3, py0 + 5); ctx.globalAlpha = 1;
+  ctx.drawImage(c, px0, py0);
+  ctx.restore();
+  // the bow, drawn across the strings in whichever direction is being asked
+  const stroke = hold ? Math.sin(t * 7) * 9 : 0;
+  const by = y + (dir > 0 ? -10 : 14) + (hold ? Math.sin(t * 7) * 1.5 : 0);
+  ctx.save(); ctx.translate(x + stroke, by); ctx.rotate(dir > 0 ? -0.06 : 0.06); ctx.translate(-b.width / 2, -b.height / 2);
+  ctx.globalAlpha = 0.28; ctx.drawImage(b, 2, 5); ctx.globalAlpha = 1;
+  ctx.drawImage(b, 0, 0);
+  ctx.restore();
+  // rosin dust coming off the strings while a long note is held
+  if (hold && Math.random() < 0.5)
+    for (let i = 0; i < 2; i++) rect(ctx, x - 6 + Math.random() * 12, by + 4 + Math.random() * 6, 1, 1, '#e8dcc0');
+  ctx.restore();
+}
+
+// ---------- The shamisen: a fretless neck running up the highway ----------
+function drawShamisenNeck(ctx, hw, R, opts = {}) {
+  const A = hw.A;
+  // The body starts right at the nut and is allowed to run a little past the
+  // bottom of the strip: a split-screen stage leaves so little room under the
+  // neck that anything stricter shrinks it to a postage stamp.
+  const bodyTop = hw.nearY + 2, bh = (A.y + A.h + 10) - bodyTop;
+  // the neck, receding: rosewood, dark, and deliberately without a single fret
+  ctx.save(); ctx.beginPath();
+  ctx.moveTo(hw.cx - hw.nearW / 2 - 10, hw.nearY + 10); ctx.lineTo(hw.cx + hw.nearW / 2 + 10, hw.nearY + 10);
+  ctx.lineTo(hw.cx + (hw.nearW / 2 + 10) * P_FAR, hw.farY); ctx.lineTo(hw.cx - (hw.nearW / 2 + 10) * P_FAR, hw.farY); ctx.closePath(); ctx.clip();
+  vgrad(ctx, A.x, hw.farY, A.w, hw.nearY + 10 - hw.farY, '#1d1009', '#432412');
+  for (let i = 0; i < 22; i++) { const g = (i * 43) % 100 / 100; const x0 = hw.cx + (g - 0.5) * (hw.nearW + 20), x1 = hw.cx + (g - 0.5) * (hw.nearW + 20) * P_FAR; ctx.globalAlpha = 0.14; line(ctx, x0, hw.nearY + 10, x1, hw.farY, i % 2 ? '#6e4020' : '#180c06'); ctx.globalAlpha = 1; }
+  ctx.restore();
+  // position marks, not frets: a shamisen has none, so the beat is the guide
+  const beat = opts.beat || 0.5, now = opts.now || 0, approach = opts.approach || 1.4;
+  for (let b = Math.ceil(now / beat); ; b++) {
+    const k = (b * beat - now) / approach; if (k > 1) break; if (k < -0.05) continue;
+    const p = persp(k), y = perspY(k, hw.nearY, hw.farY), major = b % 4 === 0;
+    ctx.globalAlpha = major ? 0.55 : 0.2;
+    rect(ctx, hw.cx - (hw.nearW / 2 + 10) * p, y, (hw.nearW + 20) * p, 1, major ? '#e8c98a' : '#8a6e4a');
+    ctx.globalAlpha = 1;
+    if (major) rect(ctx, hw.cx - 2 * p, y - 1, Math.max(1, 4 * p), 2, '#f0e0b0');
+  }
+  // three silk strings, thickest first, ringing when struck
+  for (let l = 0; l < hw.L; l++) {
+    const vib = R.stringVib[l] || 0, thick = 3 - l;
+    for (let i = 0; i < 20; i++) {
+      const k0 = i / 20, a = hw.pos(l, k0), b2 = hw.pos(l, (i + 1) / 20);
+      const w0 = Math.max(1, Math.round(thick * a.p)), amp = vib * 6 * Math.sin(k0 * Math.PI);
+      ctx.fillStyle = i % 2 ? '#efe4c0' : '#cfc09a';
+      const off = amp * Math.sin(k0 * 15 + (opts.time || 0) * 52);
+      ctx.fillRect(Math.round(a.x + off - w0 / 2), Math.round(b2.y), w0, Math.max(1, Math.round(a.y - b2.y)) + 1);
+    }
+  }
+  // the sawari: the notch at the top that makes the low string buzz on purpose
+  rect(ctx, hw.cx - hw.nearW / 2 - 12, hw.nearY - 3, hw.nearW + 24, 5, '#2a1a10');
+  rect(ctx, hw.cx - hw.nearW / 2 - 12, hw.nearY - 3, hw.nearW + 24, 2, '#6a4a2c');
+  // The body sits under the neck, scaled to whatever room the layout leaves —
+  // a split-screen stage gives it far less than an open one.
+  const s = shamisenSprite();
+  const sc = clamp(bh / s.height, 0.5, 1.4);
+  const bw2 = Math.round(s.width * sc), bh2 = Math.round(s.height * sc);
+  const bx = Math.round(hw.cx - bw2 / 2), byy = Math.round(bodyTop + Math.max(0, (bh - bh2) / 2));
+  ctx.globalAlpha = 0.32; ctx.drawImage(s, bx + 4, byy + 5, bw2, bh2); ctx.globalAlpha = 1;
+  ctx.drawImage(s, bx, byy, bw2, bh2);
+  // the bachi, resting on the skin and kicking up off it on every strike
+  const struck = Math.max(0, ...Object.values(R.stringVib || {}));
+  const bc = bachiSprite(), cw = Math.round(bc.width * sc), ch = Math.round(bc.height * sc);
+  ctx.save();
+  ctx.translate(bx + bw2 * 0.76, byy + bh2 * 0.4 + struck * 7 * sc); ctx.rotate(-0.35 + struck * 0.5);
+  ctx.drawImage(bc, -cw + Math.round(8 * sc), -ch / 2, cw, ch);
+  ctx.restore();
+}
+// ---------- The koto: five live strings over movable bridges ----------
+function drawKotoBoard(ctx, hw, R, opts = {}) {
+  const A = hw.A;
+  // the board: paulownia, pale and wide, curving away from you
+  ctx.save(); ctx.beginPath();
+  ctx.moveTo(hw.cx - hw.nearW / 2 - 22, A.y + A.h); ctx.lineTo(hw.cx + hw.nearW / 2 + 22, A.y + A.h);
+  ctx.lineTo(hw.cx + (hw.nearW / 2 + 22) * P_FAR, hw.farY); ctx.lineTo(hw.cx - (hw.nearW / 2 + 22) * P_FAR, hw.farY); ctx.closePath(); ctx.clip();
+  vgrad(ctx, A.x, hw.farY, A.w, A.y + A.h - hw.farY, '#6a5228', '#c9a765');
+  for (let i = 0; i < 30; i++) { const g = (i * 29) % 100 / 100; const x0 = hw.cx + (g - 0.5) * (hw.nearW + 44), x1 = hw.cx + (g - 0.5) * (hw.nearW + 44) * P_FAR; ctx.globalAlpha = 0.12; line(ctx, x0, A.y + A.h, x1, hw.farY, i % 3 ? '#e0c48a' : '#4a3818'); ctx.globalAlpha = 1; }
+  ctx.restore();
+  // beat lines read as the ribs under the board
+  const beat = opts.beat || 0.5, now = opts.now || 0, approach = opts.approach || 1.4;
+  for (let b = Math.ceil(now / beat); ; b++) {
+    const k = (b * beat - now) / approach; if (k > 1) break; if (k < -0.05) continue;
+    const p = persp(k), y = perspY(k, hw.nearY, hw.farY), major = b % 4 === 0;
+    ctx.globalAlpha = major ? 0.4 : 0.16;
+    rect(ctx, hw.cx - (hw.nearW / 2 + 22) * p, y, (hw.nearW + 44) * p, 1, major ? '#fff0c0' : '#7a5e30');
+    ctx.globalAlpha = 1;
+  }
+  // the strings, waxed silk, and a movable bridge standing under each one
+  const ji = kotoBridgeSprite();
+  for (let l = 0; l < hw.L; l++) {
+    const vib = R.stringVib[l] || 0;
+    for (let i = 0; i < 20; i++) {
+      const k0 = i / 20, a = hw.pos(l, k0), b2 = hw.pos(l, (i + 1) / 20);
+      const w0 = Math.max(1, Math.round(2 * a.p)), amp = vib * 5 * Math.sin(k0 * Math.PI);
+      const off = amp * Math.sin(k0 * 13 + (opts.time || 0) * 46);
+      ctx.fillStyle = i % 2 ? '#f4ecd4' : '#d8ccae';
+      ctx.fillRect(Math.round(a.x + off - w0 / 2), Math.round(b2.y), w0, Math.max(1, Math.round(a.y - b2.y)) + 1);
+    }
+    // each bridge sits at its own place along the board, as they really do
+    const k = 0.18 + ((l * 37) % 100) / 100 * 0.42, pos = hw.pos(l, k), sc = Math.max(0.4, pos.p);
+    const w2 = Math.max(3, Math.round(ji.width * sc)), h2 = Math.max(4, Math.round(ji.height * sc));
+    ctx.globalAlpha = 0.3; ctx.drawImage(ji, Math.round(pos.x - w2 / 2) + 1, Math.round(pos.y - h2) + 2, w2, h2); ctx.globalAlpha = 1;
+    ctx.drawImage(ji, Math.round(pos.x - w2 / 2), Math.round(pos.y - h2), w2, h2);
+    if (vib > 0.05) { ctx.globalAlpha = vib * 0.5; ellipsePx(ctx, pos.x, hw.nearY, 9, 4, opts.laneColors[l]); ctx.globalAlpha = 1; }
+  }
+  // the near edge of the instrument, with the silk cord wrapped round it
+  rect(ctx, hw.cx - hw.nearW / 2 - 26, hw.nearY - 2, hw.nearW + 52, 7, '#7a5c2c');
+  rect(ctx, hw.cx - hw.nearW / 2 - 26, hw.nearY - 2, hw.nearW + 52, 2, '#c9a765');
+  for (let x = hw.cx - hw.nearW / 2 - 24; x < hw.cx + hw.nearW / 2 + 24; x += 7) rect(ctx, x, hw.nearY, 3, 4, '#a8322c');
 }
 
 // ---------- A real drum kit drawn into the play area ----------

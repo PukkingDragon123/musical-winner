@@ -25,9 +25,10 @@ open door. They put you on a plane. You practise once at 30,000 feet.
 
 ## The city
 
-San Francisco drawn like a street map: white roads with names, beige blocks, green parks,
-the bay, Chinatown, the Mission, Twin Peaks, the Sunset, piers and the Golden Gate. Cars and
-pedestrians move along the roads; weather rolls through.
+Tokyo drawn like a street map: the Yamanote Line looping the middle, Meiji-dori and
+Omotesando and Takeshita-dori named on the roads, beige blocks, Yoyogi and Ueno green, the bay
+and the Sumida. Sixteen wards, from Shimokitazawa and Koenji out to Asakusa, Ginza, Odaiba and
+Akihabara. Cars and pedestrians move along the roads; weather rolls through, sakura included.
 
 You walk it, tile by tile. Drag a route out from the band and it draws itself along the
 streets with a chevron ribbon and the price in **stamina** at the end; roads are cheap, cutting
@@ -35,9 +36,9 @@ across a park costs double. Walkable ground is read straight off the drawn map, 
 follows real streets and never crosses the bay. Stamina runs down as you go and a coffee at
 any music shop buys some back.
 
-Pins mark venues to play, music shops, food (Dumpling Dynasty, Burrito Beetle, Sourdough
-Sam's), open mics to recruit, events, rest stops and street-corner pickups. Stamina runs out,
-night falls, dinner costs money per bug, and the Golden Gate unlocks on the last day.
+Pins mark venues to play, music shops, food, open mics to recruit, events, rest stops and
+street-corner pickups. Stamina runs out, night falls, dinner costs money per bug, and the Tokyo
+Dome unlocks on the last day.
 
 ## The city
 
@@ -119,12 +120,28 @@ and a half times as wide as anywhere else, if you hit the beat on the wrong drum
 rather than a guaranteed miss for anybody playing with one hand. A player who never picks the
 right drum and is ninety milliseconds out still finishes a street set in the sixties.
 
-**You hit the drum, not a button, and nothing closes in on you.** There are no lanes, no pads and
-no rings anywhere on a kit. The drum you owe lights up a whole count early, lifts, and a solid
-caret rides down and touches the skin exactly when you should play — so the beat is something you
-watch arrive rather than something you aim at. Click or tap the drum itself, and drag across them
-for a fill. Above the kit, one panel carries the bar you are about to play: a rail per piece with
-its drum's colour, chips walking into a now-line, and the count ticking 1-2-3-4 along the bottom.
+**You hit the drum, not a button, and you never have to aim.** There are no lanes, no pads and no
+rings anywhere on a kit. The drum you owe lights up a whole count early, lifts, and a solid caret
+rides down and touches the skin exactly when you should play — so the beat is something you watch
+arrive rather than something you aim at. And a strike anywhere counts: a tap in open air, or any
+key on the board, lands on the drum the chart is asking for and scores in full. Hunting a small
+sprite with a mouse inside one beat was a second, harder game bolted on top of the first, and it
+is gone. Hit the right drum if you like the sound of it; hit nothing in particular if you would
+rather just keep time. Above the kit, one panel carries the bar you are about to play: a rail per
+piece in its drum's colour, chips walking into a now-line, and the count ticking 1-2-3-4 along the
+bottom.
+
+**Every instrument is a real instrument.** Each one is a cached pixel sprite built at final size
+with the same treatment as the drum kit — brass gets a brushed metal grain, wood gets its figure,
+and everything is outlined. The sax is an alto with a crook, key cups on their rods and a reed in
+a ligature; the shakuhachi is a length of bamboo with its nodes, five holes and the cut blowing
+edge, which is not the same object at all and no longer drawn as though it were. The trumpet has
+three valves that actually travel in their casings. The violin has f-holes, purfling round the
+edge, a scroll and a bow that strokes up and down and throws rosin dust while a note is held. The
+shamisen has a skin-faced body with the patch where the plectrum lands, a fretless neck, and a
+bachi that kicks off the skin on every strike. The koto is a paulownia board with movable bridges
+standing under each string. The horns and the fiddle used to play in a flat purple void; they now
+stand in a lit strip with haze, a back wall and a pool of light at their feet.
 
 **Guitar and bass are Guitar Hero.** Four lanes (two on a bass) of gems falling down a wooden
 fretboard that recedes to a vanishing point, with strings that ring and wobble when you hit them,
@@ -231,7 +248,7 @@ receptor. Portrait phones rotate to fill the long edge.
 ```
 js/core     util, bitmap fonts, particles/shake/wind, WebAudio synth
 js/art      shaded pixel buffer, bug generator, UI kit, props, buildings, instrument views
-js/data     instruments, abilities, venues, the San Francisco map, public-domain tunes
+js/data     instruments, abilities, venues, the Tokyo map, public-domain tunes
 js/sim      chart generation from melody, rhythm engine, scoring, crowd
 js/scenes   title and select, concert/backstage/flight, city, gig and draft, shops and night
 js/game.js  loop, input, run state, save/load

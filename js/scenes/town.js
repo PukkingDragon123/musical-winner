@@ -402,7 +402,7 @@ class VictoryScene {
   click(x, y) { if (this.btn.hit(x, y) || !Game.touch) this.btn.onTap(); }
   draw(ctx) {
     const r = Game.run; const [c1, c2] = skyColors(0.6); vgrad(ctx, 0, 0, W, H, c1, c2);
-    ctx.drawImage(landmarkCanvas('bridge'), -60, 70, 690, 240); ctx.drawImage(landmarkCanvas('bridge'), 630, 70, 690, 240);
+    ctx.drawImage(landmarkCanvas('rainbow'), -60, 70, 690, 240); ctx.drawImage(landmarkCanvas('rainbow'), 630, 70, 690, 240);
     rect(ctx, 0, 310, W, 230, '#5a5a6a'); rect(ctx, 0, 310, W, 6, '#c8432a');
     r.members.forEach((m, i) => { const x = W / 2 - (r.members.length - 1) * 34 + i * 68; drawShadow(ctx, x, 460, 36); drawBugAt(ctx, m.spec, x, 460 + Math.round(Math.sin(this.t * 6 + i) * 3), { pose: 'cheer', instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.7 }); });
     drawBugAt(ctx, HERO_PRESETS.merc, 860, 460, { pose: 'idle', instrument: 'mic', flip: true, scale: 1.7, expr: 'sad' });
@@ -419,9 +419,10 @@ function drawNightCity(ctx, t, opts = {}) {
   const [c1, c2] = skyColors(opts.sky != null ? opts.sky : 0.92); vgrad(ctx, 0, 0, W, H, c1, c2);
   const r = makeRng(7); for (let i = 0; i < 140; i++) { const x = r.int(0, W), y = r.int(0, 230); if (Math.sin(t * 2 + i) > 0.3) px(ctx, x, y, i % 3 ? '#8a86b0' : '#fff'); }
   circle(ctx, 780, 76, 22, '#f4f0d8'); circle(ctx, 789, 70, 20, c1);
-  ctx.drawImage(landmarkCanvas('bridge'), 0, 150, 480, 168); ctx.drawImage(landmarkCanvas('bridge'), 480, 150, 480, 168);
+  ctx.drawImage(landmarkCanvas('rainbow'), 0, 150, 480, 168); ctx.drawImage(landmarkCanvas('rainbow'), 480, 150, 480, 168);
   ctx.drawImage(skylineCanvas(11, W, 120, { color: '#1e1a3a', lit: '#ffe6a0', tall: true, density: 0.3 }), 0, 220);
-  ctx.drawImage(landmarkCanvas('transamerica'), 660, 232, 28, 98); ctx.drawImage(landmarkCanvas('coit'), 570, 284, 20, 56);
+  // the two towers everybody photographs, instead of the ones we left behind
+  ctx.drawImage(landmarkCanvas('skytree'), 636, 166, 32, 164); ctx.drawImage(landmarkCanvas('tokyotower'), 726, 240, 40, 100);
   ctx.globalAlpha = 0.28; for (let i = 0; i < 10; i++) { const fx = ((t * 14 + i * 150) % (W + 220)) - 110; rect(ctx, fx, 300 + (i % 3) * 12, 130, 14, '#c8c8e0'); } ctx.globalAlpha = 1;
   rect(ctx, 0, 344, W, 196, '#2a2438'); rect(ctx, 0, 344, W, 4, '#4a4468'); for (let x = 0; x < W; x += 40) rect(ctx, x, 348, 2, 60, '#22202f');
   rect(ctx, 0, 406, W, 134, '#1a1826'); for (let x = 0; x < W; x += 48) rect(ctx, x, 470, 26, 3, '#5a5040');
