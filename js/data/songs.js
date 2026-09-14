@@ -182,20 +182,22 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
   const top = byPitch[byPitch.length - 1];                  // crash / hat / pot
   const mid = byPitch[Math.min(byPitch.length - 1, 1)];     // a tom if there is one
   const d = clamp(difficulty, 1, 7);
-  const offChance = [0, 0, 0.07, 0.17, 0.28, 0.38, 0.48, 0.56][d];  // eighths between the beats
-  const topChance = [0, 0, 0.05, 0.12, 0.2, 0.28, 0.36, 0.44][d];   // a piece on top of a beat
+  // Nothing happens off the count until you have played a few nights, and
+  // nothing asks for two limbs at once until you own a kit that could do it.
+  const offChance = [0, 0, 0, 0.05, 0.12, 0.24, 0.34, 0.44][d];     // eighths between the beats
+  const topChance = [0, 0, 0, 0, 0.07, 0.14, 0.22, 0.3][d];         // a piece on top of a beat
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bars = sec.endBar - sec.startBar;
   for (let bar = 0; bar < bars; bar++) {
     const barT = song.leadIn + (sec.startBar + bar) * 4 * beat;
-    const isPhraseEnd = d >= 4 && bar % 4 === 3;
+    const isPhraseEnd = d >= 5 && bar % 4 === 3;
     for (let b = 0; b < 4; b++) {
       const t = barT + b * beat;
       // the backbone: low piece on one and three, backbeat on two and four
       const lane = (b === 1 || b === 3) ? back : low;
       out.push({ t, lane, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
       // a crash or hat riding the downbeat, once there is a kit to do it on
-      if (n >= 4 && ((bar === 0 && b === 0) || rng.chance(topChance)) && top !== lane)
+      if (n >= 4 && d >= 4 && ((bar === 0 && b === 0) || rng.chance(topChance)) && top !== lane)
         out.push({ t, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true });
       // an eighth between this beat and the next
       if (rng.chance(offChance)) {
@@ -204,9 +206,11 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
       }
     }
     // a fill across the last bar of a phrase, walking down the kit
-    if (isPhraseEnd && n >= 3 && rng.chance(0.45)) {
+    // a fill across the last bar of a phrase, walking down the kit. It stays
+    // inside the bar, so it never lands on top of the next downbeat.
+    if (isPhraseEnd && n >= 3 && rng.chance(0.4)) {
       const order = byPitch.slice().reverse();
-      for (let i = 0; i < Math.min(3, order.length); i++)
+      for (let i = 0; i < 2; i++)
         out.push({ t: barT + 3 * beat + i * beat * 0.5, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
     }
   }

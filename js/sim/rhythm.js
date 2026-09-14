@@ -31,7 +31,7 @@ class RhythmGame {
   begin(audioTime) { this.startTime = audioTime; }
   // A kit is forgiving on purpose: what matters is landing on the beat, so the
   // windows are wider than on an instrument where you also pick a pitch.
-  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 1.85 : 1; }
+  get kitEase() { return this.instrument && this.instrument.view === 'kit' ? 2.5 : 1; }
   win(kind) { let m = this.mods.windowMult || 1; return JUDGE[kind] * m * this.kitEase; }
   judgeDt(dt) { const a = Math.abs(dt); if (a <= this.win('perfect')) return 'perfect'; if (a <= this.win('great')) return 'great'; if (a <= this.win('good')) return this.mods.tuner ? 'great' : 'good'; return 'miss'; }
   receptorOf(note) { const r = this.receptors[note.lane != null ? note.lane : 0] || this.receptors.main || { x: 0, y: 0 }; return r; }
@@ -64,7 +64,11 @@ class RhythmGame {
       if (j === 'perfect') this.events.perfects++;
       const col = note.star ? '#ffd24a' : JUDGE_COLOR[j];
       this.fx.burst(r.x, r.y, j === 'perfect' ? 12 : 6, { color: [col, '#fff', lighten(col, 0.2)], speed: j === 'perfect' ? 90 : 55, life: 0.45, kind: j === 'perfect' ? 'spark' : 'px', gravity: 60, size: 2 });
-      this.fx.ring(r.x, r.y, col, 3, j === 'perfect' ? 18 : 12, 0.28);
+      // A kit has no rings on it anywhere, approaching or landing: a struck
+      // drum throws sparks off the skin instead.
+      if (this.instrument.view === 'kit')
+        this.fx.burst(r.x, r.y, j === 'perfect' ? 10 : 5, { color: [col, '#fff8e0'], speed: j === 'perfect' ? 130 : 80, life: 0.3, kind: 'spark', gravity: 30, size: 2 });
+      else this.fx.ring(r.x, r.y, col, 3, j === 'perfect' ? 18 : 12, 0.28);
       if (note.star && j !== 'miss') { for (let i = 0; i < 8; i++) this.fx.add({ x: r.x, y: r.y, vx: (Math.random() - 0.5) * 120, vy: -60 - Math.random() * 80, life: 0.8, color: '#ffd24a', kind: 'star', size: 2, gravity: 140 }); if (this.mods.fx) this.mods.fx.shake.hit(2, 0.15); }
       if (note.type === 'big' && this.mods.fx) this.mods.fx.shake.hit(3, 0.2);
       if (this.milestoneIdx < COMBO_MILESTONES.length && this.combo >= COMBO_MILESTONES[this.milestoneIdx]) {
@@ -372,10 +376,11 @@ class RhythmGame {
     if (star && w > 10) { drawText(ctx, '★', x, y - 4, '#fff8c0', { align: 'center', outline: darken(col, 0.4) }); }
     ctx.globalAlpha = 1;
   }
-  // ---------- The kit: no highway, no buttons. You hit the drum. ----------
-  // A note is a ring closing onto its own drum. When the ring touches the rim
-  // the note is on the beat, so the whole read happens on the object you are
-  // about to strike instead of on a lane of falling gems.
+  // ---------- The kit: no highway, no buttons, no rings ----------
+  // A kit asks one thing of you: land on the count. So the read is the count.
+  // The drum you owe lights up and lifts through the beat before its own, a
+  // solid caret drops onto it, and a four-square bar keeps time underneath.
+  // Nothing closes in on you and nothing has to be aimed at.
   drawKitView(ctx, A) {
     const instr = this.instrument, pieces = instr.pieces || instr.drumFor || ['kick', 'snare', 'hat', 'tom', 'crash'];
     // The scene decides where the kit stands, so the drums sit on the actual
@@ -383,107 +388,133 @@ class RhythmGame {
     const K = A.kit || {};
     const cx = K.cx != null ? K.cx : A.x + A.w / 2;
     const baseY = K.baseY != null ? K.baseY : A.y + A.h - (A.touch ? 84 : 74);
-    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk });
+    // How lit each drum is running, worked out before the kit is drawn so the
+    // glow belongs to the drum instead of being pasted over the top of it.
+    // One count of warning: the drum wakes on the beat before its own.
+    const lead = this.song.beat * 1.05, cue = {};
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged || n.type === 'roll' || n.type === 'bomb') continue;
+      const away = n.t - this.now; if (away > lead) break; if (away < -0.1) continue;
+      const w = clamp(1 - away / lead, 0, 1);   // 0 a count away, 1 on the count
+      if (!(cue[n.lane] > w)) cue[n.lane] = w;
+    }
+    this.kitCue = cue;
+    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk, cue });
     this.kitSpots = spots;
     const byLane = {}; for (const sp of spots) byLane[sp.i] = sp;
     // the upcoming bar, read left to right along the top: what is coming and
     // in what order, without a highway anywhere near the drums
     const ribBot = this.drawKitRibbon(ctx, A, pieces, cx, baseY);
-    // approach rings, far notes first so near ones draw on top
-    const vis = [];
-    for (const n of this.notes) {
-      if (n.sec !== this.secIdx || n.judged) continue;
-      const k = (n.t - this.now) / this.approach; if (k > 1.04) break;
-      if (k < -0.14) continue;
-      vis.push({ n, k });
-    }
-    vis.sort((a, b) => b.k - a.k);
-    for (const { n, k } of vis) {
-      const sp = byLane[n.lane]; if (!sp) continue;
-      const kk = clamp(k, 0, 1), alpha = this.noteAlpha(kk);
-      const col = n.star ? '#ffd24a' : (PIECE_COLORS[sp.piece] || '#c2c8d6');
-      const rimX = sp.G.grab, rimY = sp.G.grab * 0.62;
-      if (n.type === 'bomb') {
-        const r = rimX * (1 + kk * 1.5);
-        ctx.globalAlpha = alpha * 0.9; ellipseRingPx(ctx, sp.x, sp.y, r, r * 0.62, '#c8302a');
-        ctx.globalAlpha = alpha; drawText(ctx, 'X', sp.x, sp.y - 4, '#ff8a6a', { align: 'center', scale: 2, outline: '#1a1410' });
-        ctx.globalAlpha = 1; continue;
-      }
-      // the ring, closing in
-      const rx = rimX * (1 + kk * 1.9), ry = rimY * (1 + kk * 1.9);
-      ctx.globalAlpha = alpha * clamp(1.15 - kk * 0.5, 0, 1);
-      ellipseRingPx(ctx, sp.x, sp.y, rx, ry, col);
-      ellipseRingPx(ctx, sp.x, sp.y, rx - 1, ry - 1, darken(col, 0.3));
-      if (n.star) ellipseRingPx(ctx, sp.x, sp.y, rx + 2, ry + 2, '#fff4b0');
+    // the cue on each drum that owes a hit
+    for (const sp of spots) {
+      const w = cue[sp.i] || 0; if (w <= 0.01) continue;
+      const col = PIECE_COLORS[sp.piece] || '#c2c8d6', glow = w * w * w;
+      const skinY = sp.y - sp.G.grab * 0.5;
+      // a pool of light gathering on the head as the count arrives
+      ctx.globalAlpha = 0.18 + glow * 0.62;
+      ellipsePx(ctx, sp.x, sp.y, sp.G.grab * (0.5 + glow * 0.5), sp.G.grab * 0.62 * (0.5 + glow * 0.5), lighten(col, 0.5));
       ctx.globalAlpha = 1;
-      // a marker riding the ring so the eye can track a fast passage
-      if (kk < 0.85) {
-        const mx = Math.round(sp.x), my = Math.round(sp.y - ry);
-        ctx.globalAlpha = alpha; rect(ctx, mx - 2, my - 1, 5, 3, col); rect(ctx, mx - 1, my, 3, 1, '#fff8e0'); ctx.globalAlpha = 1;
-      }
-      // hitting the rim: a bright flare exactly on the beat
-      if (kk < 0.06) { ctx.globalAlpha = (1 - kk / 0.06) * 0.8; ellipseRingPx(ctx, sp.x, sp.y, rimX + 2, rimY + 2, '#fff8e0'); ctx.globalAlpha = 1; }
-      if (n.chord) { ctx.globalAlpha = alpha * 0.6; drawText(ctx, 'x2', sp.x + rimX - 4, sp.y - rimY - 8, '#fff', { align: 'center', font: 'small', outline: '#1a1410' }); ctx.globalAlpha = 1; }
+      // A solid caret riding down onto the drum at a steady speed: it leaves
+      // the top a whole count early and touches the skin on the count, so the
+      // beat is something you watch arrive rather than something you aim at.
+      // Outlined and bright, because it has to read over a lit street.
+      const top = Math.round(sp.y - sp.G.grab * 0.62 - 42);
+      const cy = Math.round(top + w * 36), body = w > 0.84 ? '#fffbe8' : lighten(col, 0.55);
+      // a dotted thread down to the skin, so the eye joins the two
+      ctx.globalAlpha = 0.16 + w * 0.34;
+      for (let yy = cy + 10; yy < skinY; yy += 3) rect(ctx, sp.x, yy, 1, 2, body);
+      ctx.globalAlpha = 1;
+      ctx.globalAlpha = clamp(0.6 + w * 0.4, 0, 1);
+      rect(ctx, sp.x - 9, cy - 7, 19, 4, '#12101c');
+      rect(ctx, sp.x - 8, cy - 6, 17, 2, body);
+      for (let i = 0; i < 9; i++) { const hw = 8 - i; rect(ctx, sp.x - hw - 1, cy - 3 + i, (hw + 1) * 2 + 1, 1, '#12101c'); }
+      rect(ctx, sp.x - 1, cy + 6, 3, 1, '#12101c');
+      for (let i = 0; i < 8; i++) { const hw = 8 - i; rect(ctx, sp.x - hw, cy - 2 + i, hw * 2 + 1, 1, i < 3 ? body : darken(body, 0.2)); }
+      ctx.globalAlpha = 1;
+      // and the landing itself, so the exact instant is unmistakable
+      if (w > 0.88) { ctx.globalAlpha = (w - 0.88) / 0.12 * 0.95; ellipsePx(ctx, sp.x, sp.y, sp.G.grab * 1.05, sp.G.grab * 0.54, '#fff8e0'); ctx.globalAlpha = 1; }
     }
-    // ---- the pulse. Everything on a kit is "land on the beat", so the beat
-    // itself is drawn: a ring that closes on every count and flashes when it
-    // lands, sitting under the preview strip where you are already looking.
-    const pb = this.beatPulse, py2 = (ribBot || baseY - 100) + 16, prad = 13;
-    ctx.globalAlpha = 0.25 + pb * 0.3;
-    ellipseRingPx(ctx, cx, py2, prad, prad * 0.62, '#6a5f9a');
-    ctx.globalAlpha = 1;
-    const closing = prad * (0.3 + (1 - pb) * 0.95);
-    ctx.globalAlpha = 0.5 + pb * 0.4;
-    ellipseRingPx(ctx, cx, py2, closing, closing * 0.62, pb > 0.82 ? '#fff2b0' : '#9a90d0');
-    ctx.globalAlpha = 1;
-    if (pb > 0.86) { ctx.globalAlpha = (pb - 0.86) / 0.14 * 0.85; ellipsePx(ctx, cx, py2, prad * 0.45, prad * 0.28, '#fff6d0'); ctx.globalAlpha = 1; }
-    // the count, so you can see where one is
-    const beatNo = ((Math.floor(this.now / this.song.beat) % 4) + 4) % 4 + 1;
-    drawText(ctx, String(beatNo), cx, py2 - 3, pb > 0.82 ? '#fff8e0' : '#8a80b0', { align: 'center', font: 'small', outline: '#12101c' });
-    // and the four counts of the bar as pips either side
-    for (let i = 0; i < 4; i++) {
-      const bx = cx - 30 + (i > 1 ? 44 : 0) + (i % 2) * 10;
-      rect(ctx, bx, py2 - 2, 4, 4, i === beatNo - 1 ? '#ffd24a' : '#3a3560');
+    // a bomb, if a chart ever asks for one, is a drum to leave alone
+    for (const n of this.notes) {
+      if (n.sec !== this.secIdx || n.judged || n.type !== 'bomb') continue;
+      const k = (n.t - this.now) / this.approach; if (k > 1) break; if (k < -0.1) continue;
+      const sp = byLane[n.lane]; if (!sp) continue;
+      ctx.globalAlpha = clamp(1.1 - k, 0, 1);
+      drawText(ctx, 'X', sp.x, sp.y - 4, '#ff8a6a', { align: 'center', scale: 2, outline: '#1a1410' });
+      ctx.globalAlpha = 1;
     }
     // a hint only while the first few notes go by
     if (this.now < this.song.beat * 8) {
       ctx.globalAlpha = clamp(1 - this.now / (this.song.beat * 8), 0, 1) * 0.85;
-      drawText(ctx, A.touch ? 'TAP THE DRUM WHEN THE RING LANDS' : 'CLICK THE DRUM WHEN THE RING LANDS',
-        cx, Math.min(A.y + A.h - 16, baseY + 78), '#fff2c8', { align: 'center', outline: '#1a1410' });
+      drawText(ctx, A.touch ? 'TAP THE DRUM THAT LIGHTS UP, ON THE COUNT' : 'HIT THE DRUM THAT LIGHTS UP, ON THE COUNT',
+        cx, ribBot + 7, '#fff2c8', { align: 'center', font: 'small', outline: '#1a1410' });
       ctx.globalAlpha = 1;
     }
   }
-  // A slim two-bar preview strip: enough to read ahead, small enough that the
-  // scene behind it stays the thing you are looking at.
+  // The bar you are about to play, written out as a rhythm: one rail per drum,
+  // a tick on every count, the chips walking into a now-line on the left, and
+  // the count itself ticking along the bottom. It is the only place you read
+  // ahead, it never moves onto you, and there is not a ring on it anywhere.
   drawKitRibbon(ctx, A, pieces, cx, baseY) {
     // Sits right above the kit, so reading ahead and hitting are the same look.
-    const h = 8 + pieces.length * 9, halfW = Math.min(236, A.w / 2 - 20);
-    const x0 = Math.round(cx - halfW), x1 = Math.round(cx + halfW);
-    const y = Math.round(baseY - Math.max(132, 96 + h)), span = this.song.beat * 4;
-    const hitX = x0 + 14, endX = x1 - 8;
-    rect(ctx, x0, y, x1 - x0, h, 'rgba(10,8,18,0.72)');
-    frame(ctx, x0, y, x1 - x0, h, '#4a4270');
-    rect(ctx, x0 + 1, y + 1, x1 - x0 - 2, 1, '#6a5f9a');
-    // one rail per piece, tinted like the drum it belongs to
+    const rowH = 9, cntH = 13, h = 10 + pieces.length * rowH + cntH;
+    const halfW = Math.min(174, A.w / 2 - 20);
+    const x0 = Math.round(cx - halfW), x1 = Math.round(cx + halfW), wid = x1 - x0;
+    const y = Math.round(baseY - Math.max(120, 76 + h)), span = this.song.beat * 4;
+    const hitX = x0 + 26, endX = x1 - 7, railBot = y + h - cntH;
+    // an opaque panel: this has to be readable over a lit street at night
+    rect(ctx, x0 + 2, y + 3, wid, h, 'rgba(6,4,12,0.45)');
+    rect(ctx, x0, y, wid, h, '#16122a');
+    frame(ctx, x0, y, wid, h, '#4a4270');
+    rect(ctx, x0 + 1, y + 1, wid - 2, 1, '#6a5f9a');
+    // one rail per piece, tinted like the drum it belongs to, with a swatch at
+    // the head of it so a rail and a drum are obviously the same thing
     pieces.forEach((p, i) => {
-      const ry = y + 5 + i * 9;
-      ctx.globalAlpha = 0.3; rect(ctx, x0 + 4, ry, x1 - x0 - 8, 1, PIECE_COLORS[p] || '#8a80b0'); ctx.globalAlpha = 1;
+      const ry = y + 8 + i * rowH, col = PIECE_COLORS[p] || '#8a80b0';
+      rect(ctx, hitX - 2, ry, endX - hitX + 4, 1, darken(col, 0.55));
+      rect(ctx, x0 + 4, ry - 3, 7, 7, '#0c0a16');
+      rect(ctx, x0 + 5, ry - 2, 5, 5, col);
+      rect(ctx, x0 + 5, ry - 2, 5, 2, lighten(col, 0.35));
     });
-    // beat ticks
+    // the counts, so the strip reads as a bar of music rather than a timeline
     for (let b = Math.ceil(this.now / this.song.beat); ; b++) {
       const bt = b * this.song.beat, k = (bt - this.now) / span; if (k > 1) break; if (k < 0) continue;
-      const x = hitX + k * (endX - hitX);
-      ctx.globalAlpha = b % 4 === 0 ? 0.5 : 0.22; rect(ctx, x, y + 2, 1, h - 4, '#9a90d0'); ctx.globalAlpha = 1;
+      const x = Math.round(hitX + k * (endX - hitX)), one = ((b % 4) + 4) % 4 === 0;
+      rect(ctx, x, y + 4, 1, railBot - y - 6, one ? '#6a5c9a' : '#332c52');
+      if (one) rect(ctx, x - 1, y + 3, 3, 2, '#e0b040');
     }
-    // the now-line
-    rect(ctx, hitX - 1, y + 1, 2, h - 2, '#ffd24a');
+    // the now-line: play when a chip touches it
+    rect(ctx, hitX - 1, y + 3, 2, railBot - y - 5, '#ffd24a');
+    rect(ctx, hitX - 3, y + 3, 6, 2, '#fff2b0'); rect(ctx, hitX - 3, railBot - 4, 6, 2, '#fff2b0');
     for (const n of this.notes) {
       if (n.sec !== this.secIdx || n.judged) continue;
       const k = (n.t - this.now) / span; if (k > 1) break; if (k < -0.02) continue;
       const x = Math.round(hitX + k * (endX - hitX));
       const col = n.type === 'bomb' ? '#c8302a' : n.star ? '#ffd24a' : (PIECE_COLORS[pieces[n.lane]] || '#c2c8d6');
-      const ny = y + 3 + n.lane * 9;
-      rect(ctx, x - 2, ny, 5, 5, '#12101c'); rect(ctx, x - 1, ny + 1, 3, 3, col); rect(ctx, x - 1, ny + 1, 3, 1, lighten(col, 0.3));
+      const ny = y + 5 + n.lane * rowH;
+      // the nearer it is to the line, the brighter it reads
+      const near = clamp(1 - k * 6, 0, 1);
+      rect(ctx, x - 3, ny, 7, 7, '#0c0a16');
+      rect(ctx, x - 2, ny + 1, 5, 5, near > 0.4 ? lighten(col, 0.25) : col);
+      rect(ctx, x - 2, ny + 1, 5, 2, lighten(col, 0.5));
+      if (near > 0.6) { ctx.globalAlpha = (near - 0.6) * 2.2; rect(ctx, x - 4, ny - 1, 9, 9, '#fff8e0'); rect(ctx, x - 2, ny + 1, 5, 5, lighten(col, 0.4)); ctx.globalAlpha = 1; }
+    }
+    // ---- the count along the bottom. Rhythm is the whole instrument, so it
+    // gets a read-out of its own: four cells, one filling on each beat and
+    // draining until the next. One is marked, so you never lose the bar.
+    const beatNo = ((Math.floor(this.now / this.song.beat) % 4) + 4) % 4, pb = this.beatPulse;
+    rect(ctx, x0 + 1, railBot, wid - 2, 1, '#3a3560');
+    const cw = Math.floor((wid - 10) / 4), cy0 = railBot + 3, ch = cntH - 5;
+    for (let i = 0; i < 4; i++) {
+      const x = x0 + 5 + i * cw, w2 = cw - 3, on = i === beatNo, one = i === 0;
+      rect(ctx, x, cy0, w2, ch, on ? '#3a3462' : '#211c3a');
+      if (on) {
+        const fw = Math.max(2, Math.round(w2 * pb));
+        rect(ctx, x, cy0, fw, ch, one ? '#ffd24a' : '#fff2b0');
+        rect(ctx, x, cy0, fw, 2, '#fff8e0');
+      }
+      frame(ctx, x, cy0, w2, ch, on ? '#ffe9a8' : '#3a3560');
+      drawText(ctx, String(i + 1), x + Math.round(w2 / 2), cy0 + 1, on && pb > 0.35 ? '#2a2140' : on ? '#e0d4ff' : '#6a5f9a', { align: 'center', font: 'small' });
     }
     return y + h;
   }

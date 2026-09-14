@@ -107,23 +107,24 @@ too: the bucket thumps, the pot rings and rattles for half a second.
 
 **A kit plays a groove, not the tune.** Charting drums off the melody meant a fast song asked for
 almost four taps a second on day one, which is why it felt brutal. Kits get their own pattern
-instead: the low piece on one and three, the backbeat on two and four, everything quantised to a
-beat or an eighth so it always lands where the count is. Density grows with the run — eighths
-between the beats, a crash riding a downbeat, a fill across the last bar of a phrase — from about
-one and a half notes a second on your first night to under three at the top.
+instead: the low piece on one and three, the backbeat on two and four. Your first nights are
+nothing but the count — every note on a beat, one drum at a time, no eighths and no two-limb
+hits at all. Those arrive later, with a crash riding a downbeat and a fill across the last bar
+of a phrase, so density grows with the run rather than with the tune's tempo.
 
-**Drums are about the beat, and forgiving about the rest.** The timing windows on a kit are nearly
-twice as wide as anywhere else, if you hit the beat on the wrong drum it still counts — capped at
-GREAT, with the drum under your hand the one that sounds and the judgement reading `(ANY DRUM)` —
-and one strike resolves a whole stack, so a crash riding a kick is a flourish rather than a
-guaranteed miss for anybody playing with one hand. A
-closing ring under the preview strip beats out the count with a pip per beat of the bar, so
-landing on it is something you can see as well as hear.
+**Drums are about the beat, and forgiving about the rest.** The timing windows on a kit are two
+and a half times as wide as anywhere else, if you hit the beat on the wrong drum it still counts
+— capped at GREAT, with the drum under your hand the one that sounds and the judgement reading
+`(ANY DRUM)` — and one strike resolves a whole stack, so a crash riding a kick is a flourish
+rather than a guaranteed miss for anybody playing with one hand. A player who never picks the
+right drum and is ninety milliseconds out still finishes a street set in the sixties.
 
-**You hit the drum, not a button.** There are no lanes and no pads under a kit. The drums stand
-in the scene at their real size and a note is a ring closing onto the one you have to strike;
-when the ring touches the rim you are on the beat. Click or tap the drum itself, and drag across
-them for a fill. A slim two-bar strip above the kit shows what is coming, one rail per piece.
+**You hit the drum, not a button, and nothing closes in on you.** There are no lanes, no pads and
+no rings anywhere on a kit. The drum you owe lights up a whole count early, lifts, and a solid
+caret rides down and touches the skin exactly when you should play — so the beat is something you
+watch arrive rather than something you aim at. Click or tap the drum itself, and drag across them
+for a fill. Above the kit, one panel carries the bar you are about to play: a rail per piece with
+its drum's colour, chips walking into a now-line, and the count ticking 1-2-3-4 along the bottom.
 
 **Guitar and bass are Guitar Hero.** Four lanes (two on a bass) of gems falling down a wooden
 fretboard that recedes to a vanishing point, with strings that ring and wobble when you hit them,

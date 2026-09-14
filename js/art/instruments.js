@@ -453,6 +453,10 @@ function drawDrumKit(ctx, A, R, opts = {}) {
     const c = pieceSprite(sp.piece, col, lit, chrome);
     const wob = lit ? Math.round(Math.sin(R.now * 44) * (isCym ? 2 : 0)) : 0;
     const squash = lit && !isCym ? Math.round(flash * 3) : 0;
+    // A drum that owes a hit rises through the count before its own and is
+    // back down exactly on the count, so the kit itself keeps the time.
+    const cue = (opts.cue && opts.cue[sp.i]) || 0;
+    const rise = cue > 0.02 ? -Math.round(Math.sin(cue * Math.PI) * 3) : 0;
     // stands: a tube down to the rug with a tripod foot
     if (isCym || sp.piece === 'snare' || sp.piece === 'tom' || sp.piece === 'pot') {
       const legTop = sp.y + sp.G.surf + (isCym ? 2 : sp.G.h - sp.G.surf - 2);
@@ -464,7 +468,7 @@ function drawDrumKit(ctx, A, R, opts = {}) {
         line(ctx, sp.x, legBot - 2, sp.x, legBot + 9, '#5e626e');
       }
     }
-    ctx.drawImage(c, Math.round(sp.x - sp.G.w / 2), Math.round(sp.y - sp.G.surf + squash + wob));
+    ctx.drawImage(c, Math.round(sp.x - sp.G.w / 2), Math.round(sp.y - sp.G.surf + squash + wob + rise));
     // the receptor is the playing surface itself
     R.receptors[sp.i] = { x: sp.x, y: sp.y + squash };
     sp.hx = sp.x; sp.hy = sp.y;

@@ -638,7 +638,10 @@ class GigScene {
       const sec = this.rhythm.section, lbl = sec.qte ? sec.member.name.toUpperCase() : this.song.name.toUpperCase();
       const lblY = L.top ? L.stageBottom - 18 : L.stageTop + 8;
       rect(ctx, 4, lblY - 3, textWidth(lbl) + 14, 15, 'rgba(0,0,0,0.62)'); drawText(ctx, lbl, 11, lblY, '#fff');
-      if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+      // The pad strip only exists where there are pads. A kit is tapped on the
+      // drums themselves, so padY is zero there — and painting the strip anyway
+      // laid a black sheet over the whole phone screen.
+      if (Game.touch && L.padH > 0 && this.pads.length) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
       this.pauseBtn.draw(ctx);
       if (this.paused) { rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.78)'); uiRibbon(ctx, W / 2, 170, 'PAUSED', { scale: 4 }); for (const b of this.pauseButtons) b.draw(ctx); }
       return;
