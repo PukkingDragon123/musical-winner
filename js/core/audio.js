@@ -97,10 +97,25 @@ const Audio = {
     oscs.forEach(o => { o.start(t); o.stop(endAt + 0.1); });
     return { off: (when) => { const tt = Math.max(when || c.currentTime, c.currentTime); out.gain.cancelScheduledValues(tt); out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), tt); out.gain.exponentialRampToValueAtTime(0.0001, tt + release); oscs.forEach(o => { try { o.stop(tt + release + 0.05); } catch (e) { } }); } };
   },
-  drum(kind, when, vel = 0.6) {
+  // A drum you can feel. `punch` is what a struck kit gets and a backing track
+  // does not: a sub under the fundamental, a click of stick on skin, and a
+  // short slap of the room behind it. It is what makes a hit sound loud rather
+  // than merely be loud.
+  drum(kind, when, vel = 0.6, punch = 0) {
     if (!this.ctx || this.muted) return;
     const c = this.ctx, t = Math.max(when || c.currentTime, c.currentTime), dest = this.musicGain;
+    if (punch > 0) vel *= 1 + punch * 0.5;
     const tone = (f1, f2, dur, type, v) => { const o = c.createOscillator(); o.type = type || 'sine'; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur); const g = c.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05); };
+    if (punch > 0) {
+      const lowKinds = { kick: 54, bigkick: 46, don: 62, odaiko: 44, timpani: 40, stomp: 38, bucket: 58, floortom: 62, tom: 84, crate: 70, snare: 0, shime: 0 };
+      const sub = lowKinds[kind];
+      // a sine an octave under the shell, which is the part you feel
+      if (sub) tone(sub * 1.6, sub, 0.26, 'sine', vel * 0.5 * punch);
+      // stick on skin: a very short tick of noise right at the front
+      this._noise(t, 0.012, 'highpass', 4200, 0.8, vel * 0.3 * punch, dest);
+      // and the room answering, a few milliseconds late
+      this._noise(t + 0.022, 0.13, 'bandpass', 900, 0.6, vel * 0.13 * punch, dest);
+    }
     switch (kind) {
       case 'kick': tone(150, 45, 0.18, 'sine', vel); break;
       case 'bigkick': tone(120, 38, 0.32, 'sine', vel * 1.2); this._noise(t, 0.08, 'lowpass', 400, 1, vel * 0.5, dest); break;

@@ -95,6 +95,26 @@ const NODES = [
   { id: 'odaiba', x: 890, y: 590, name: 'ODAIBA WATERFRONT', type: 'venue', venue: 'bayside', icon: 'elite', sub: 'BIG GIG - BAY BREEZE' },
   { id: 'dome', x: 610, y: 255, name: 'TOKYO DOME', type: 'venue', venue: 'dome', icon: 'elite', sub: 'BIG GIG - THE BIG EGG' },
   { id: 'skytree', x: 965, y: 215, name: 'TOKYO SKYTREE', type: 'venue', venue: 'skytree', icon: 'boss', sub: 'THE FINALE' },
+  // ---- The question marks. Sixteen of them, everywhere, and none of them
+  // tells you what it is until you are standing in front of it. Some are a
+  // choice, some are a thing you have to actually play, and either can go
+  // badly. They are the reason to walk the long way round.
+  { id: 'q_omoide', x: 232, y: 108, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_tocho', x: 190, y: 130, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_nakano', x: 122, y: 288, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_koenji', x: 140, y: 384, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_shimokita', x: 214, y: 418, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_yoyogi', x: 258, y: 372, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_meiji', x: 412, y: 268, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_harajuku', x: 512, y: 340, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_shibuya', x: 372, y: 528, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_meguro', x: 470, y: 630, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_roppongi', x: 648, y: 512, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_ginza', x: 676, y: 318, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_tsukiji', x: 842, y: 408, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_akiba', x: 700, y: 268, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_ueno', x: 828, y: 140, name: '???', type: 'mystery', icon: 'mystery' },
+  { id: 'q_asakusa', x: 928, y: 162, name: '???', type: 'mystery', icon: 'mystery' },
 ];
 const EDGES = [
   ['kabuki', 'goldengai'], ['kabuki', 'omoide'], ['omoide', 'shinjuku'], ['goldengai', 'shinjuku'], ['shinjuku', 'tocho'],
@@ -108,11 +128,40 @@ const EDGES = [
   ['akiba', 'arcade'], ['akiba', 'maid'], ['maid', 'radio'], ['radio', 'ueno'], ['ueno', 'ameyoko'], ['ameyoko', 'akiba'],
   ['ueno', 'sensoji'], ['sensoji', 'nakamise'], ['nakamise', 'skytree'], ['akiba', 'dome'], ['dome', 'shinjuku'],
   ['dome', 'ueno'], ['odaiba', 'skytree'], ['meguro', 'shimokita'], ['takeshita', 'omotesando'], ['arcade', 'ginza'],
+  // every question mark hangs off two places, so it is always a detour you
+  // choose rather than a thing the route drags you through
+  ['q_omoide', 'omoide'], ['q_omoide', 'kabuki'], ['q_tocho', 'tocho'], ['q_tocho', 'nakano'],
+  ['q_nakano', 'nakano'], ['q_nakano', 'koenji'], ['q_koenji', 'koenji'], ['q_koenji', 'shimokita'],
+  ['q_shimokita', 'shimokita'], ['q_shimokita', 'curry'], ['q_yoyogi', 'yoyogi'], ['q_yoyogi', 'scramble'],
+  ['q_meiji', 'meiji'], ['q_meiji', 'takeshita'], ['q_harajuku', 'takeshita'], ['q_harajuku', 'omotesando'],
+  ['q_shibuya', 'dogenzaka'], ['q_shibuya', 'shibuyasta'], ['q_meguro', 'meguro'], ['q_meguro', 'onsen'],
+  ['q_roppongi', 'roppongi'], ['q_roppongi', 'gyoza'], ['q_ginza', 'ginza'], ['q_ginza', 'yurakucho'],
+  ['q_tsukiji', 'tsukiji'], ['q_tsukiji', 'kabukiza'], ['q_akiba', 'akiba'], ['q_akiba', 'maid'],
+  ['q_ueno', 'ueno'], ['q_ueno', 'radio'], ['q_asakusa', 'sensoji'], ['q_asakusa', 'nakamise'],
 ];
 // Decorative map labels (no gameplay)
 const MAP_DETAILS = [
   { kind: 'label', x: 955, y: 330, text: 'SUMIDA R.' }, { kind: 'label', x: 900, y: 680, text: 'TOKYO BAY' },
   { kind: 'label', x: 60, y: 120, text: 'TO KICHIJOJI' }, { kind: 'label', x: 640, y: 620, text: 'TO SHINAGAWA' },
+  { kind: 'label', x: 120, y: 660, text: 'TO YOKOHAMA' }, { kind: 'label', x: 560, y: 60, text: 'TO IKEBUKURO' },
+  { kind: 'label', x: 990, y: 60, text: 'TO CHIBA' }, { kind: 'label', x: 300, y: 348, text: 'MEIJI JINGU' },
+  { kind: 'label', x: 782, y: 132, text: 'SHINOBAZU POND' }, { kind: 'label', x: 430, y: 620, text: 'MEGURO R.' },
+  // stations on the loop, drawn as a ring on the line the way a transit map does
+  { kind: 'station', x: 300, y: 205, text: 'SHINJUKU' }, { kind: 'station', x: 400, y: 492, text: 'SHIBUYA' },
+  { kind: 'station', x: 720, y: 208, text: 'AKIHABARA' }, { kind: 'station', x: 780, y: 112, text: 'UENO' },
+  { kind: 'station', x: 690, y: 400, text: 'YURAKUCHO' }, { kind: 'station', x: 170, y: 448, text: 'SHIMOKITA' },
+  // the scramble crossings, painted on in white stripes
+  { kind: 'crossing', x: 420, y: 455 }, { kind: 'crossing', x: 730, y: 335 }, { kind: 'crossing', x: 590, y: 488 },
+  // torii at the shrines and the temple
+  { kind: 'torii', x: 380, y: 300 }, { kind: 'torii', x: 900, y: 92 }, { kind: 'torii', x: 336, y: 318 },
+  // bridges where a road crosses water
+  { kind: 'bridge', x: 850, y: 510, a: -0.72 }, { kind: 'bridge', x: 948, y: 260, a: 0 }, { kind: 'bridge', x: 944, y: 470, a: 0 },
+  // parkland: little clumps of trees inside the green blocks
+  { kind: 'trees', x: 250, y: 310 }, { kind: 'trees', x: 350, y: 355 }, { kind: 'trees', x: 400, y: 305 },
+  { kind: 'trees', x: 720, y: 95 }, { kind: 'trees', x: 820, y: 130 }, { kind: 'trees', x: 300, y: 370 },
+  { kind: 'trees', x: 380, y: 620 }, { kind: 'trees', x: 470, y: 585 },
+  // the two towers, marked on the map the way landmarks are
+  { kind: 'tower', x: 610, y: 470, text: 'TOKYO TOWER' }, { kind: 'tower', x: 965, y: 215, text: 'SKYTREE' },
 ];
 function nodeById(id) { return NODES.find(n => n.id === id); }
 function buildGraph() {

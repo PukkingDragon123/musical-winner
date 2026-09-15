@@ -135,13 +135,66 @@ function buildSF() {
   x.restore();
   for (const d of DISTRICTS) drawText(x, d.name.split('').join(' '), d.x, d.y, MAP_C.inkSoft, { align: 'center' });
   for (const w of WATER) if (w.name) { const xs = w.poly.map(p => p[0]), ys = w.poly.map(p => p[1]); drawText(x, w.name.split('').join(' '), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, '#6f9cc4', { align: 'center' }); }
-  for (const d of MAP_DETAILS) if (d.kind === 'label') drawText(x, d.text, d.x, d.y, '#6f9cc4', { align: 'center' });
+  // Everything a real city map has on it and this one did not: stations on
+  // the loop, painted crossings, torii at the shrines, bridges over the
+  // water, clumps of trees in the parks, and the towers marked where they
+  // actually stand.
+  for (const d of MAP_DETAILS) {
+    if (d.kind === 'label') { drawText(x, d.text, d.x, d.y, '#6f9cc4', { align: 'center' }); continue; }
+    if (d.kind === 'station') {
+      rect(x, d.x - 6, d.y - 6, 13, 13, '#ffffff');
+      frame(x, d.x - 6, d.y - 6, 13, 13, '#2f4a68'); frame(x, d.x - 4, d.y - 4, 9, 9, '#2f4a68');
+      rect(x, d.x - 2, d.y - 2, 5, 5, '#2f4a68');
+      drawText(x, d.text, d.x, d.y + 10, '#41648a', { align: 'center', font: 'small' });
+      continue;
+    }
+    if (d.kind === 'crossing') {
+      for (let i = -3; i <= 3; i++) { rect(x, d.x + i * 4, d.y - 9, 2, 18, '#ffffff'); rect(x, d.x - 9, d.y + i * 4, 18, 2, '#ffffff'); }
+      continue;
+    }
+    if (d.kind === 'torii') {
+      rect(x, d.x - 9, d.y - 7, 19, 3, '#c8402c'); rect(x, d.x - 7, d.y - 3, 15, 2, '#c8402c');
+      rect(x, d.x - 5, d.y - 7, 3, 12, '#c8402c'); rect(x, d.x + 3, d.y - 7, 3, 12, '#c8402c');
+      continue;
+    }
+    if (d.kind === 'bridge') {
+      x.save(); x.translate(d.x, d.y); x.rotate(d.a || 0);
+      rect(x, -16, -3, 32, 6, '#e8e4dc'); rect(x, -16, -3, 32, 1, '#ffffff');
+      for (let i = -14; i < 15; i += 6) rect(x, i, -6, 2, 12, '#b8b2a8');
+      x.restore(); continue;
+    }
+    if (d.kind === 'trees') {
+      for (const [ox, oy, r] of [[0, 0, 6], [9, 4, 5], [-8, 5, 4], [4, -7, 4]]) {
+        ellipsePx(x, d.x + ox, d.y + oy + 1, r, r * 0.8, '#3f7a44');
+        ellipsePx(x, d.x + ox, d.y + oy, r, r * 0.8, '#5aa055');
+        ellipsePx(x, d.x + ox - r * 0.3, d.y + oy - r * 0.3, r * 0.45, r * 0.35, '#7cc06a');
+      }
+      continue;
+    }
+    if (d.kind === 'tower') {
+      const c2 = landmarkCanvas(d.text === 'SKYTREE' ? 'skytree' : 'tokyotower');
+      const h2 = 30, w2 = Math.round(c2.width * h2 / c2.height);
+      x.globalAlpha = 0.9; x.drawImage(c2, d.x - w2 / 2, d.y - h2, w2, h2); x.globalAlpha = 1;
+      drawText(x, d.text, d.x, d.y + 3, '#41648a', { align: 'center', font: 'small' });
+      continue;
+    }
+  }
   _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
 }
-const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', home: '#666' };
+const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
+  // A question mark does not sit still. It bobs, and it throws a little light,
+  // because it is the only pin on the map that will not tell you what it is.
+  const myst = node.type === 'mystery' && !opts.done;
+  if (myst) {
+    const ph = (x * 0.13 + y * 0.07);
+    y += Math.round(Math.sin(ANIM_T * 2.4 + ph) * 2);
+    ctx.globalAlpha = 0.16 + 0.12 * (0.5 + 0.5 * Math.sin(ANIM_T * 3.1 + ph));
+    ellipsePx(ctx, x, y - 24, 19, 19, '#c58bff');
+    ctx.globalAlpha = 1;
+  }
   const h = 30 + big * 4, w = 24 + big * 3;
   ellipsePx(ctx, x, y + 1, 9 + big, 3.5, 'rgba(0,0,0,0.22)');
   // teardrop, built from a pixel disc and a stepped point
@@ -156,6 +209,15 @@ function drawPin(ctx, x, y, node, opts = {}) {
   circle(ctx, x, y - h + 6, w / 2 - 4, '#fff8ee');
   const ic = icon(node.icon || 'event'); ctx.drawImage(ic, Math.round(x - ic.width * 0.7), Math.round(y - h + 6 - ic.height * 0.7), Math.round(ic.width * 1.4), Math.round(ic.height * 1.4));
   if (opts.done) { ctx.globalAlpha = 0.5; circle(ctx, x, y - h + 6, w / 2 - 4, '#fff'); ctx.globalAlpha = 1; ctx.drawImage(icon('check'), Math.round(x - 5), Math.round(y - h + 2), 11, 9); }
+  if (myst) {
+    // three sparks going round it, so it catches the eye across the map
+    for (let i = 0; i < 3; i++) {
+      const a2 = ANIM_T * 1.5 + i * 2.1, sx = x + Math.cos(a2) * 15, sy = y - 24 + Math.sin(a2) * 9;
+      ctx.globalAlpha = 0.45 + 0.4 * Math.sin(ANIM_T * 5 + i);
+      rect(ctx, sx - 1, sy, 3, 1, '#f0d8ff'); rect(ctx, sx, sy - 1, 1, 3, '#f0d8ff');
+      ctx.globalAlpha = 1;
+    }
+  }
 }
 class CityScene {
   constructor(arrive) {
@@ -236,6 +298,7 @@ class CityScene {
       case 'food': Game.go(() => new FoodScene(n), 'slideL'); break;
       case 'recruit': Game.go(() => new RecruitScene(n), 'iris'); break;
       case 'event': Game.go(() => new EventScene(n), 'iris'); break;
+      case 'mystery': Game.go(() => new MysteryScene(n), 'iris'); break;
       case 'rest': Game.go(() => new RestScene(n), 'fade'); break;
       case 'pickup': {
         if (done[n.id] === r.day) { this.flash('NOTHING LEFT HERE'); break; }

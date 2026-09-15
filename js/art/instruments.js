@@ -810,7 +810,7 @@ function pieceSprite(piece, col, lit, chrome) {
 // Lay the kit out the way a drummer sees it: the low pieces in front, the
 // cymbals up and out to the sides. Returns a hit target per piece so a tap
 // lands on the drum itself and there is no button anywhere.
-function kitLayout(pieces, cx, baseY, width) {
+function kitLayout(pieces, cx, baseY, width, zoom) {
   const n = pieces.length;
   // Where each piece stands, as a fraction of the half-spread, and how high it
   // rides. Laid out the way a kit actually is: kick in front on the floor,
@@ -823,22 +823,28 @@ function kitLayout(pieces, cx, baseY, width) {
     crash: { x:  0.93, y: -44, z: 3 }, ride:   { x:  0.95, y: -32, z: 3 },
     pan:   { x: -0.66, y: -14, z: 2 },
   };
-  const spread = clamp(width * 0.28, 120, 178);
+  // `zoom` is a whole number on purpose: the pieces are cached pixel sprites,
+  // and drawing one at 2x on a pixelated canvas keeps every edge hard. At 1x
+  // the kit is a prop in a scene; at 2x it fills the bottom of the screen and
+  // becomes the thing you are looking at — and a target a thumb cannot miss.
+  const z = Math.max(1, Math.round(zoom || 1));
+  const spread = clamp(width * 0.28, 120, 178) * (z > 1 ? z * 0.92 : 1);
   const out = pieces.map((p, i) => {
-    const G = PIECE_GEO[p] || PIECE_GEO.tom;
+    const G0 = PIECE_GEO[p] || PIECE_GEO.tom;
+    const G = z === 1 ? G0 : { w: G0.w * z, h: G0.h * z, surf: G0.surf * z, grab: G0.grab * z };
     const s = SPOT[p] || { x: (i / Math.max(1, n - 1) - 0.5) * 1.6, y: 0, z: 1 };
     // Two or three pieces of junk get fanned evenly instead: a bucket and a
     // pot standing in a real kit's footprint would just sit far apart.
     const fx = n <= 3 ? (n === 1 ? 0 : (i / (n - 1) - 0.5) * 1.15) : s.x;
     const fy = n <= 3 ? (i % 2 ? -6 : 10) : s.y;
-    return { piece: p, i, G, x: Math.round(cx + fx * spread), y: Math.round(baseY + fy), z: s.z };
+    return { piece: p, i, G, G0, zoom: z, x: Math.round(cx + fx * spread), y: Math.round(baseY + fy * z), z: s.z };
   });
   // Nudge anything that would sit on top of its neighbour.
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
       const a = out[i], b = out[j];
-      if (Math.abs(a.y - b.y) > 26) continue;
-      const need = (a.G.w + b.G.w) / 2 - 8, gap = Math.abs(a.x - b.x);
+      if (Math.abs(a.y - b.y) > 26 * a.zoom) continue;
+      const need = (a.G.w + b.G.w) / 2 - 8 * a.zoom, gap = Math.abs(a.x - b.x);
       if (gap >= need) continue;
       const push = Math.ceil((need - gap) / 2), dir = a.x <= b.x ? -1 : 1;
       a.x += push * dir; b.x -= push * dir;
@@ -858,14 +864,15 @@ function drawDrumKit(ctx, A, R, opts = {}) {
   const pieces = opts.pieces || ['kick', 'snare', 'hat', 'tom', 'crash'];
   const cx = opts.cx != null ? opts.cx : A.x + A.w / 2;
   const baseY = opts.baseY != null ? opts.baseY : A.y + A.h - 70;
-  const spots = kitLayout(pieces, cx, baseY, opts.width || A.w);
+  const z = Math.max(1, Math.round(opts.zoom || 1));
+  const spots = kitLayout(pieces, cx, baseY, opts.width || A.w, z);
   const chrome = !!opts.chrome;
   // What the kit stands on says as much as the kit does: a busker on a bucket
   // works off flattened cardboard, a working band gets a proper rug.
   const junk = !!opts.junk;
   const noMat = !!opts.noMat;
-  const half = Math.max(110, Math.round(Math.max(...spots.map(s => Math.abs(s.x - cx) + s.G.w / 2)) + 22));
-  const matTop = baseY + 16, matBot = baseY + (junk ? 46 : 60);
+  const half = Math.max(110 * z, Math.round(Math.max(...spots.map(s => Math.abs(s.x - cx) + s.G.w / 2)) + 22 * z));
+  const matTop = baseY + 16 * z, matBot = baseY + (junk ? 46 : 60) * z;
   for (let y = matTop; !noMat && y < matBot; y++) {
     const k = (y - matTop) / (matBot - matTop);
     const hwid = Math.round(half * (0.84 + k * 0.24));
@@ -891,33 +898,33 @@ function drawDrumKit(ctx, A, R, opts = {}) {
     const isCym = sp.piece === 'crash' || sp.piece === 'ride' || sp.piece === 'hat';
     const c = pieceSprite(sp.piece, col, lit, chrome);
     const wob = lit ? Math.round(Math.sin(R.now * 44) * (isCym ? 2 : 0)) : 0;
-    const squash = lit && !isCym ? Math.round(flash * 3) : 0;
+    const squash = lit && !isCym ? Math.round(flash * 3 * z) : 0;
     // A drum that owes a hit rises through the count before its own and is
     // back down exactly on the count, so the kit itself keeps the time.
     const cue = (opts.cue && opts.cue[sp.i]) || 0;
-    const rise = cue > 0.02 ? -Math.round(Math.sin(cue * Math.PI) * 3) : 0;
+    const rise = cue > 0.02 ? -Math.round(Math.sin(cue * Math.PI) * 3 * z) : 0;
     // stands: a tube down to the rug with a tripod foot
     if (isCym || sp.piece === 'snare' || sp.piece === 'tom' || sp.piece === 'pot') {
       const legTop = sp.y + sp.G.surf + (isCym ? 2 : sp.G.h - sp.G.surf - 2);
       const legBot = matTop + 10;
       if (legBot > legTop) {
-        rect(ctx, sp.x - 1, legTop, 3, legBot - legTop, '#6e7280');
-        rect(ctx, sp.x - 1, legTop, 1, legBot - legTop, '#a2a6b4');
-        for (const d of [-1, 1]) line(ctx, sp.x, legBot - 2, sp.x + d * 11, legBot + 8, '#5e626e');
-        line(ctx, sp.x, legBot - 2, sp.x, legBot + 9, '#5e626e');
+        rect(ctx, sp.x - z, legTop, z * 2 + 1, legBot - legTop, '#6e7280');
+        rect(ctx, sp.x - z, legTop, z, legBot - legTop, '#a2a6b4');
+        for (const d of [-1, 1]) line(ctx, sp.x, legBot - 2, sp.x + d * 11 * z, legBot + 8 * z, '#5e626e');
+        line(ctx, sp.x, legBot - 2, sp.x, legBot + 9 * z, '#5e626e');
       }
     }
-    ctx.drawImage(c, Math.round(sp.x - sp.G.w / 2), Math.round(sp.y - sp.G.surf + squash + wob + rise));
+    ctx.drawImage(c, Math.round(sp.x - sp.G.w / 2), Math.round(sp.y - sp.G.surf + squash + wob + rise), sp.G.w, sp.G.h);
     // the receptor is the playing surface itself
     R.receptors[sp.i] = { x: sp.x, y: sp.y + squash };
     sp.hx = sp.x; sp.hy = sp.y;
     if (lit) { ctx.globalAlpha = flash * 0.75; ellipsePx(ctx, sp.x, sp.y + squash, sp.G.grab * 0.8, sp.G.grab * 0.36, lighten(col, 0.4)); ctx.globalAlpha = 1; }
   }
   // A spare stick lying on the mat, because you only ever have the one pair.
-  const sx = cx - half + 14, sy = matBot - 6;
+  const sx = cx - half + 14 * z, sy = matBot - 6 * z;
   if (!noMat)
-  { for (let i = 0; i < 22; i++) { const c2 = i > 17 ? '#f0e3c4' : i < 3 ? '#a8845a' : '#d9c191'; rect(ctx, sx + i, sy - Math.round(i * 0.12), 1, 2, c2); }
-    rect(ctx, sx, sy + 2, 22, 1, 'rgba(0,0,0,0.25)'); }
+  { for (let i = 0; i < 22 * z; i++) { const c2 = i > 17 * z ? '#f0e3c4' : i < 3 * z ? '#a8845a' : '#d9c191'; rect(ctx, sx + i, sy - Math.round(i * 0.12), 1, 2 * z, c2); }
+    rect(ctx, sx, sy + 2 * z, 22 * z, z, 'rgba(0,0,0,0.25)'); }
   return spots;
 }
 

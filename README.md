@@ -38,7 +38,19 @@ any music shop buys some back.
 
 Pins mark venues to play, music shops, food, open mics to recruit, events, rest stops and
 street-corner pickups. Stamina runs out, night falls, dinner costs money per bug, and the Tokyo
-Dome unlocks on the last day.
+Dome unlocks on the last day. It is drawn like a map somebody actually printed: stations boxed on
+the Yamanote loop, painted crossings at the scrambles, torii at the shrines, bridges where a road
+meets water, clumps of trees inside the parks, and both towers marked where they really stand.
+
+**Sixteen question marks, and none of them says what it is.** Each one is a scene with somebody in
+it who wants something, and each one can go badly. A moth leans over a yatai cart and holds out
+three dumplings on a stick for two dollars, steam off the grill and the lantern swinging. An
+enormous cat is asleep on your amp and its tail moves once, slowly. A salaryman with his tie at
+half mast requests a song and is not specific about which. A wasp in a very good suit has been
+filming you and hands you a card. The rain arrives sideways. Some are a straight choice; some hand
+you something to actually play — stop a needle on the green, or listen to a phrase and give it
+back — and then the outcome is yours to earn or lose. They hang off the walk graph in pairs, so a
+question mark is always a detour you chose.
 
 ## The city
 
@@ -119,6 +131,14 @@ and a half times as wide as anywhere else, if you hit the beat on the wrong drum
 `(ANY DRUM)` — and one strike resolves a whole stack, so a crash riding a kick is a flourish
 rather than a guaranteed miss for anybody playing with one hand. A player who never picks the
 right drum and is ninety milliseconds out still finishes a street set in the sixties.
+
+**The kit fills the bottom of the screen.** It is drawn at double size — whole-number scaling, so
+every pixel edge stays hard — across the full width, standing on its rug in front of the venue
+rather than sitting in it. It does not ride the camera: a shot that swims the one thing your hands
+are on is a shot working against you. On a phone this is the whole point, because the drums become
+a target a thumb cannot miss. A struck drum answers properly: a sub under the shell you feel
+rather than hear, a tick of stick on skin, the room slapping back a few milliseconds later, a flat
+wave of light running out across the head, sparks, dust off the mat and a shove to the camera.
 
 **You hit the drum, not a button, and you never have to aim.** There are no lanes, no pads and no
 rings anywhere on a kit. The drum you owe lights up a whole count early, lifts, and a solid caret

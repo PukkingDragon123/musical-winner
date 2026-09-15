@@ -149,6 +149,9 @@ const ICON_DEFS = {
   food:     { rows: ['...wwww...', '..wwwwww..', '.wwwwwwww.', 'bbbbbbbbbb', '.bbbbbbbb.', '..bbbbbb..', '...bbbb...'], pal: { w: '#f0f0e0', b: '#c08040' } },
   money:    { rows: ['gggggggggg', 'gwgwwwwgwg', 'gwgwwwwgwg', 'gwgwwwwgwg', 'gggggggggg'], pal: { g: '#5ab060', w: '#c8f0c0' } },
   mult:     { rows: ['r.....r', '.r...r.', '..r.r..', '...r...', '..r.r..', '.r...r.', 'r.....r'], pal: { r: '#ff5a5a' } },
+  mystery:  { rows: ['..pppppp..', '.pp....pp.', '.......pp.', '.....ppp..', '....pp....', '....pp....', '..........', '....pp....', '....pp....'], pal: { p: '#c58bff' } },
+  dango:    { rows: ['...ggg...', '..ggggg..', '...ggg...', '...ppp...', '..ppppp..', '...ppp...', '...www...', '..wwwww..', '...www...', '....s....', '....s....'], pal: { g: '#9ed46a', p: '#f0a8c0', w: '#f4ecd8', s: '#b08050' } },
+  cat:      { rows: ['.k...k.', 'kk...kk', 'kkkkkkk', 'kykkkyk', 'kkkkkkk', '.kkkkk.', '..k.k..'], pal: { k: '#2a2430', y: '#ffd24a' } },
   chips:    { rows: ['..bbbb..', '.bwwwwb.', 'bwwwwwwb', 'bwwbbwwb', 'bwwwwwwb', '.bwwwwb.', '..bbbb..'], pal: { b: '#3a6ab0', w: '#8ab8ff' } },
 };
 function icon(kind) { const d = ICON_DEFS[kind] || ICON_DEFS.event; return cached('icon|' + kind, () => pixFromRows(d.rows, d.pal).toCanvas()); }

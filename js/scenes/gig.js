@@ -618,7 +618,7 @@ class GigScene {
     if (this.phase === 'break') { this.drawBreak(ctx); Game.drawHud(ctx); return; }
     if (this.phase === 'play') {
       const rA = { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, backdrop: this.V.far,
-        overlay: !!L.overlay, kit: L.open ? { cx: this.stageX + 244, baseY: L.groundY - 34, width: Math.round(W * 0.62) } : null };
+        overlay: !!L.overlay, kit: L.open ? { cx: W / 2, baseY: H - 146, width: W, zoom: 2 } : null };
       // On an open stage the venue is the picture and the kit stands in it, so
       // the scene is painted first and the drums go on top of the ground.
       if (L.open) {
@@ -626,9 +626,12 @@ class GigScene {
         this.drawStage(ctx);
         // The kit stands in the scene, so it rides the shot. An instrument in
         // your hands does not: it stays put while the camera moves behind it.
-        if (!this.earMode) this.rhythm.draw(ctx, rA);
+        // A full-size kit stands in front of the whole scene, filling the
+        // bottom of the screen, so it does not ride the shot: a camera move
+        // would swim the one thing your hands are on.
+        if (!this.earMode && !this.openKit) this.rhythm.draw(ctx, rA);
         this.cam.done(ctx);
-        if (this.earMode) this.rhythm.draw(ctx, rA);
+        if (this.earMode || this.openKit) this.rhythm.draw(ctx, rA);
       } else {
         this.rhythm.draw(ctx, rA);
         this.cam.apply(ctx, W / 2, L.top ? L.stageBottom : (L.stageTop + L.stageBottom) / 2);

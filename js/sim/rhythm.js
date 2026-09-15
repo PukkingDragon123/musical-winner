@@ -65,9 +65,18 @@ class RhythmGame {
       const col = note.star ? '#ffd24a' : JUDGE_COLOR[j];
       this.fx.burst(r.x, r.y, j === 'perfect' ? 12 : 6, { color: [col, '#fff', lighten(col, 0.2)], speed: j === 'perfect' ? 90 : 55, life: 0.45, kind: j === 'perfect' ? 'spark' : 'px', gravity: 60, size: 2 });
       // A kit has no rings on it anywhere, approaching or landing: a struck
-      // drum throws sparks off the skin instead.
-      if (this.instrument.view === 'kit')
-        this.fx.burst(r.x, r.y, j === 'perfect' ? 10 : 5, { color: [col, '#fff8e0'], speed: j === 'perfect' ? 130 : 80, life: 0.3, kind: 'spark', gravity: 30, size: 2 });
+      // drum throws sparks off the skin, kicks dust off the mat, and shoves
+      // the camera. Big drums deserve to look hit.
+      if (this.instrument.view === 'kit') {
+        const sp = (this.kitSpots || []).find(x => x.i === note.lane), zk = sp ? sp.zoom || 1 : 1;
+        const big = j === 'perfect';
+        this.fx.burst(r.x, r.y, (big ? 14 : 7) * zk, { color: [col, '#fff8e0', '#ffd24a'], speed: (big ? 170 : 105) * zk, life: 0.34, kind: 'spark', gravity: 40, size: 2 });
+        // dust off the mat under the drum that was struck
+        for (let i = 0; i < 3 * zk; i++)
+          this.fx.add({ x: r.x + (Math.random() - 0.5) * 30 * zk, y: r.y + 22 * zk, vx: (Math.random() - 0.5) * 70, vy: -12 - Math.random() * 20, life: 0.42, color: '#6a5068', kind: 'smoke', size: 2 * zk, grow: 5 * zk, alpha: 0.32, gravity: 18 });
+        this.kitPunch = { lane: note.lane, t: 0, big };
+        if (this.mods.fx) this.mods.fx.shake.hit(big ? 4.5 : 2.4, 0.16);
+      }
       else this.fx.ring(r.x, r.y, col, 3, j === 'perfect' ? 18 : 12, 0.28);
       if (note.star && j !== 'miss') { for (let i = 0; i < 8; i++) this.fx.add({ x: r.x, y: r.y, vx: (Math.random() - 0.5) * 120, vy: -60 - Math.random() * 80, life: 0.8, color: '#ffd24a', kind: 'star', size: 2, gravity: 140 }); if (this.mods.fx) this.mods.fx.shake.hit(2, 0.15); }
       if (note.type === 'big' && this.mods.fx) this.mods.fx.shake.hit(3, 0.2);
@@ -104,11 +113,13 @@ class RhythmGame {
     if (k === 'drums') {
       // each lane is a different piece of the kit, so it should sound like one
       const piece = (ins.drumFor && ins.drumFor[note.lane]) || 'snare';
-      const v = j === 'perfect' ? 0.95 : j === 'great' ? 0.8 : 0.6;
-      Audio.drum(PIECE_VOICE[piece] || piece, 0, v);
-      if (piece === 'kick') Audio.drum('kick', 0, v * 0.6);
-      if (piece === 'crash') Audio.drum('hat', 0, v * 0.4);
-      if (piece === 'bucket') Audio.drum('kick', 0, v * 0.35);   // a bucket still thumps
+      const v = j === 'perfect' ? 1.15 : j === 'great' ? 0.95 : 0.72;
+      // A drum you hit yourself gets the punch layer; the same drum in a
+      // backing track does not. That difference is most of what "loud" means.
+      Audio.drum(PIECE_VOICE[piece] || piece, 0, v, j === 'perfect' ? 1 : 0.75);
+      if (piece === 'kick') Audio.drum('kick', 0, v * 0.7);
+      if (piece === 'crash') Audio.drum('hat', 0, v * 0.5);
+      if (piece === 'bucket') Audio.drum('kick', 0, v * 0.45);   // a bucket still thumps
       return null;
     }
     if (k === 'taiko') {
@@ -267,6 +278,7 @@ class RhythmGame {
     if (this.now > 0) this.hype = clamp(this.hype - dt * 0.7 * (this.mods.decay || 1) * (this.mods.bossMod === 'rain' ? 2 : 1), 0, 100);
     for (const p of this.popups) p.t += dt; this.popups = this.popups.filter(p => p.t < (p.big ? 1.2 : 0.55));
     for (const k in this.flashes) this.flashes[k] = Math.max(0, this.flashes[k] - dt);
+    if (this.kitPunch) { this.kitPunch.t += dt; if (this.kitPunch.t > 0.34) this.kitPunch = null; }
     for (const k in this.stringVib) this.stringVib[k] = Math.max(0, this.stringVib[k] - dt * 2.6);
     this.bannerT = Math.max(0, this.bannerT - dt);
     const beatPos = ((this.now % this.song.beat) + this.song.beat) % this.song.beat; this.beatPulse = 1 - beatPos / this.song.beat;
@@ -411,12 +423,14 @@ class RhythmGame {
       if (!(cue[n.lane] > w)) cue[n.lane] = w;
     }
     this.kitCue = cue;
-    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk, cue });
+    const zoom = K.zoom || 1;
+    const spots = drawDrumKit(ctx, A, this, { pieces, cx, baseY, width: K.width || A.w, chrome: !!instr.chrome, junk: !!instr.junk, cue, zoom });
     this.kitSpots = spots;
     const byLane = {}; for (const sp of spots) byLane[sp.i] = sp;
-    // the upcoming bar, read left to right along the top: what is coming and
-    // in what order, without a highway anywhere near the drums
-    const ribBot = this.drawKitRibbon(ctx, A, pieces, cx, baseY);
+    // The upcoming bar, read left to right: what is coming and in what order,
+    // without a highway anywhere near the drums. A full-size kit fills the
+    // bottom of the screen, so the strip goes up top out of its way.
+    const ribBot = this.drawKitRibbon(ctx, A, pieces, cx, baseY, zoom > 1 ? A.y + (A.touch ? 6 : 10) : null);
     // the cue on each drum that owes a hit
     for (const sp of spots) {
       const w = cue[sp.i] || 0; if (w <= 0.01) continue;
@@ -430,21 +444,46 @@ class RhythmGame {
       // the top a whole count early and touches the skin on the count, so the
       // beat is something you watch arrive rather than something you aim at.
       // Outlined and bright, because it has to read over a lit street.
-      const top = Math.round(sp.y - sp.G.grab * 0.62 - 42);
-      const cy = Math.round(top + w * 36), body = w > 0.84 ? '#fffbe8' : lighten(col, 0.55);
+      const zk = sp.zoom || 1;
+      const top = Math.round(sp.y - sp.G.grab * 0.62 - 42 * zk);
+      const cy = Math.round(top + w * 36 * zk), body = w > 0.84 ? '#fffbe8' : lighten(col, 0.55);
       // a dotted thread down to the skin, so the eye joins the two
       ctx.globalAlpha = 0.16 + w * 0.34;
-      for (let yy = cy + 10; yy < skinY; yy += 3) rect(ctx, sp.x, yy, 1, 2, body);
+      for (let yy = cy + 10 * zk; yy < skinY; yy += 3 * zk) rect(ctx, sp.x, yy, zk, 2 * zk, body);
       ctx.globalAlpha = 1;
       ctx.globalAlpha = clamp(0.6 + w * 0.4, 0, 1);
-      rect(ctx, sp.x - 9, cy - 7, 19, 4, '#12101c');
-      rect(ctx, sp.x - 8, cy - 6, 17, 2, body);
-      for (let i = 0; i < 9; i++) { const hw = 8 - i; rect(ctx, sp.x - hw - 1, cy - 3 + i, (hw + 1) * 2 + 1, 1, '#12101c'); }
-      rect(ctx, sp.x - 1, cy + 6, 3, 1, '#12101c');
-      for (let i = 0; i < 8; i++) { const hw = 8 - i; rect(ctx, sp.x - hw, cy - 2 + i, hw * 2 + 1, 1, i < 3 ? body : darken(body, 0.2)); }
+      rect(ctx, sp.x - 9 * zk, cy - 7 * zk, 19 * zk, 4 * zk, '#12101c');
+      rect(ctx, sp.x - 8 * zk, cy - 6 * zk, 17 * zk, 2 * zk, body);
+      for (let i = 0; i < 9 * zk; i++) { const hw = 8 * zk - i; rect(ctx, sp.x - hw - zk, cy - 3 * zk + i, (hw + zk) * 2 + 1, 1, '#12101c'); }
+      rect(ctx, sp.x - zk, cy + 6 * zk, zk * 2 + 1, zk, '#12101c');
+      for (let i = 0; i < 8 * zk; i++) { const hw = 8 * zk - i; rect(ctx, sp.x - hw, cy - 2 * zk + i, hw * 2 + 1, 1, i < 3 * zk ? body : darken(body, 0.2)); }
       ctx.globalAlpha = 1;
       // and the landing itself, so the exact instant is unmistakable
       if (w > 0.88) { ctx.globalAlpha = (w - 0.88) / 0.12 * 0.95; ellipsePx(ctx, sp.x, sp.y, sp.G.grab * 1.05, sp.G.grab * 0.54, '#fff8e0'); ctx.globalAlpha = 1; }
+    }
+    // The blow itself: a flat wave running out across the skin of the drum you
+    // just hit, and a hard flash at the very front of it.
+    const kp = this.kitPunch;
+    if (kp) {
+      const sp = byLane[kp.lane];
+      if (sp) {
+        const k = kp.t / 0.34, zk = sp.zoom || 1, col = PIECE_COLORS[sp.piece] || '#c2c8d6';
+        const rr = sp.G.grab * (0.3 + k * 1.5), fade = 1 - k;
+        ctx.globalAlpha = fade * (kp.big ? 0.75 : 0.5);
+        // a band of light, not an outline: two short arcs of the wave front
+        for (let i = -1; i <= 1; i += 2) {
+          const wy = Math.round(sp.y + i * rr * 0.62 * 0.72);
+          rect(ctx, Math.round(sp.x - rr * 0.7), wy, Math.round(rr * 1.4), Math.max(1, Math.round(2 * zk)), lighten(col, 0.55));
+        }
+        rect(ctx, Math.round(sp.x - rr), Math.round(sp.y - zk), Math.max(1, Math.round(rr * 0.35)), Math.max(1, 2 * zk), '#fff8e0');
+        rect(ctx, Math.round(sp.x + rr * 0.65), Math.round(sp.y - zk), Math.max(1, Math.round(rr * 0.35)), Math.max(1, 2 * zk), '#fff8e0');
+        ctx.globalAlpha = 1;
+        if (k < 0.22) {
+          ctx.globalAlpha = (1 - k / 0.22) * (kp.big ? 0.9 : 0.6);
+          ellipsePx(ctx, sp.x, sp.y, sp.G.grab * 0.85, sp.G.grab * 0.42, '#fffdf0');
+          ctx.globalAlpha = 1;
+        }
+      }
     }
     // a bomb, if a chart ever asks for one, is a drum to leave alone
     for (const n of this.notes) {
@@ -458,7 +497,7 @@ class RhythmGame {
     // a hint only while the first few notes go by
     if (this.now < this.song.beat * 8) {
       ctx.globalAlpha = clamp(1 - this.now / (this.song.beat * 8), 0, 1) * 0.85;
-      drawText(ctx, A.touch ? 'TAP ANYWHERE ON THE COUNT - ANY KEY, ANY DRUM' : 'HIT ON THE COUNT - ANYWHERE, ANY KEY',
+      drawText(ctx, A.touch ? 'TAP ANYWHERE ON THE COUNT - ANY DRUM COUNTS' : 'HIT ON THE COUNT - ANYWHERE, ANY KEY',
         cx, ribBot + 7, '#fff2c8', { align: 'center', font: 'small', outline: '#1a1410' });
       ctx.globalAlpha = 1;
     }
@@ -467,12 +506,12 @@ class RhythmGame {
   // a tick on every count, the chips walking into a now-line on the left, and
   // the count itself ticking along the bottom. It is the only place you read
   // ahead, it never moves onto you, and there is not a ring on it anywhere.
-  drawKitRibbon(ctx, A, pieces, cx, baseY) {
+  drawKitRibbon(ctx, A, pieces, cx, baseY, forceTop) {
     // Sits right above the kit, so reading ahead and hitting are the same look.
     const rowH = 9, cntH = 13, h = 10 + pieces.length * rowH + cntH;
     const halfW = Math.min(174, A.w / 2 - 20);
     const x0 = Math.round(cx - halfW), x1 = Math.round(cx + halfW), wid = x1 - x0;
-    const y = Math.round(baseY - Math.max(120, 76 + h)), span = this.song.beat * 4;
+    const y = Math.round(forceTop != null ? forceTop : baseY - Math.max(120, 76 + h)), span = this.song.beat * 4;
     const hitX = x0 + 26, endX = x1 - 7, railBot = y + h - cntH;
     // an opaque panel: this has to be readable over a lit street at night
     rect(ctx, x0 + 2, y + 3, wid, h, 'rgba(6,4,12,0.45)');
