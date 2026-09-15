@@ -95,9 +95,16 @@ class Menu {
   }
   get current() { return this.items[this.idx]; }
   select() { const it = this.items[this.idx]; if (!it || it.disabled) { Audio.ui('error'); return; } Audio.ui('select'); it.onSelect && it.onSelect(it); }
-  click(x, y) { const pad = Game.touch ? 3 : 0; for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad) { this.idx = i; this.select(); return true; } } return false; }
+  // Padding the hit box vertically made neighbouring rows overlap, so a near
+  // miss could land on two rows and pick whichever came first. Pad sideways
+  // only; the rows themselves are what get taller on a touch screen.
+  click(x, y) { const pad = Game.touch ? 6 : 0; for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x - pad && x < r.x + r.w + pad && y >= r.y && y < r.y + r.h) { this.idx = i; this.select(); return true; } } return false; }
   hover(x, y) { for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && !this.items[i].disabled) { this.idx = i; return; } } }
   draw(ctx, x, y, w, rowH, style = 'list') {
+    // A thumb is about nine millimetres wide. A 21px row at phone scale is a
+    // quarter of that, and the rows sit flush against each other, so a near
+    // miss picks the wrong thing — which at a ? encounter costs you something.
+    if (Game.touch) rowH = Math.max(rowH, 28);
     this.rects = [];
     this.items.forEach((it, i) => {
       const yy = y + i * rowH, sel = i === this.idx; this.rects.push({ x, y: yy, w, h: rowH - 2 });
@@ -137,7 +144,10 @@ const Game = {
   resize() {
     const vw = window.innerWidth, vh = window.innerHeight; const rotate = this.rotateOverride != null ? this.rotateOverride : (vh > vw * 1.05 && vw < 700); this.rotated = rotate;
     const availW = rotate ? vh : vw, availH = rotate ? vw : vh - (this.touch ? 0 : 22); const raw = Math.min(availW / W, availH / H);
-    const s = raw >= 2 ? Math.floor(raw) : Math.max(0.25, Math.floor(raw * 8) / 8); this.scale = s;
+    // Quantising to eighths threw away up to an eighth of the screen, which on
+    // a phone was a third of the glass sitting black. Whole steps still win
+    // where there is room for them; below that, take fine steps and fill it.
+    const s = raw >= 2 ? Math.floor(raw) : Math.max(0.25, Math.floor(raw * 64) / 64); this.scale = s;
     const st = this.canvas.style; st.width = (W * s) + 'px'; st.height = (H * s) + 'px'; st.position = 'fixed'; st.left = Math.round((vw - W * s) / 2) + 'px'; st.top = Math.round((vh - H * s) / 2) + 'px'; st.transform = rotate ? 'rotate(90deg)' : 'none';
     const hint = document.getElementById('hint'); if (hint) hint.style.display = (rotate || this.touch || vh - H * s < 30) ? 'none' : 'block';
   },

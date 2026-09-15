@@ -21,7 +21,7 @@ class GigScene {
     this.setSong(this.crate[0]);
     this.V = buildVenue(this.venue, hashStr(node.id + r.seed), r.day / 5);
     this.active = r.members.map(m => m.stamina >= 15 || m.leader); this.useItems = {};
-    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.earPointers = new Map(); this.fx = new Particles();
+    this.layout(); this.buildPrepMenu(); this.pads = []; this.padPointers = new Map(); this.dragDrum = new Map(); this.earPointers = new Map(); this.fx = new Particles();
     this.cam = new Camera(); this.cutIn = null; this.haze = new Haze(6, hashStr(node.id) & 63);
     // ---- the duel. Favour runs 0..1; you start level and the crowd decides.
     if (this.mode === 'boss') {
@@ -155,6 +155,13 @@ class GigScene {
     if (this.setWarn) this.setWarn = Math.max(0, this.setWarn - dt);
     if (this.phase === 'play') {
       if (this.paused) return;
+      // Nothing is on the glass, so nothing can be held. Browsers drop a
+      // pointerup often enough on a phone that without this sweep a single
+      // lost one leaves a pad stuck down for the rest of the song.
+      if (!Game.pointers.size && (this.padPointers.size || this.dragDrum.size)) {
+        for (const c of this.padPointers.values()) this.rhythm.keyUp(c);
+        this.padPointers.clear(); this.dragDrum.clear();
+      }
       this.backing.update(); this.rhythm.update(dt); this.updateDuel(dt);
       this.cam.update(dt);
       if (this.camHold != null) { this.camHold -= dt; if (this.camHold <= 0) { this.camHold = null; this.cam.reset(); } }
@@ -315,7 +322,7 @@ class GigScene {
     const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
     // A kit is played by hitting the drums themselves, mouse or finger alike.
     const drum = this.drumAt(x, y);
-    if (drum) { const code = this.rhythm.instrument.keys[drum.i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+    if (drum) { this.rhythm.keyDown(this.rhythm.instrument.keys[drum.i]); this.dragDrum.set(id, drum.i); return; }
     // ...and a kit takes a strike anywhere in the scene. Hunting a small
     // sprite with a mouse inside one beat was the whole difficulty, so a tap
     // in open air lands on the drum the chart wants and scores in full. With
@@ -323,7 +330,10 @@ class GigScene {
     if (this.rhythm.instrument.view === 'kit') {
       const lane = this.rhythm.dueLane(), near = this.nearestDrum(x, y);
       const i = lane != null ? lane : (near ? near.i : null);
-      if (i != null) { const code = this.rhythm.instrument.keys[i]; this.padPointers.set(id, code); this.rhythm.keyDown(code); return; }
+      // A strike is over the instant it happens. Nothing is remembered about
+      // the finger that made it, so a pointerup the browser never delivers
+      // cannot strand anything.
+      if (i != null) { this.rhythm.keyDown(this.rhythm.instrument.keys[i]); this.dragDrum.set(id, near ? near.i : -1); return; }
     }
     // Keys and necks are played on the instrument: the note under your finger
     // is the note that sounds, exactly as it would be in the room.
@@ -332,15 +342,23 @@ class GigScene {
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
+    // Dragging across a kit is a fill: every new drum the finger crosses is
+    // struck once. Only a change of drum fires, so resting a finger on one
+    // does nothing.
+    if (this.rhythm && this.rhythm.instrument.view === 'kit' && this.dragDrum.has(id)) {
+      const d = this.drumAt(x, y);
+      if (d && d.i !== this.dragDrum.get(id)) { this.dragDrum.set(id, d.i); this.rhythm.keyDown(this.rhythm.instrument.keys[d.i]); }
+      return;
+    }
     const prev = this.padPointers.get(id); if (prev === undefined) return;
     if (earPointerMove(this, x, y, id)) return;
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
-    if (!next) { const d = this.drumAt(x, y); if (d) next = this.rhythm.instrument.keys[d.i]; }
     if (next === prev) return;
     this.rhythm.keyUp(prev);
     if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
   pointerUp(x, y, id) {
+    this.dragDrum.delete(id);
     const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
     earPointerUp(this, id);
   }

@@ -23,6 +23,18 @@ The last solo cannot be landed. The crowd boos and throws tomatoes, cans and a b
 Backstage is a dressing room with a bulb-lit mirror, a costume rack, gold records and one
 open door. They put you on a plane. You practise once at 30,000 feet.
 
+## On a phone
+
+Turn it sideways. In portrait the canvas rotates itself so the game is always landscape, and it
+fills the glass: the scale used to quantise to eighths, which threw away up to an eighth in each
+direction and left about a third of a phone screen sitting black. It steps in sixty-fourths below
+2x now, so a 390-wide phone runs at 690x388 instead of 600x337.
+
+The kit is drawn at double size across the whole bottom of the screen, which on a phone is the
+whole point: a thumb cannot miss it. Menu rows have a floor of 28px on a touch screen and their
+hit boxes no longer overlap their neighbours, because a near miss used to pick the row next door,
+and at a ? encounter that costs you something real.
+
 ## The city
 
 Tokyo drawn like a street map: the Yamanote Line looping the middle, Meiji-dori and
@@ -139,6 +151,20 @@ are on is a shot working against you. On a phone this is the whole point, becaus
 a target a thumb cannot miss. A struck drum answers properly: a sub under the shell you feel
 rather than hear, a tick of stick on skin, the room slapping back a few milliseconds later, a flat
 wave of light running out across the head, sparks, dust off the mat and a shove to the camera.
+
+**Nothing on a kit is ever held.** A drum is a strike, not a key. It used to be gated on the same
+held-key set as everything else, which meant a single pointerup the browser never delivered — a
+scroll steal, a notification, a finger leaving the glass sideways — stuck that code down and
+silently killed the drum for the rest of the song. On a phone that happens constantly. A strike is
+now fire-and-forget: nothing is remembered about the finger that made it, so nothing can be
+stranded, and a sweep releases anything left holding the moment the glass is empty.
+
+**Hitting can never cost you.** An early or late strike used to reach forward half a second, grab
+the note that was coming, and score it as a miss — so tapping along enthusiastically destroyed
+your own chart. Outside the window a strike is a ghost note now: it makes a noise and nothing
+else. Notes still miss by running out of time; you can only lose points by not playing. A phone
+player tapping to the beat with ninety milliseconds of human scatter scores 90-100% at every kit
+tier, in either orientation, measured through real touch events rather than function calls.
 
 **You hit the drum, not a button, and you never have to aim.** There are no lanes, no pads and no
 rings anywhere on a kit. The drum you owe lights up a whole count early, lifts, and a solid caret

@@ -136,8 +136,13 @@ class RhythmGame {
   }
   hitBomb(n) { n.judged = true; n.hit = false; n.judge = 'bomb'; this.combo = 0; this.hype = clamp(this.hype - 10 * (this.mods.missMult || 1), 0, 100); this.counts.miss++; this.events.misses++; const r = this.receptorOf(n); this.fx.burst(r.x, r.y, 24, { color: ['#ff5a5a', '#ffb030', '#333'], speed: 120, life: 0.6, kind: 'fire', size: 3, gravity: -20 }); this.fx.ring(r.x, r.y, '#ff5a5a', 4, 30, 0.4); if (this.mods.fx) this.mods.fx.shake.hit(6, 0.35); this.popups.push({ text: 'BOMB!', color: '#ff5a5a', t: 0, big: true }); Audio.ui('pyro'); if (this.hooks.onBomb) this.hooks.onBomb(n); if (this.hooks.onJudge) this.hooks.onJudge(n, 'miss', { bomb: true }); }
   keyDown(code) {
-    if (this.finished || this.startTime == null || this.keysDown.has(code)) return;
-    this.keysDown.add(code);
+    if (this.finished || this.startTime == null) return;
+    // A drum is a strike, not a key you hold. Gating a kit on keysDown meant a
+    // single lost pointerup — a scroll steal, a notification, a finger leaving
+    // the glass sideways — stuck that code down forever and silently killed
+    // the drum for the rest of the song. Nothing on a kit is ever held.
+    const kit = this.instrument && this.instrument.view === 'kit';
+    if (!kit) { if (this.keysDown.has(code)) return; this.keysDown.add(code); }
     const g = this.game, instr = this.instrument;
     if (g === 'qte') {
       if (!['Space', 'KeyF', 'KeyJ', 'Enter', 'KeyD', 'KeyK'].includes(code)) return;
@@ -171,6 +176,15 @@ class RhythmGame {
       if (!n) { if (this.now > 0) { if (instr.view === 'kit') { const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare'; Audio.drum(PIECE_VOICE[pc] || pc, 0, 0.35); } else Audio.drum('clunk', 0, 0.4); this.flashes[lane] = 0.15; } return; }
       if (n.type === 'bomb') { this.hitBomb(n); return; }
       let j = this.judgeDt(this.now - n.t);
+      // On a kit an early or late strike is a ghost note, not a miss: it makes
+      // a noise and nothing else. Mashing can no longer eat the beat you were
+      // actually aiming for, and you can never lose points by playing.
+      if (kit && j === 'miss') {
+        const pc = (instr.drumFor && instr.drumFor[lane]) || 'snare';
+        Audio.drum(PIECE_VOICE[pc] || pc, 0, 0.3);
+        this.flashes[lane] = 0.12;
+        return;
+      }
       if (offPiece && j === 'perfect') j = 'great';
       n.judged = true; n.hit = j !== 'miss'; n.judge = j; this.flashes[lane] = 0.2;
       // On a kit, two pieces asked for on the same beat is one hand movement
@@ -222,6 +236,7 @@ class RhythmGame {
     }
   }
   keyUp(code) {
+    // a kit never registered the code, so there is nothing to release
     this.keysDown.delete(code); if (this.finished || this.startTime == null) return;
     const g = this.game, instr = this.instrument;
     if (g === 'lanes' || g === 'bow') { let lane = instr.keys.indexOf(code); if (g === 'bow') lane = (code === 'ArrowUp' || code === 'KeyW') ? 1 : (code === 'ArrowDown' || code === 'KeyS') ? 0 : -1; const n = this.holds[lane]; if (n && n.holding) this.releaseHold(n, lane); }
