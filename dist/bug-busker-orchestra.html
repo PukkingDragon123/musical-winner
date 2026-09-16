@@ -672,6 +672,15 @@ const Audio = {
         this._env(out, t, 0.15, vel * 0.5, 0.2, 0.8, t + dur, 0.3); endAt = t + dur + 0.6; break;
       case 'vox': { const o = mk('sawtooth', f0, 0, 0.35); mk('triangle', f0, 6, 0.3); mk('sine', f0 * 2, 0, 0.12); vib(o, 5.8, 16);
         filt.type = 'bandpass'; filt.frequency.value = f0 * 2.6; filt.Q.value = 1.8; this._env(out, t, 0.06, vel * 0.65, 0.1, 0.85, t + dur, 0.18); release = 0.18; endAt = t + dur + 0.4; break; }
+      // ---- the 8-bit voice: a square-wave lead with a fast vibrato and a hard
+      // edge, the way a chip singer sounds. Two of them, slightly apart.
+      case 'vox8': { const o = mk('square', f0, 0, 0.42); mk('square', f0, 9, 0.3); mk('triangle', f0, -6, 0.14); vib(o, 6.4, 22);
+        filt.frequency.setValueAtTime(2600, t); filt.frequency.linearRampToValueAtTime(3600, t + 0.06); filt.Q.value = 1.1;
+        this._env(out, t, 0.012, vel * 0.62, 0.06, 0.88, t + dur, 0.07); release = 0.07; break; }
+      // ---- and a whole room of them, an octave down, none of them in tune
+      case 'crowd8': { for (let i = 0; i < 5; i++) mk('square', f0 / 2, (i - 2) * 17, 0.14); mk('triangle', f0, 0, 0.1);
+        filt.frequency.value = 1500; filt.Q.value = 0.8;
+        this._env(out, t, 0.07, vel * 0.5, 0.12, 0.85, t + dur, 0.2); release = 0.2; endAt = t + dur + 0.4; break; }
       case 'harmonica': { const o = mk('square', f0, 0, 0.25); mk('sawtooth', f0 * 2, 3, 0.2); vib(o, 6, 12); filt.frequency.value = 3000; this._env(out, t, 0.03, vel * 0.5, 0.1, 0.8, t + dur, 0.1); break; }
       // ---- shamisen: a hard plectrum strike on gut, with the buzzing sawari
       case 'shamisen': { mk('triangle', f0, 0, 0.55); mk('sawtooth', f0, 11, 0.3); mk('square', f0 * 2, 0, 0.12); mk('sawtooth', f0 * 3.02, 0, 0.06);
@@ -4880,9 +4889,41 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
   const topChance = [0, 0, 0, 0, 0.07, 0.14, 0.22, 0.3][d];         // a piece on top of a beat
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bars = sec.endBar - sec.startBar;
+  // A stadium is not a street corner. On the big stage the groove stops being
+  // one bar repeated and becomes a part: the pattern changes every four bars,
+  // the kick syncopates against the backbeat, ghost notes fill the gaps, and
+  // every phrase ends on a real fill. Four shapes, cycled, so eight bars never
+  // sound like the eight before them.
+  const show = !!opts.showcase;
+  const SHAPES = [
+    { kick: [0, 2.5], ghost: [1.75, 3.75], push: false },
+    { kick: [0, 1.5, 2.5], ghost: [0.75, 3.25], push: true },
+    { kick: [0, 2, 3.5], ghost: [1.25, 2.75, 3.25], push: false },
+    { kick: [0, 0.75, 2.5, 3], ghost: [1.75], push: true },
+  ];
   for (let bar = 0; bar < bars; bar++) {
     const barT = song.leadIn + (sec.startBar + bar) * 4 * beat;
-    const isPhraseEnd = d >= 5 && bar % 4 === 3;
+    const isPhraseEnd = (show ? bar % 4 === 3 : d >= 5 && bar % 4 === 3);
+    if (show) {
+      const sh = SHAPES[Math.floor(bar / 2) % SHAPES.length];
+      // the backbeat, which never moves: it is what everybody else is following
+      for (const b2 of [1, 3]) out.push({ t: barT + b2 * beat, lane: back, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
+      // the kick pattern, which does
+      for (const k of sh.kick) out.push({ t: barT + k * beat, lane: low, dur: 0, type: 'tap', midi: song.root });
+      // ghost notes on the mid piece, the bits that make it sound played
+      if (n >= 4) for (const g of sh.ghost) if (rng.chance(0.75)) out.push({ t: barT + g * beat, lane: mid, dur: 0, type: 'tap', midi: song.root });
+      // the cymbal: one on the downbeat of every phrase, and a push into the next
+      if (n >= 4 && bar % 4 === 0) out.push({ t: barT, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true, star: true });
+      if (n >= 4 && sh.push && rng.chance(0.6)) out.push({ t: barT + 3.5 * beat, lane: top, dur: 0, type: 'tap', midi: song.root });
+      if (isPhraseEnd) {
+        // a proper fill: sixteenths walking down the kit across the last beat
+        const order = byPitch.slice().reverse();
+        const steps = d >= 5 ? 4 : 3;
+        for (let i = 0; i < steps; i++)
+          out.push({ t: barT + 3 * beat + i * beat / steps, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
+      }
+      continue;
+    }
     for (let b = 0; b < 4; b++) {
       const t = barT + b * beat;
       // the backbone: low piece on one and three, backbeat on two and four
@@ -4921,7 +4962,7 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
     if (sec.qte) { for (let bar = sec.startBar; bar < sec.endBar; bar++) { const barT = song.leadIn + bar * 4 * beat; const slots = difficulty >= 4 ? [0, 2] : [0]; for (const s of slots) if (rng.chance(0.9)) notes.push({ t: barT + s * beat, lane: 0, dur: 0, type: 'qte', midi: song.root + 12 }); } continue; }
     // a kit plays a groove, not the tune, and never has bombs to dodge
     // — reading a chart is not what this instrument is asking of you
-    if (instr.view === 'kit') { notes.push(...kitGroove(song, sec, difficulty, rng, instr, opts)); continue; }
+    if (instr.view === 'kit') { notes.push(...kitGroove(song, sec, difficulty, rng, instr, opts)); continue; }   // opts carries `showcase` on the big stage
     // walk the melody, looping it to fill the section
     let t = secStart, i = 0, lastLane = Math.floor((instr.lanes || 2) / 2), lastDir = 1, guard = 0;
     while (t < secEnd - 0.001 && guard++ < 900) {
@@ -5032,11 +5073,11 @@ const NODES = [
   { id: 'kabuki', x: 330, y: 112, name: 'KABUKICHO GATE', type: 'venue', venue: 'neon', icon: 'gig', sub: 'NEON AND NOISE' },
   { id: 'goldengai', x: 400, y: 132, name: 'GOLDEN GAI', type: 'venue', venue: 'yokocho', icon: 'gig', sub: 'SIX SEATS A BAR' },
   { id: 'omoide', x: 262, y: 138, name: 'MEMORY LANE', type: 'food', icon: 'food', sub: 'YAKITORI AND SMOKE' },
-  { id: 'shinjuku', x: 300, y: 205, name: 'SHINJUKU STATION', type: 'venue', venue: 'metro', icon: 'gig', sub: 'BUSIEST ON EARTH' },
+  { id: 'shinjuku', x: 300, y: 205, name: 'SHINJUKU STATION', type: 'inside', interior: 'metro', icon: 'gig', sub: 'TWO HUNDRED EXITS' },
   { id: 'tocho', x: 210, y: 175, name: 'METRO GOV BUILDING', type: 'event', icon: 'event', sub: 'THE WHOLE CITY, FREE' },
   { id: 'disk', x: 372, y: 218, name: 'DISK UNION', type: 'shop', icon: 'shop', sub: 'SIX FLOORS OF VINYL' },
   // ---- Nakano / Shimokita
-  { id: 'nakano', x: 150, y: 248, name: 'NAKANO BROADWAY', type: 'shop', icon: 'shop', sub: 'FIGURES AND ODDITIES' },
+  { id: 'nakano', x: 150, y: 248, name: 'NAKANO BROADWAY', type: 'inside', interior: 'mall', icon: 'shop', sub: 'FOUR FLOORS, NO MAP' },
   { id: 'koenji', x: 110, y: 330, name: 'KOENJI BASEMENT', type: 'recruit', icon: 'openmic', sub: 'PUNK SINCE 1978' },
   { id: 'shimokita', x: 170, y: 448, name: 'SHIMOKITAZAWA', type: 'venue', venue: 'shotengai', icon: 'gig', sub: 'THRIFT AND GUITARS' },
   { id: 'curry', x: 250, y: 470, name: 'SHIMOKITA CURRY', type: 'food', icon: 'food', sub: 'SOUP CURRY, EXTRA HOT' },
@@ -5050,7 +5091,7 @@ const NODES = [
   // ---- Shibuya
   { id: 'scramble', x: 420, y: 455, name: 'SHIBUYA SCRAMBLE', type: 'venue', venue: 'scramble', icon: 'elite', sub: 'BIG GIG - 3000 A LIGHT' },
   { id: 'hachiko', x: 448, y: 478, name: 'HACHIKO STATUE', type: 'event', icon: 'event', sub: 'EVERYONE MEETS HERE' },
-  { id: 'shibuyasta', x: 400, y: 492, name: 'SHIBUYA STATION', type: 'venue', venue: 'metro', icon: 'gig', sub: 'UNDERGROUND ACOUSTICS' },
+  { id: 'shibuyasta', x: 400, y: 492, name: 'SHIBUYA STATION', type: 'inside', interior: 'metro', icon: 'gig', sub: 'NOBODY HAS EVER FOUND HACHIKO EXIT' },
   { id: 'dogenzaka', x: 352, y: 508, name: 'DOGENZAKA', type: 'recruit', icon: 'openmic', sub: 'LIVE HOUSE BASEMENT' },
   { id: 'tower', x: 470, y: 425, name: 'TOWER RECORDS', type: 'shop', icon: 'shop', sub: 'NO MUSIC NO LIFE' },
   { id: 'ramen', x: 340, y: 448, name: 'SHIBUYA RAMEN', type: 'food', icon: 'food', sub: 'TONKOTSU, EXTRA EGG' },
@@ -5068,7 +5109,7 @@ const NODES = [
   { id: 'akiba', x: 720, y: 208, name: 'AKIHABARA', type: 'venue', venue: 'akiba', icon: 'gig', sub: 'ELECTRIC TOWN' },
   { id: 'arcade', x: 770, y: 240, name: 'GAME CENTER', type: 'event', icon: 'event', sub: 'CRANE GAMES AND RHYTHM' },
   { id: 'maid', x: 668, y: 230, name: 'MAID CAFE', type: 'recruit', icon: 'openmic', sub: 'OKAERINASAI' },
-  { id: 'radio', x: 760, y: 175, name: 'RADIO KAIKAN', type: 'shop', icon: 'shop', sub: 'PARTS AND FIGURES' },
+  { id: 'radio', x: 760, y: 175, name: 'RADIO KAIKAN', type: 'inside', interior: 'mall', icon: 'shop', sub: 'TEN FLOORS OF PARTS' },
   { id: 'ueno', x: 780, y: 112, name: 'UENO PARK', type: 'venue', venue: 'park', icon: 'gig', sub: 'PICNICS AND PIGEONS' },
   { id: 'ameyoko', x: 700, y: 120, name: 'AMEYOKO MARKET', type: 'pickup', icon: 'coin' },
   { id: 'sensoji', x: 900, y: 92, name: 'SENSO-JI', type: 'venue', venue: 'temple', icon: 'gig', sub: 'INCENSE AND LANTERNS' },
@@ -5441,7 +5482,7 @@ const MYSTERIES = [
     ],
     line: 'A case worth more than everything you own, and a bug sprinting down the street towards it with his coat half off.',
     choices: [
-      { label: 'Hand it straight back', apply: (s, log) => { s.karma += 3; s.money += 22; s.buffs.mult = (s.buffs.mult || 0) + 1; log('He presses $22 on you and will not take no. He also knows a promoter. (+1 Mult)'); } },
+      { label: 'Hand it straight back', apply: (s, log) => { s.karma += 3; s.money += 22; s.buffs.mult = (s.buffs.mult || 0) + 1; log('He presses $22 on you and will not take no. (+1 Mult)'); giveContact('vendor', log); } },
       { label: 'Open it first', apply: (s, log) => { s.karma -= 2; const k = s.randomCharm(); if (k && s.addCharm(k)) { Audio.ui('fanfare'); log('A ' + CHARMS[k].name + ' in the accessory pocket. He never knew. You will.'); } else log('Nothing in it but a horn and forty years of somebody else\'s life. You close it.'); } },
       { label: 'Play something while he catches up', game: 'timing', gameLabel: 'MEET HIM ON THE BEAT',
         good: (s, log) => { s.karma += 2; s.money += 15; s.buffs.crowd = (s.buffs.crowd || 1) * 1.3; log('He arrives into the last bar of it, laughing, and joins in. Half the street stops. (+$15, bigger crowd)'); },
@@ -5457,7 +5498,7 @@ const MYSTERIES = [
       { label: 'Buy a stick ($2)', req: s => s.money >= 2,
         apply: (s, log) => { s.money -= 2; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 14)); log('Sweet, sticky, still warm. Everyone perks up. (+14 stamina each)'); } },
       { label: 'Buy the whole tray ($9)', req: s => s.money >= 9,
-        apply: (s, log) => { s.money -= 9; s.members.forEach(m => m.stamina = 100); s.buffs.crowd = (s.buffs.crowd || 1) * 1.3; log('He wraps the lot. The band eats like kings and plays like it. (Full stamina, bigger crowd next set)'); } },
+        apply: (s, log) => { s.money -= 9; s.members.forEach(m => m.stamina = 100); s.buffs.crowd = (s.buffs.crowd || 1) * 1.3; log('He wraps the lot. The band eats like kings and plays like it. (Full stamina, bigger crowd next set)'); giveContact('moth', log); } },
       { label: 'Haggle him down', game: 'timing', gameLabel: 'STOP ON THE GREEN',
         good: (s, log) => { s.money += 0; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 14)); log('"...fine. On the house, for the music." Free dango. (+14 stamina each)'); },
         bad: (s, log) => { s.karma--; log('He looks at you for a long moment, then packs the tray away. Nobody eats.'); } },
@@ -5500,7 +5541,7 @@ const MYSTERIES = [
       { label: 'Cut him', game: 'copy', gameLabel: 'PLAY IT BACK BETTER',
         good: (s, log) => { s.money += 18; s.buffs.mult = (s.buffs.mult || 0) + 1; log('You answer his phrase and add to it. The tunnel picks you. He packs up. (+$18, +1 Mult)'); },
         bad: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 10)); log('You fluff it, in a tunnel, with the acoustics of a cathedral. Everybody heard. (-10 stamina each)'); } },
-      { label: 'Play together instead', apply: (s, log) => { s.karma += 2; s.money += 7; const t = 7; s.buffs.crowd = (s.buffs.crowd || 1) * 1.25; log('Two acts, one tune. The tunnel fills. You split ' + fmtMoney(t * 2) + ' and he gives you his number.'); } },
+      { label: 'Play together instead', apply: (s, log) => { s.karma += 2; s.money += 7; const t = 7; s.buffs.crowd = (s.buffs.crowd || 1) * 1.25; log('Two acts, one tune. The tunnel fills. You split ' + fmtMoney(t * 2) + '.'); giveContact('rival', log); } },
       { label: 'Move to another exit', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 8)); log('You carry everything up two flights of stairs to a worse spot. (-8 stamina each)'); } },
     ],
   },
@@ -5526,7 +5567,7 @@ const MYSTERIES = [
       { label: 'Give what you can ($5)', req: s => s.money >= 5,
         apply: (s, log) => { s.money -= 5; s.karma += 2; s.buffs.mult = (s.buffs.mult || 0) + 1; log('The bell sounds once. Whatever that does, it does it. (+1 Mult)'); } },
       { label: 'Play for him instead', game: 'copy', gameLabel: 'MATCH THE BELL',
-        good: (s, log) => { s.karma += 3; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 20)); log('He rings, you answer, for a long time. You leave lighter. (+20 stamina each)'); },
+        good: (s, log) => { s.karma += 3; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 20)); log('He rings, you answer, for a long time. You leave lighter. (+20 stamina each)'); giveContact('monk', log); },
         bad: (s, log) => { log('You lose the thread. He waits. You stop. He does not mind, which is worse.'); } },
       { label: 'Bow and pass', apply: (s, log) => { s.karma++; log('He bows back. That is the whole of it.'); } },
     ],
@@ -5541,7 +5582,7 @@ const MYSTERIES = [
       { label: 'Ask what the catch is', game: 'timing', gameLabel: 'READ THE SMALL PRINT - STOP ON THE CLAUSE',
         good: (s, log) => { s.money += 30; log('You find the clause and strike it. She signs anyway, surprised. (+$30, nothing lost)'); },
         bad: (s, log) => { s.karma--; log('You miss it. She smiles, takes the card back, and gives it to somebody else.'); } },
-      { label: 'Tear it up in front of her', apply: (s, log) => { s.karma += 2; s.buffs.mult = (s.buffs.mult || 0) + 1; log('She watches the pieces fall. "Good." She means it. (+1 Mult)'); } },
+      { label: 'Tear it up in front of her', apply: (s, log) => { s.karma += 2; s.buffs.mult = (s.buffs.mult || 0) + 1; log('She watches the pieces fall. "Good." She means it. (+1 Mult)'); giveContact('scout', log); } },
     ],
   },
   {
@@ -5607,12 +5648,39 @@ const MYSTERIES = [
     choices: [
       { label: 'Turn it down and apologise', apply: (s, log) => { s.karma++; s.buffs.crowd = (s.buffs.crowd || 1) * 0.85; log('He nods and goes back in. Quieter, smaller crowd, no trouble.'); } },
       { label: 'Ask him what he plays', game: 'copy', gameLabel: 'HE HUMS IT - PLAY IT BACK',
-        good: (s, log) => { s.karma += 2; s.money += 12; s.buffs.crowd = (s.buffs.crowd || 1) * 1.2; log('Trumpet, police band, 1988. He requests one and tips $12. Nobody moves you on again tonight.'); },
+        good: (s, log) => { s.karma += 2; s.money += 12; s.buffs.crowd = (s.buffs.crowd || 1) * 1.2; log('Trumpet, police band, 1988. He requests one and tips $12. Nobody moves you on again tonight.'); giveContact('officer', log); },
         bad: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 10)); log('You mangle it. He loses interest and moves you on anyway. (-10 stamina each)'); } },
       { label: 'Pack up and go', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 6)); log('No argument. You find somewhere else. (-6 stamina each)'); } },
     ],
   },
 ];
+
+// ===== js/data/contacts.js =====
+// ---------- The phone ----------
+// People you meet give you their number. The phone keeps them, and each one
+// will do exactly one thing for you when you call it in.
+'use strict';
+const CONTACTS = {
+  moth:    { name: 'THE OLD MOTH', who: 'DANGO CART', icon: 'dango', tint: '#ffd24a',
+             desc: 'Feeds the whole band, once, for nothing.',
+             use: (s, log) => { s.members.forEach(m => m.stamina = 100); log('He sends three trays down on the back of a bike. Everyone eats. (Full stamina)'); } },
+  officer: { name: 'THE OFFICER', who: 'KOBAN', icon: 'cop', tint: '#8ab0e0',
+             desc: 'Nobody moves you on tonight, and a bigger pitch.',
+             use: (s, log) => { s.buffs.crowd = (s.buffs.crowd || 1) * 1.5; log('A word on the radio and the whole corner is yours. (Much bigger crowd)'); } },
+  rival:   { name: 'THE OTHER BUSKER', who: 'UNDERPASS', icon: 'openmic', tint: '#8ad8ff',
+             desc: 'Sits in for a set. Two acts pay better than one.',
+             use: (s, log) => { s.buffs.mult = (s.buffs.mult || 0) + 2; log('He turns up with the good amp and plays the whole set with you. (+2 Mult)'); } },
+  scout:   { name: 'A&R', who: 'THE CARD', icon: 'elite', tint: '#c58bff',
+             desc: 'One booking, paid up front, no contract.',
+             use: (s, log) => { s.money += 55; log('"One night. No paperwork." The money lands before you play it. (+$55)'); } },
+  monk:    { name: 'THE MONK', who: 'THE TEMPLE', icon: 'rest', tint: '#ffd9a0',
+             desc: 'The temple yard, to yourselves, for a night.',
+             use: (s, log) => { s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 40)); s.karma += 2; log('Gravel, cedars, and nobody at all. (+40 stamina each)'); } },
+  vendor:  { name: 'THE FIXER', who: 'AMEYOKO', icon: 'shop', tint: '#6be585',
+             desc: 'Gets you a piece of gear at cost.',
+             use: (s, log) => { const me = s.members[0]; if (me.quality < 5) { me.quality = Math.min(5, me.quality + 1); s.today.upgrades++; log('A box arrives with no receipt in it. Your kit is a rung better.'); } else { s.money += 30; log('Nothing left to sell you, so he just hands over $30.'); s.money += 0; } } },
+};
+const CONTACT_KEYS = Object.keys(CONTACTS);
 
 // ===== js/data/goals.js =====
 // ---------- Today's goals: the run always states what it wants ----------
@@ -5763,6 +5831,32 @@ class Backing {
     this.totalSteps = opts.steps || (song.bars + 4) * 16;
     this.stopped = false;
   }
+  // A chip vocal over the top, and the room answering it. The singer takes the
+  // tune; on the last bar of every phrase the crowd comes in underneath an
+  // octave down, five of them, none quite in tune with each other.
+  sing(step, t) {
+    const s = this.song, mel = s.melody; if (!mel || !mel.length) return;
+    const stepDur = this.stepDur;
+    if (this._sungTo == null) { this._sungTo = 0; this._melIdx = 0; this._melT = 0; }
+    while (this._melT <= step) {
+      const [midi, beats] = mel[this._melIdx % mel.length]; this._melIdx++;
+      const steps = Math.max(1, Math.round(beats * 4));
+      if (midi > 0 && this._melT >= step - 0.5) {
+        const when = this.start + this._melT * stepDur;
+        Audio.note('vox8', midi, when, steps * stepDur * 0.92, 0.5);
+        if (this.onSing) this.onSing(when, midi);
+      }
+      this._melT += steps;
+      if (this._melT > step + 16) break;
+    }
+    // the crowd, on the turnaround
+    const bar = Math.floor(step / 16);
+    if (step % 16 === 0 && bar > 1 && bar % 4 === 0) {
+      const chord = s.chords[Math.min(bar - 1, s.bars - 1)] || 0;
+      for (const m of chordTones(s.root, chord)) Audio.note('crowd8', m, t, s.beat * 3.4, 0.42);
+      if (this.onCrowdSing) this.onCrowdSing(t);
+    }
+  }
   update() { if (this.stopped || !Audio.ctx) return; const horizon = Audio.now() + 0.3; while (this.nextStep < this.totalSteps) { const t = this.start + this.nextStep * this.stepDur; if (t > horizon) break; this.schedule(this.nextStep, t); this.nextStep++; } }
   schedule(step, t) {
     const s = this.song, rawBar = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
@@ -5771,6 +5865,7 @@ class Backing {
     const countIn = rawBar === 0, outro = !this.loop && barIdx > s.bars;
     const mute = typeof this.mute === 'function' ? (this.mute(t) || {}) : this.mute;
     if (countIn) { if (sub === 0) Audio.drum('hat', t, 0.7); return; }
+    if (this.vocal && !outro) this.sing(step, t);
     const chord = s.chords[Math.min(barIdx - 1, s.bars - 1)], rootMidi = s.root - 12, style = s.style || 'rock';
     if (outro) { if (step === (s.bars + 1) * 16) { Audio.drum('crash', t, 0.5); if (style === 'concert') chordTones(s.root, chord).forEach(m => Audio.note('eguitar', m - 12, t, s.beat * 3, 0.4)); } return; }
     if (!mute.drums) {
@@ -8454,6 +8549,13 @@ class MysteryScene {
   }
   key(code) {
     if (this.phase === 'talk') { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.cut.advance(); return; }
+    if (this.phase === 'choose') {
+      const n = this.menu.items.length;
+      if (code === 'ArrowLeft' || code === 'KeyA') { this.menu.idx = (this.menu.idx + n - 1) % n; Audio.ui('move'); return; }
+      if (code === 'ArrowRight' || code === 'KeyD') { this.menu.idx = (this.menu.idx + 1) % n; Audio.ui('move'); return; }
+      if (['Enter', 'Space', 'KeyZ'].includes(code)) { this.menu.select(); return; }
+      return;
+    }
     if (this.phase === 'game') {
       const g = this.game; if (!g || g.over) return;
       if (g.kind === 'timing') { if (['Space', 'Enter'].includes(code)) this.stopNeedle(); return; }
@@ -8463,19 +8565,41 @@ class MysteryScene {
     }
     this.menu.key(code);
   }
-  click(x, y) { if (this.phase === 'talk') { this.cut.advance(); return; } if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
-  hover(x, y) { if (this.phase !== 'game') this.menu.hover(x, y); }
+  click(x, y) {
+    if (this.phase === 'talk') { this.cut.advance(); return; }
+    if (this.phase === 'game') { this.hitGame(x, y); return; }
+    if (this.phase === 'choose' && this.cards) {
+      for (const k of this.cards) if (x >= k.x && x < k.x + k.w && y >= k.y - 12 && y < k.y + k.h) { this.menu.idx = k.i; this.menu.select(); return; }
+      return;
+    }
+    this.menu.click(x, y);
+  }
+  hover(x, y) {
+    if (this.phase === 'choose' && this.cards) { for (const k of this.cards) if (x >= k.x && x < k.x + k.w && y >= k.y - 12 && y < k.y + k.h) this.menu.idx = k.i; return; }
+    if (this.phase !== 'game') this.menu.hover(x, y);
+  }
   draw(ctx) {
     const art = MYSTERY_ART[this.m.scene] || MYSTERY_ART.dango;
-    // The panel owns the bottom of the screen, so the scene is played above
-    // it: every vignette is drawn to a full-height stage and then lifted, with
-    // a dark base under the lift so there is never a seam.
+    // Right in. These are the only scenes in the game with one thing happening
+    // in them, so the camera pushes past the wide shot and holds on it: about
+    // a 1.7x punch centred on the action, drifting slowly so it never sits
+    // still. Everything below is drawn on top of it, unscaled.
     rect(ctx, 0, 0, W, H, '#120e1e');
-    ctx.save(); ctx.translate(0, -LIFT); art(ctx, this.t); ctx.restore();
+    // The action in every vignette sits around (560, 360) in its own space —
+    // the cart, the bench, the machine, whoever is talking — so that is what
+    // the camera is pointed at, not the middle of a mostly empty frame.
+    const z = 1.7;
+    const fx2 = 560 + Math.sin(this.t * 0.2) * 18, fy2 = 352 + Math.cos(this.t * 0.15) * 8;
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 28); ctx.scale(z, z); ctx.translate(-fx2, -fy2);
+    art(ctx, this.t);
+    ctx.restore();
+    // vignette the punch-in, so the eye goes where the camera went
+    vignetteRect(ctx, 0, 0, W, H - 150, 0.5, '#0a0812');
     rect(ctx, 0, H - LIFT - 2, W, LIFT + 2, '#241c30');
     rect(ctx, 0, H - LIFT - 2, W, 2, '#3a2e48');
     // a little grade so the panel always reads over whatever is behind it
-    vgrad(ctx, 0, H - 250, W, 250, 'rgba(10,8,18,0)', 'rgba(10,8,18,0.55)');
+    vgrad(ctx, 0, H - 250, W, 250, 'rgba(10,8,18,0)', 'rgba(10,8,18,0.62)');
     if (this.phase === 'reveal') {
       // the ? cracking open
       const k = clamp(this.t / 0.5, 0, 1);
@@ -8487,18 +8611,59 @@ class MysteryScene {
     }
     if (this.phase === 'talk') { this.cut.draw(ctx); return; }
     if (this.phase === 'game') { this.drawGame(ctx); this.fx.draw(ctx); Game.drawHud(ctx); return; }
-    // the panel: who it is, what they want, what you can do about it
-    const inner = uiPanel(ctx, 60, H - 196, W - 120, 176, { title: this.m.title });
+    // The choices are cards across the bottom, not a list of small rows: one
+    // banner saying where you are, then two to four fat options you can read
+    // across a room and hit with a thumb.
+    const title = this.m.title;
+    uiRibbon(ctx, W / 2, H - 206, title, { scale: 3, color: '#8a4fd0' });
     if (this.phase === 'done') {
-      let y = inner.y + 10;
-      for (const l of this.log) y += drawWrapped(ctx, l, inner.x + 14, y, 88, '#7a4a10', 14) + 6;
-      this.menu.draw(ctx, inner.x + 14, Math.max(y + 6, inner.y + inner.h - 32), inner.w - 28, 24, 'list');
-    } else {
-      const th = drawWrapped(ctx, this.m.line, inner.x + 14, inner.y + 8, 92, UI.ink, 13);
-      this.menu.draw(ctx, inner.x + 14, inner.y + 10 + th + 4, inner.w - 28, Game.touch ? 23 : 21, 'list');
+      const inner = uiPanel(ctx, 60, H - 172, W - 120, 152);
+      let y = inner.y + 12;
+      for (const l of this.log) y += drawWrapped(ctx, l, inner.x + 16, y, 62, '#7a4a10', 20, { scale: 2 }) + 8;
+      this.menu.draw(ctx, inner.x + 16, inner.y + inner.h - 44, inner.w - 32, 36, 'buttons');
+      this.fx.draw(ctx); Game.drawHud(ctx); return;
     }
+    this.drawCards(ctx);
     this.fx.draw(ctx);
     Game.drawHud(ctx);
+  }
+  // Where each choice card sits. Two, three or four across the bottom.
+  cardRects() {
+    const n = this.m.choices.length;
+    const gap = 12, side = 40, total = W - side * 2;
+    const cw = Math.floor((total - gap * (n - 1)) / n), ch = 150;
+    return this.m.choices.map((c, i) => ({ i, c, x: side + i * (cw + gap), y: H - ch - 14, w: cw, h: ch }));
+  }
+  drawCards(ctx) {
+    const r = Game.run;
+    this.cards = this.cardRects();
+    for (const k of this.cards) {
+      const dis = k.c.req ? !k.c.req(r) : false, sel = this.menu.idx === k.i;
+      const lift = sel && !dis ? 6 : 0;
+      const y = k.y - lift;
+      const face = dis ? '#2a2736' : sel ? '#33294f' : '#221d38';
+      const edge = dis ? '#4a4658' : sel ? '#ffd24a' : '#6a5f9a';
+      rect(ctx, k.x + 4, y + 6, k.w, k.h, 'rgba(6,4,12,0.5)');
+      rect(ctx, k.x, y, k.w, k.h, face);
+      frame(ctx, k.x, k.y - lift, k.w, k.h, edge);
+      frame(ctx, k.x + 2, y + 2, k.w - 4, k.h - 4, dis ? '#241f30' : '#2e2748');
+      // a colour bar at the head of the card saying what kind of choice it is
+      const kind = k.c.game ? { col: '#c58bff', text: 'PLAY FOR IT' } : dis ? { col: '#5a5668', text: 'CANNOT' } : { col: '#3f8a52', text: 'CHOOSE' };
+      rect(ctx, k.x + 3, y + 3, k.w - 6, 22, kind.col);
+      rect(ctx, k.x + 3, y + 3, k.w - 6, 2, lighten(kind.col, 0.35));
+      drawText(ctx, kind.text, k.x + k.w / 2, y + 9, '#12101c', { align: 'center', scale: 2 });
+      // the label, as big as it will go
+      let sc = 3; while (sc > 1 && textWidth(k.c.label, { scale: sc }) > k.w - 16) sc--;
+      const lines = sc > 1 ? [k.c.label] : wrapText(k.c.label, Math.floor((k.w - 16) / 6));
+      let ty = y + 40;
+      for (const ln of lines.slice(0, 4)) { drawText(ctx, ln, k.x + k.w / 2, ty, dis ? '#6a6480' : '#f2ecff', { align: 'center', scale: sc }); ty += sc > 1 ? 7 * sc + 6 : 12; }
+      if (sel && !dis) {
+        // the marker, so the keyboard selection is as obvious as the hover
+        for (let i = 0; i < 6; i++) rect(ctx, k.x + k.w / 2 - (5 - i), y - 12 + i, (5 - i) * 2 + 1, 1, '#ffd24a');
+      }
+      if (dis) { ctx.globalAlpha = 0.35; rect(ctx, k.x + 3, y + 3, k.w - 6, k.h - 6, '#12101c'); ctx.globalAlpha = 1; }
+    }
+    drawText(ctx, Game.touch ? 'TAP A CARD' : 'LEFT / RIGHT     ENTER', W / 2, H - 172, '#a79ce0', { align: 'center', font: 'small' });
   }
   drawGame(ctx) {
     const g = this.game;
@@ -8542,6 +8707,327 @@ class MysteryScene {
       comicBurst(ctx, W / 2, 388, msg, g.won ? '#6be585' : '#ff5a5a', clamp(this.gameEndT / 0.9, 0, 1), 1.5);
     }
   }
+}
+
+// ===== js/scenes/interior.js =====
+// ---------- Inside a building ----------
+// Malls and subway stations you actually walk around in. Every room looks a
+// lot like the last one, the signs disagree with each other, and going back
+// the way you came does not always work — which is what being inside Nakano
+// Broadway or Shinjuku station is genuinely like. Somewhere in here is what
+// you came for, and somewhere else is the way out.
+'use strict';
+
+const EXIT_SIGNS = ['A1', 'A2', 'A3', 'B1', 'B2', 'B4', 'C7', 'C8', 'D2', 'E1', 'JR', 'M4', 'W3', 'S5'];
+const MALL_SHOPS = ['USED CD', 'FIGURES', 'MODEL KITS', 'VINTAGE', 'WATCHES', 'DOUJIN', 'CAMERA', 'GAMES',
+  'AMERICAN', 'PATCHES', 'PARTS', 'TOYS', 'MANGA', 'STAMPS', 'RECORDS', 'STRINGS'];
+
+function buildInterior(node, rng) {
+  const metro = node.interior === 'metro';
+  const n = metro ? 9 : 8;
+  const rooms = [];
+  for (let i = 0; i < n; i++) {
+    rooms.push({
+      i, kind: metro ? rng.pick(['concourse', 'passage', 'passage', 'platform']) : rng.pick(['arcade', 'arcade', 'stairwell']),
+      sign: metro ? rng.pick(EXIT_SIGNS) : (rng.int(1, 4) + 'F'),
+      shops: metro ? [] : [0, 1, 2].map(() => rng.pick(MALL_SHOPS)),
+      seed: rng.int(0, 9999), links: {},
+    });
+  }
+  // Wire it up deliberately badly: left and right rarely undo each other, and
+  // two of the rooms loop back on themselves.
+  for (let i = 0; i < n; i++) {
+    rooms[i].links.right = (i + 1 + rng.int(0, 1)) % n;
+    rooms[i].links.left = (i + n - 1 - rng.int(0, 1)) % n;
+    if (rng.chance(0.4)) rooms[i].links.down = rng.int(0, n - 1);
+  }
+  // What you came for, and the way out: never the same room, and never the one
+  // you walked in on, or the whole building would be one step deep.
+  const goalRoom = rng.int(2, n - 1);
+  let exitRoom = rng.int(1, n - 1);
+  if (exitRoom === goalRoom || exitRoom === 0) exitRoom = ((goalRoom + 3) % (n - 1)) + 1;
+  if (exitRoom === goalRoom) exitRoom = ((goalRoom + 4) % (n - 1)) + 1;
+  rooms[goalRoom].goal = true;
+  rooms[exitRoom].exit = true;
+  return { rooms, start: 0, metro, goalRoom, exitRoom };
+}
+
+class InteriorScene {
+  constructor(node) {
+    const r = Game.run;
+    this.node = node; this.t = 0; this.fx = new Particles();
+    this.rng = makeRng(hashStr(node.id + '|' + r.day));
+    this.map = buildInterior(node, this.rng);
+    this.at = this.map.start; this.moves = 0; this.walkT = 0; this.dir = 1;
+    this.msg = null; this.msgT = 0; this.done = false;
+    this.metro = this.map.metro;
+    this.intro = sceneIntro([
+      { name: node.name, tint: '#8ad8ff', text: this.metro
+        ? 'Eleven exits, four of them closed, and a sign for every one of them pointing a different way. Somewhere down here is the platform.'
+        : 'Four floors of shops the size of wardrobes, and a stairwell that does not go where the sign says. The one you want is in here somewhere.' },
+    ]);
+  }
+  get room() { return this.map.rooms[this.at]; }
+  go(dirName) {
+    if (this.done) return;
+    const r = Game.run, to = this.room.links[dirName];
+    if (to == null) { Audio.ui('error'); this.say('No way through.'); return; }
+    // walking a building costs you, the same as walking the city does
+    r.stamina = Math.max(0, r.stamina - 2);
+    this.moves++; this.at = to; this.walkT = 0.35; this.dir = dirName === 'left' ? -1 : 1;
+    Audio.ui('move');
+    if (this.room.goal) this.say(this.metro ? 'THE PLATFORM. Finally.' : 'THIS IS THE ONE.');
+    else if (this.room.exit) this.say('The way out.');
+    if (r.stamina <= 0) { this.say('Everyone is done in.'); this.leave(); }
+  }
+  say(m) { this.msg = m; this.msgT = 2.2; }
+  enterGoal() {
+    const r = Game.run;
+    this.done = true; r.save();
+    // what is actually in here
+    if (this.metro) Game.go(() => new GigScene(Object.assign({}, this.node, { type: 'venue', venue: 'metro' })), 'iris');
+    else Game.go(() => new ShopScene(Object.assign({}, this.node, { type: 'shop', stock: null })), 'iris');
+  }
+  leave() { this.done = true; Game.run.save(); Game.go(() => new CityScene(), 'slideR'); }
+  update(dt) {
+    this.t += dt; this.fx.update(dt);
+    if (introUpdate(this, dt)) return;
+    this.walkT = Math.max(0, this.walkT - dt);
+    if (this.msgT > 0) this.msgT -= dt;
+  }
+  key(code) {
+    if (this.intro) { if (['Enter', 'Space', 'KeyZ', 'Escape'].includes(code)) introTap(this); return; }
+    if (code === 'ArrowLeft' || code === 'KeyA') this.go('left');
+    else if (code === 'ArrowRight' || code === 'KeyD') this.go('right');
+    else if (code === 'ArrowDown' || code === 'KeyS') this.go('down');
+    else if (['Enter', 'Space', 'KeyZ'].includes(code)) { if (this.room.goal) this.enterGoal(); else if (this.room.exit) this.leave(); }
+    else if (code === 'Escape') this.leave();
+  }
+  click(x, y) {
+    if (introTap(this)) return;
+    for (const b of (this.buttons || [])) if (b.hit(x, y)) { b.onTap(); return; }
+  }
+  hover() { }
+  draw(ctx) {
+    const R = this.room, rr = makeRng(R.seed);
+    const floorY = 386;
+    if (this.metro) this.drawMetro(ctx, R, rr, floorY); else this.drawMall(ctx, R, rr, floorY);
+    // the band, walking
+    const wob = this.walkT > 0 ? Math.round(Math.sin(this.t * 26) * 4) : 0;
+    drawParty(ctx, 150, floorY + wob, this.t, this.walkT > 0 ? null : 'idle');
+    this.fx.draw(ctx);
+    // ---- the read-outs
+    const head = this.metro ? 'EXIT ' + R.sign : R.sign + '  -  ' + this.node.name;
+    uiRibbon(ctx, W / 2, 30, head, { scale: 3, color: this.metro ? '#3f6fb0' : '#8a4fd0' });
+    // how lost you are, which is the only number that matters in here
+    const p = uiPanel(ctx, 18, 74, 214, 64);
+    drawText(ctx, 'ROOMS WALKED', p.x + 10, p.y + 8, UI.inkSoft, { font: 'small' });
+    drawText(ctx, String(this.moves), p.x + 10, p.y + 20, '#7a4a10', { scale: 4 });
+    ctx.drawImage(icon('fire'), p.x + 150, p.y + 20, 16, 18);
+    drawText(ctx, String(Math.round(Game.run.stamina)), p.x + 172, p.y + 24, '#7a4a10', { scale: 3 });
+    if (this.msgT > 0) {
+      ctx.globalAlpha = clamp(this.msgT, 0, 1);
+      const w2 = textWidth(this.msg, { scale: 2 }) + 28;
+      rect(ctx, W / 2 - w2 / 2, 150, w2, 30, '#12101c'); frame(ctx, W / 2 - w2 / 2, 150, w2, 30, '#ffd24a');
+      drawText(ctx, this.msg, W / 2, 160, '#ffd24a', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    // ---- the controls: big, because this is the whole interaction
+    this.buttons = [];
+    const bw = 150, bh = 52, by = H - bh - 12;
+    const mk = (x, label, fn, col) => { const b = new Btn(x, by, bw, bh, label, fn, col ? { color: col.c, hi: col.h, lo: col.l, ol: col.o } : {}); this.buttons.push(b); b.draw(ctx); };
+    mk(20, '< LEFT', () => this.go('left'));
+    mk(20 + bw + 10, 'RIGHT >', () => this.go('right'));
+    if (R.links.down != null) mk(20 + (bw + 10) * 2, this.metro ? 'DOWN' : 'STAIRS', () => this.go('down'),
+      { c: '#4d86c6', h: '#86b6e8', l: '#2f5a8a', o: '#1a3050' });
+    if (R.goal) mk(W - bw - 20, this.metro ? 'GET ON' : 'GO IN', () => this.enterGoal(), { c: UI.gold, h: UI.goldHi, l: UI.goldLo, o: '#20180a' });
+    else if (R.exit) mk(W - bw - 20, 'LEAVE', () => this.leave(), { c: UI.red, h: UI.redHi, l: UI.redLo, o: '#4a1a14' });
+    Game.drawHud(ctx);
+    introDraw(this, ctx);
+  }
+  // ---- a mall floor: a corridor of tiny shops, all lit, all cluttered
+  drawMall(ctx, R, rr, floorY) {
+    vgrad(ctx, 0, 0, W, H, '#2a2436', '#1a1626');
+    // ceiling tiles and strip lights
+    rect(ctx, 0, 0, W, 76, '#3a3448');
+    for (let x = 0; x < W; x += 48) { rect(ctx, x, 4, 44, 2, '#4a4458'); rect(ctx, x + 8, 30, 28, 6, '#f4f0d8'); ctx.globalAlpha = 0.1; rect(ctx, x + 2, 36, 40, 70, '#f4f0d8'); ctx.globalAlpha = 1; }
+    // the run of shop fronts
+    for (let i = 0; i < 3; i++) {
+      const x = 246 + i * 240, w = 210, top = 108;
+      rect(ctx, x, top, w, floorY - top, '#241f30');
+      rect(ctx, x + 6, top + 34, w - 12, floorY - top - 46, '#3e3550');
+      // the shutter box and the name board
+      rect(ctx, x, top, w, 30, '#5a4a6a'); rect(ctx, x, top, w, 3, '#7a6a8a');
+      drawText(ctx, R.shops[i], x + w / 2, top + 10, '#f4ecd8', { align: 'center', scale: 2 });
+      // goods on shelves, different every room
+      for (let s = 0; s < 3; s++) {
+        const sy = top + 48 + s * 34;
+        rect(ctx, x + 14, sy + 18, w - 28, 3, '#6a5a7a');
+        for (let k = 0; k < 7; k++) {
+          const gx = x + 20 + k * ((w - 44) / 7), c = ['#e0503c', '#e8b840', '#3f6fb0', '#6be585', '#c58bff', '#f0f0e8'][rr.int(0, 5)];
+          const gh = rr.int(8, 16);
+          rect(ctx, gx, sy + 18 - gh, rr.int(7, 13), gh, c);
+          rect(ctx, gx, sy + 18 - gh, rr.int(7, 13), 2, lighten(c, 0.3));
+        }
+      }
+      // a light spilling out of the doorway
+      ctx.globalAlpha = 0.12; rect(ctx, x + 6, top + 34, w - 12, floorY - top - 46, '#ffe6a0'); ctx.globalAlpha = 1;
+    }
+    // the floor
+    rect(ctx, 0, floorY, W, H - floorY, '#4a4258');
+    rect(ctx, 0, floorY, W, 4, '#6a6078');
+    for (let x = 0; x < W; x += 34) rect(ctx, x, floorY + 6, 30, 2, 'rgba(0,0,0,0.16)');
+    // signage that disagrees with itself
+    for (let i = 0; i < 2; i++) {
+      const sx = 300 + i * 380;
+      rect(ctx, sx, 60, 130, 26, '#1e6a3a'); frame(ctx, sx, 60, 130, 26, '#7ac49a');
+      drawText(ctx, rr.chance(0.5) ? 'EXIT  >' : '<  EXIT', sx + 65, 68, '#f0fff4', { align: 'center', scale: 2 });
+    }
+    // other shoppers, drifting
+    for (let i = 0; i < 4; i++) {
+      const sx = ((i * 260 + this.t * (18 + i * 7)) % (W + 120)) - 60;
+      drawShadow(ctx, sx, floorY + 4, 22);
+      drawBugAt(ctx, MYSTERY_BUGS.crowd[i % MYSTERY_BUGS.crowd.length], sx, floorY + 4, { pose: Math.floor(this.t * 5 + i) % 2 ? 'walk1' : 'walk2', scale: 1.2, flip: i % 2 === 0 });
+    }
+  }
+  // ---- a station: tiled passages, numbered exits, a map nobody can read
+  drawMetro(ctx, R, rr, floorY) {
+    vgrad(ctx, 0, 0, W, H, '#2c2e3c', '#1a1c26');
+    // tiled walls
+    for (let y = 60; y < floorY; y += 16) for (let x = (y / 16 % 2) * 16; x < W; x += 32) {
+      rect(ctx, x, y, 30, 14, '#4a4f62'); rect(ctx, x, y, 30, 1, '#5e6478');
+    }
+    rect(ctx, 0, 0, W, 60, '#22242e');
+    for (let i = 0; i < 7; i++) { rect(ctx, 40 + i * 130, 26, 84, 6, '#eef4ff'); ctx.globalAlpha = 0.1; rect(ctx, 24 + i * 130, 32, 116, 70, '#cfe0ff'); ctx.globalAlpha = 1; }
+    if (R.kind === 'platform') {
+      // the platform edge, the tracks, and a train in the tunnel
+      rect(ctx, 0, floorY - 96, W, 96, '#1a1c26');
+      rect(ctx, 0, floorY - 96, W, 3, '#3a3e4c');
+      const tx = ((this.t * 120) % (W + 700)) - 350;
+      rect(ctx, tx, floorY - 90, 320, 80, '#7a8090'); rect(ctx, tx, floorY - 90, 320, 5, '#aab0c0');
+      for (let i = 0; i < 4; i++) rect(ctx, tx + 16 + i * 78, floorY - 76, 58, 38, '#1a2434');
+      rect(ctx, tx, floorY - 40, 320, 4, '#4aa0d0');
+      rect(ctx, 0, floorY - 14, W, 14, '#8a8880');
+      for (let x = 0; x < W; x += 12) rect(ctx, x, floorY - 12, 8, 8, '#d8c020');
+    } else {
+      // a wall of exit signs, each insisting on a different direction
+      for (let i = 0; i < 3; i++) {
+        const sx = 90 + i * 280;
+        rect(ctx, sx, 96, 190, 40, '#1e3f6a'); frame(ctx, sx, 96, 190, 40, '#6a9fd0');
+        drawText(ctx, EXIT_SIGNS[(R.seed + i) % EXIT_SIGNS.length], sx + 12, 106, '#ffd24a', { scale: 3 });
+        drawText(ctx, rr.chance(0.5) ? 'THIS WAY  >' : '<  THIS WAY', sx + 96, 112, '#dfe8ff', { scale: 2 });
+      }
+      // a route map nobody has ever successfully read
+      const mx = 420, my = 182;
+      rect(ctx, mx, my, 210, 128, '#f2efe4'); frame(ctx, mx, my, 210, 128, '#7a7466');
+      for (let i = 0; i < 7; i++) {
+        const col = ['#c8402c', '#2a7ac8', '#3f9a52', '#d9a520', '#8a4fd0', '#c8608a', '#40a8b0'][i];
+        const y0 = my + 16 + i * 15;
+        for (let k = 0; k < 9; k++) rect(ctx, mx + 12 + k * 22, y0 + Math.round(Math.sin(k + i) * 4), 22, 3, col);
+        for (let k = 0; k < 4; k++) rect(ctx, mx + 16 + k * 48, y0 - 1 + Math.round(Math.sin(k * 2 + i) * 4), 5, 5, '#ffffff');
+      }
+    }
+    rect(ctx, 0, floorY, W, H - floorY, '#5a5a62');
+    rect(ctx, 0, floorY, W, 4, '#74747e');
+    for (let x = 0; x < W; x += 26) rect(ctx, x, floorY + 8, 22, 2, 'rgba(0,0,0,0.14)');
+    // commuters, all of them faster than you
+    for (let i = 0; i < 6; i++) {
+      const sx = ((i * 190 + this.t * (40 + i * 11)) % (W + 140)) - 70;
+      drawShadow(ctx, sx, floorY + 4, 20);
+      drawBugAt(ctx, MYSTERY_BUGS.office[i % MYSTERY_BUGS.office.length], sx, floorY + 4, { pose: Math.floor(this.t * 7 + i) % 2 ? 'walk1' : 'walk2', scale: 1.15, flip: i % 3 === 0 });
+    }
+  }
+}
+
+// ===== js/scenes/phone.js =====
+// ---------- The phone ----------
+// A cheap flip phone with a list of everybody who ever gave you their number.
+// Each one does its thing once and is then greyed out for the rest of the run.
+'use strict';
+class PhoneScene {
+  constructor(back) {
+    const r = Game.run;
+    this.t = 0; this.back = back || (() => new CityScene());
+    this.list = (r.contacts || []).filter(k => CONTACTS[k]);
+    this.sel = 0; this.log = null; this.buttons = [];
+  }
+  call(k) {
+    const r = Game.run;
+    if (r.usedContacts.includes(k)) { Audio.ui('error'); return; }
+    r.usedContacts.push(k);
+    const lines = []; CONTACTS[k].use(r, (m) => lines.push(m));
+    this.log = lines.join(' '); Audio.ui('fanfare'); r.save();
+  }
+  leave() { Game.go(this.back, 'slideR'); }
+  update(dt) { this.t += dt; }
+  key(code) {
+    if (this.log) { if (['Enter', 'Space', 'Escape', 'KeyZ'].includes(code)) this.log = null; return; }
+    if (code === 'ArrowUp' || code === 'KeyW') { this.sel = (this.sel + this.list.length - 1) % Math.max(1, this.list.length); Audio.ui('move'); }
+    else if (code === 'ArrowDown' || code === 'KeyS') { this.sel = (this.sel + 1) % Math.max(1, this.list.length); Audio.ui('move'); }
+    else if (['Enter', 'Space', 'KeyZ'].includes(code)) { if (this.list[this.sel]) this.call(this.list[this.sel]); }
+    else if (code === 'Escape') this.leave();
+  }
+  click(x, y) {
+    if (this.log) { this.log = null; return; }
+    for (const b of this.buttons) if (b.hit(x, y)) { b.onTap(); return; }
+    (this.rows || []).forEach((r2, i) => { if (x >= r2.x && x < r2.x + r2.w && y >= r2.y && y < r2.y + r2.h) { if (this.sel === i) this.call(this.list[i]); else { this.sel = i; Audio.ui('move'); } } });
+  }
+  hover(x, y) { (this.rows || []).forEach((r2, i) => { if (x >= r2.x && x < r2.x + r2.w && y >= r2.y && y < r2.y + r2.h) this.sel = i; }); }
+  draw(ctx) {
+    const r = Game.run;
+    vgrad(ctx, 0, 0, W, H, '#161226', '#0c0a16');
+    // the handset itself, held up in front of you
+    const pw = 300, ph = 470, px = Math.round(W / 2 - pw / 2), py = 34;
+    rect(ctx, px + 6, py + 8, pw, ph, 'rgba(6,4,12,0.55)');
+    rect(ctx, px, py, pw, ph, '#2a2636'); frame(ctx, px, py, pw, ph, '#5a5470');
+    rect(ctx, px + 2, py + 2, pw - 4, 2, '#7a7490');
+    // the earpiece and the screen
+    rect(ctx, px + pw / 2 - 26, py + 12, 52, 5, '#16131e');
+    const sx = px + 16, sy = py + 28, sw = pw - 32, sh = ph - 76;
+    rect(ctx, sx, sy, sw, sh, '#0e1a14'); frame(ctx, sx, sy, sw, sh, '#1e3a2a');
+    ctx.globalAlpha = 0.06; for (let y = sy; y < sy + sh; y += 3) rect(ctx, sx, y, sw, 1, '#8affc0'); ctx.globalAlpha = 1;
+    // the status bar
+    drawText(ctx, 'CONTACTS', sx + 8, sy + 8, '#8affc0', { scale: 2 });
+    drawText(ctx, String(this.list.length), sx + sw - 8, sy + 10, '#4a9a70', { align: 'right' });
+    rect(ctx, sx + 6, sy + 26, sw - 12, 1, '#2a5a42');
+    this.rows = [];
+    if (!this.list.length) {
+      drawWrapped(ctx, 'NOBODY HAS GIVEN YOU THEIR NUMBER YET. PLAY WELL FOR SOMEBODY AND THEY WILL.', sx + 10, sy + 44, 22, '#4a9a70', 14);
+    }
+    this.list.forEach((k, i) => {
+      const c = CONTACTS[k], used = r.usedContacts.includes(k), on = i === this.sel;
+      const ry = sy + 34 + i * 58, rw = sw - 12, rh = 52;
+      this.rows.push({ x: sx + 6, y: ry, w: rw, h: rh });
+      rect(ctx, sx + 6, ry, rw, rh, on ? '#16382a' : '#10261c');
+      frame(ctx, sx + 6, ry, rw, rh, used ? '#274034' : on ? '#8affc0' : '#2a5a42');
+      ctx.drawImage(icon(c.icon), sx + 12, ry + 8, 18, 16);
+      drawText(ctx, c.name, sx + 38, ry + 6, used ? '#3f7a5c' : c.tint, { scale: 2 });
+      drawWrapped(ctx, used ? 'CALLED IN ALREADY.' : c.desc, sx + 38, ry + 24, 24, used ? '#2f6049' : '#7fd8a8', 11, { font: 'small' });
+      if (on && !used) for (let d = 0; d < 4; d++) rect(ctx, sx + rw - 2, ry + rh / 2 - 4 + d, 4 - d, 1, '#8affc0');
+    });
+    // keypad, for looks and for the buttons
+    const ky = py + ph - 44;
+    for (let i = 0; i < 3; i++) rect(ctx, px + 24 + i * 88, ky, 76, 14, '#3a3448');
+    this.buttons = [];
+    const b1 = new Btn(px + 16, py + ph - 26, 128, 22, 'CALL', () => { if (this.list[this.sel]) this.call(this.list[this.sel]); }, { tight: true });
+    const b2 = new Btn(px + pw - 144, py + ph - 26, 128, 22, 'CLOSE', () => this.leave(), { tight: true, color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1a14' });
+    this.buttons.push(b1, b2); b1.draw(ctx); b2.draw(ctx);
+    if (this.log) {
+      rect(ctx, 0, 0, W, H, 'rgba(6,4,14,0.72)');
+      const inner = uiPanel(ctx, 90, 180, W - 180, 170, { title: 'CALL CONNECTED' });
+      drawWrapped(ctx, this.log, inner.x + 16, inner.y + 16, 56, '#7a4a10', 22, { scale: 2 });
+      drawText(ctx, Game.touch ? 'TAP TO CLOSE' : 'ENTER', inner.x + inner.w / 2, inner.y + inner.h - 22, UI.inkSoft, { align: 'center' });
+    }
+    Game.drawHud(ctx);
+  }
+}
+// Somebody liked you enough to hand over a number.
+function giveContact(key, log) {
+  const r = Game.run; if (!r || !CONTACTS[key]) return;
+  if (r.contacts.includes(key)) return;
+  r.contacts.push(key);
+  if (log) log('They give you their number. It is in the phone now.');
+  Audio.ui('levelup');
 }
 
 // ===== js/scenes/select.js =====
@@ -8647,73 +9133,197 @@ function drawHelp(ctx) {
   for (const [ic, h, t] of rows) { ctx.drawImage(icon(ic), inner.x + 20, y - 2, 20, 18); drawText(ctx, h, inner.x + 50, y, '#7a4a10', { scale: 2 }); drawText(ctx, t, inner.x + 190, y + 3, UI.ink); y += 26; }
   drawText(ctx, 'D F J K   /   S L   /   SPACE   /   ARROWS        M = MUTE', inner.x + inner.w / 2, inner.y + inner.h - 22, UI.inkFaint, { align: 'center' });
 }
-// ---------- character select, staged ----------
+// ---------- The opening: house lights down, then the band, then you ----------
+// This used to be four bugs standing in a row with a panel beside them. It is
+// a sequence now: the room goes black, the lights come up on one member at a
+// time with their name thrown across the screen, and only when the whole band
+// has been introduced do you get to say which one you are. Then it all goes
+// dark again and the show starts.
 class SelectScene {
   constructor() {
     this.t = 0; this.sel = 1; this.confirmT = 0; this.confirmed = false; this.fx = new Particles();
     this.rng = makeRng(99); this.crowd = [];
     for (let i = 0; i < 150; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 3), o: this.rng.range(0, 6), lighter: this.rng.chance(0.3), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
     this.spot = 1; this.cells = [];
+    // ---- the sequence
+    this.phase = 'dark'; this.phaseT = 0; this.introIdx = -1; this.lit = [false, false, false, false];
+    this.flash = 0; this.smoke = [];
   }
+  // How far through the roll call we are. Skipping it drops you straight in.
+  skipIntro() { this.phase = 'pick'; this.phaseT = 0; this.lit = [true, true, true, true]; this.introIdx = ROSTER.length; }
+  puff(x, y, n) { for (let i = 0; i < n; i++) this.fx.add({ x: x + (Math.random() - 0.5) * 90, y: y + 10, vx: (Math.random() - 0.5) * 70, vy: -18 - Math.random() * 40, life: 1.6 + Math.random(), kind: 'smoke', color: '#6a6482', size: 7, grow: 24, alpha: 0.42, gravity: -6 }); }
   update(dt) {
-    this.t += dt; this.fx.update(dt); this.spot = lerp(this.spot, this.sel, Math.min(1, dt * 8));
-    if (this.confirmed) { this.confirmT += dt; if (this.confirmT > 1.5) { this.confirmed = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene(); }, 'curtain', { dur: 0.6 }); } }
+    this.t += dt; this.phaseT += dt; this.fx.update(dt); this.spot = lerp(this.spot, this.sel, Math.min(1, dt * 8));
+    this.flash = Math.max(0, this.flash - dt * 2.6);
+    if (this.phase === 'dark') {
+      // a black room, a held breath, and somebody testing a light
+      if (this.phaseT > 1.9) { this.phase = 'roll'; this.phaseT = 0; this.introIdx = -1; }
+    } else if (this.phase === 'roll') {
+      // one member every second and a bit: light snaps on, name lands, smoke
+      const want = Math.floor(this.phaseT / 1.15);
+      if (want !== this.introIdx && want < ROSTER.length) {
+        this.introIdx = want; this.lit[want] = true; this.flash = 1;
+        Audio.ui('pyro'); Audio.note('eguitar', 40 + want * 5, 0, 0.5, 0.4);
+        Game.shake.hit(5, 0.22);
+        const x = this.memberX(want);
+        this.puff(x, 404, 10);
+        for (let i = 0; i < 26; i++) this.fx.add({ x, y: 400, vx: (Math.random() - 0.5) * 240, vy: -Math.random() * 230, life: 0.8, color: ['#ffd24a', '#fff', '#ff5a5a'][i % 3], kind: 'star', size: 3, gravity: 320 });
+      }
+      if (this.phaseT > ROSTER.length * 1.15 + 0.5) { this.phase = 'pick'; this.phaseT = 0; Audio.roar(1.6, 0.35); }
+    } else if (this.phase === 'pick') {
+      if (Math.random() < dt * 0.7) this.puff(this.rng.range(60, W - 60), 410, 2);
+    } else if (this.phase === 'out') {
+      // everything goes dark again, and then the show
+      if (this.phaseT > 1.5) { this.phase = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene(); }, 'fade', { dur: 0.7 }); }
+    }
+    if (this.confirmed && this.phase === 'pick') { this.confirmT += dt; if (this.confirmT > 1.4) { this.phase = 'out'; this.phaseT = 0; } }
   }
   memberX(i) { return 150 + i * 220; }
-  move(d) { this.sel = (this.sel + d + ROSTER.length) % ROSTER.length; Audio.ui('move'); this.fx.burst(this.memberX(this.sel), 400, 8, { color: '#ffd24a', speed: 60, life: 0.4, kind: 'star', size: 2, gravity: 120 }); }
+  move(d) {
+    if (this.phase !== 'pick' || this.confirmed) return;
+    this.sel = (this.sel + d + ROSTER.length) % ROSTER.length; Audio.ui('move');
+    this.flash = 0.5; this.puff(this.memberX(this.sel), 404, 4);
+    this.fx.burst(this.memberX(this.sel), 400, 10, { color: '#ffd24a', speed: 70, life: 0.4, kind: 'star', size: 2, gravity: 120 });
+  }
   confirm() {
-    if (this.confirmed) return; this.confirmed = true; this.confirmT = 0; Audio.ui('fanfare'); Audio.roar(2, 0.4); Game.shake.hit(6, 0.4);
+    if (this.confirmed || this.phase !== 'pick') return;
+    this.confirmed = true; this.confirmT = 0; Audio.ui('fanfare'); Audio.roar(2, 0.4); Game.shake.hit(7, 0.5);
     const x = this.memberX(this.sel);
+    this.puff(x, 404, 16);
     for (let i = 0; i < 60; i++) this.fx.add({ x, y: 400, vx: (Math.random() - 0.5) * 320, vy: -Math.random() * 300, life: 1.1, color: ['#ffd24a', '#fff', '#ff5a5a', '#5bc0ff'][i % 4], kind: 'star', size: 3, gravity: 300 });
-    for (let i = 0; i < 40; i++) this.fx.add({ x: x + (Math.random() - 0.5) * 60, y: 400, vx: (Math.random() - 0.5) * 60, vy: -260 - Math.random() * 160, life: 0.9, kind: 'fire', size: 5, gravity: 180 });
+    for (let i = 0; i < 44; i++) this.fx.add({ x: x + (Math.random() - 0.5) * 60, y: 400, vx: (Math.random() - 0.5) * 60, vy: -260 - Math.random() * 160, life: 0.9, kind: 'fire', size: 5, gravity: 180 });
   }
   key(code) {
-    if (this.confirmed) return;
+    if (this.phase === 'dark' || this.phase === 'roll') { if (['Enter', 'Space', 'KeyZ', 'Escape'].includes(code)) this.skipIntro(); return; }
+    if (this.confirmed || this.phase !== 'pick') return;
     if (code === 'ArrowLeft' || code === 'KeyA') this.move(-1); else if (code === 'ArrowRight' || code === 'KeyD') this.move(1);
     else if (['Enter', 'Space', 'KeyZ'].includes(code)) this.confirm();
     else if (code === 'Escape') Game.go(() => new TitleScene(), 'fade');
   }
   click(x, y) {
-    if (this.confirmed) return;
-    for (let i = 0; i < ROSTER.length; i++) { const mx = this.memberX(i); if (Math.abs(x - mx) < 96 && y > 250 && y < 440) { if (this.sel === i) this.confirm(); else { this.sel = i; Audio.ui('move'); } return; } }
+    if (this.phase === 'dark' || this.phase === 'roll') { this.skipIntro(); return; }
+    if (this.confirmed || this.phase !== 'pick') return;
+    if (this.arrowL && this.arrowL.hit(x, y)) { this.move(-1); return; }
+    if (this.arrowR && this.arrowR.hit(x, y)) { this.move(1); return; }
+    for (let i = 0; i < ROSTER.length; i++) { const mx = this.memberX(i); if (Math.abs(x - mx) < 96 && y > 250 && y < 440) { if (this.sel === i) this.confirm(); else { this.sel = i; Audio.ui('move'); this.flash = 0.5; } return; } }
     if (this.readyBtn && this.readyBtn.hit(x, y)) this.confirm();
   }
-  hover(x, y) { for (let i = 0; i < ROSTER.length; i++) { const mx = this.memberX(i); if (Math.abs(x - mx) < 96 && y > 250 && y < 440) this.sel = i; } }
-  draw(ctx) {
-    const c = ROSTER[this.sel], spec = HERO_PRESETS[c.key];
+  hover(x, y) { if (this.phase !== 'pick') return; for (let i = 0; i < ROSTER.length; i++) { const mx = this.memberX(i); if (Math.abs(x - mx) < 96 && y > 250 && y < 440) this.sel = i; } }
+  // ---- the stage, drawn the same in every phase; what changes is who is lit
+  drawStageAndBand(ctx) {
+    const rolling = this.phase === 'roll', picking = this.phase === 'pick' || this.phase === 'out';
     const floorY = drawStageBack(ctx, this.t, { top: 0, bottom: H, floorY: 404, lights: ['#c58bff', '#5bc0ff', '#ffd24a', '#ff5a9a'] });
-    // moving spotlight
-    const sx = this.memberX(this.spot);
-    ctx.globalAlpha = 0.2; ctx.fillStyle = '#fff4c0';
-    ctx.beginPath(); ctx.moveTo(sx - 22, 18); ctx.lineTo(sx + 22, 18); ctx.lineTo(sx + 110, floorY + 10); ctx.lineTo(sx - 110, floorY + 10); ctx.fill(); ctx.globalAlpha = 1;
-    ctx.globalAlpha = 0.16; ellipsePx(ctx, sx, floorY + 8, 105, 22, '#fff4c0'); ctx.globalAlpha = 1;
-    // the four on stage
+    // the beam that follows whoever is being shown
+    const focus = rolling ? this.introIdx : this.spot;
+    if (focus >= 0) {
+      const sx = this.memberX(focus);
+      ctx.globalAlpha = 0.22; ctx.fillStyle = '#fff4c0';
+      ctx.beginPath(); ctx.moveTo(sx - 24, 18); ctx.lineTo(sx + 24, 18); ctx.lineTo(sx + 116, floorY + 10); ctx.lineTo(sx - 116, floorY + 10); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.18; ellipsePx(ctx, sx, floorY + 8, 110, 23, '#fff4c0'); ctx.globalAlpha = 1;
+    }
     ROSTER.forEach((rr, i) => {
-      const x = this.memberX(i), on = i === this.sel, spec2 = HERO_PRESETS[rr.key];
+      const x = this.memberX(i), spec2 = HERO_PRESETS[rr.key];
+      const shown = this.lit[i];
+      const on = picking ? i === this.sel : i === this.introIdx;
+      if (!shown) return;                       // not introduced yet: still in the dark
       const step = on ? 16 : 0, bob = Math.round(Math.sin(this.t * 4 + i) * 2);
       const y = floorY + 4 + step;
+      // a member arriving gets a moment of being bigger than everybody
+      const arrive = rolling && i === this.introIdx ? clamp(1 - (this.phaseT % 1.15) / 0.45, 0, 1) : 0;
       drawShadow(ctx, x, y, on ? 54 : 42, on ? 0.4 : 0.25);
-      const sc = on ? 2.4 : 1.9;
+      const sc = (on ? 2.4 : 1.9) + arrive * 0.5;
       if (rr.instrument === 'piano') ctx.drawImage(propCanvas('micstand'), x - 52 * (sc / 2), y - 74, 16, 62);
       const pose = this.confirmed && on ? 'cheer' : on ? (Math.floor(this.t * 4) % 2 ? 'play' : 'play2') : (Math.floor(this.t * 2 + i) % 4 === 0 ? 'idle2' : 'idle');
       const sq = on ? 1 + Math.sin(this.t * 8) * 0.035 : 1;
       drawBugAt(ctx, spec2, x, y + bob, { pose, instrument: rr.instrument !== 'drums' && rr.instrument !== 'piano' ? rr.instrument : null, scale: sc, squash: sq, rate: on ? 3.4 : 2, phase: i * 1.6, bounce: on ? 1.6 : 0.8 });
-      // the big kits sit in front of the player, not behind them
       if (rr.instrument === 'drums') ctx.drawImage(propInstrument('drums'), x - 52 * (sc / 2), y - 58, 104 * (sc / 2.4), 78 * (sc / 2.4));
       if (rr.instrument === 'piano') ctx.drawImage(propInstrument('piano'), x - 50 * (sc / 2), y - 42, 100 * (sc / 2.4), 53 * (sc / 2.4));
-      if (on && !this.confirmed) { for (let k = 0; k < 2; k++) if (Math.random() < 0.12) this.fx.add({ x: x + (Math.random() - 0.5) * 70, y: y - 90, vx: (Math.random() - 0.5) * 24, vy: -26, life: 1.1, color: '#ffd24a', kind: 'star', size: 2, gravity: -8 }); }
+      if (on && picking && !this.confirmed) { for (let k = 0; k < 2; k++) if (Math.random() < 0.12) this.fx.add({ x: x + (Math.random() - 0.5) * 70, y: y - 90, vx: (Math.random() - 0.5) * 24, vy: -26, life: 1.1, color: '#ffd24a', kind: 'star', size: 2, gravity: -8 }); }
     });
     drawArenaCrowd(ctx, this.crowd, this.t, H - 82, H, 'happy');
-    // name plates ride above the front row
+    return floorY;
+  }
+  // The name, thrown across the screen the way a fighting game does it.
+  drawNameCard(ctx, i, k) {
+    const rr = ROSTER[i], spec2 = HERO_PRESETS[rr.key];
+    const slide = easeOutBack(clamp(k * 2.4, 0, 1));
+    const out = clamp((k - 0.72) / 0.28, 0, 1);
+    const y = 150, name = spec2.name.toUpperCase();
+    ctx.save();
+    ctx.globalAlpha = 1 - out;
+    // the slash of colour behind it
+    const bw = Math.round(W * slide), bx = Math.round(-W * (1 - slide) * 0.4);
+    ctx.save(); ctx.translate(0, y); ctx.rotate(-0.045); ctx.translate(0, -y);
+    rect(ctx, bx, y - 6, bw, 56, '#12101c');
+    rect(ctx, bx, y, bw, 44, ['#c8433a', '#d9a520', '#3f6fb0', '#8a5fb0'][i % 4]);
+    rect(ctx, bx, y, bw, 4, '#fff8e0');
+    rect(ctx, bx, y + 40, bw, 3, 'rgba(0,0,0,0.35)');
+    // speed lines through the slash
+    for (let l = 0; l < 14; l++) { const lx = bx + ((l * 97 + this.t * 300) % Math.max(1, bw)); ctx.globalAlpha = (1 - out) * 0.16; rect(ctx, lx, y + 4, 40, 36, '#ffffff'); ctx.globalAlpha = 1 - out; }
+    const tx = Math.round(W / 2 + (1 - slide) * 260);
+    drawText(ctx, name, tx, y + 8, '#fff8e0', { align: 'center', scale: 5, outline: '#2a1408' });
+    ctx.restore();
+    // the subtitle plate under it
+    const sub = rr.title + '   -   ' + INSTRUMENTS[rr.instrument].name.toUpperCase();
+    const sw = textWidth(sub, { scale: 2 }) + 24;
+    ctx.globalAlpha = (1 - out) * clamp((k - 0.18) * 5, 0, 1);
+    rect(ctx, Math.round(W / 2 - sw / 2), y + 58, sw, 26, '#12101c');
+    frame(ctx, Math.round(W / 2 - sw / 2), y + 58, sw, 26, '#6a5f9a');
+    drawText(ctx, sub, W / 2, y + 66, '#ffd24a', { align: 'center', scale: 2 });
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  draw(ctx) {
+    const c = ROSTER[this.sel], spec = HERO_PRESETS[c.key];
+    // ---- the room before anybody is on it
+    if (this.phase === 'dark') {
+      rect(ctx, 0, 0, W, H, '#07060c');
+      drawArenaCrowd(ctx, this.crowd, this.t, H - 82, H, 'idle');
+      ctx.globalAlpha = 0.5; rect(ctx, 0, 0, W, H, '#07060c'); ctx.globalAlpha = 1;
+      // a few lighters out there in the dark
+      for (let i = 0; i < 26; i++) { const cc = this.crowd[i * 5 % this.crowd.length];
+        if (!cc.lighter) continue; ctx.globalAlpha = 0.35 + 0.3 * Math.sin(this.t * 3 + cc.o);
+        rect(ctx, Math.round(cc.x), H - 66 - cc.row * 9, 2, 3, '#ffd88a'); ctx.globalAlpha = 1; }
+      // somebody testing a light up in the rig
+      if (this.phaseT > 0.9 && this.phaseT < 1.1) { ctx.globalAlpha = 0.5; rect(ctx, 0, 0, W, H, '#5bc0ff'); ctx.globalAlpha = 1; }
+      const k = clamp((this.phaseT - 0.3) / 0.6, 0, 1);
+      ctx.globalAlpha = k * clamp(2 - this.phaseT, 0, 1);
+      drawText(ctx, 'TOKYO DOME', W / 2, 220, '#8a80b0', { align: 'center', scale: 4 });
+      drawText(ctx, 'FIVE YEARS AGO', W / 2, 262, '#5a5478', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+      letterbox(ctx, 46, 1);
+      if (this.phaseT > 1.2) drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', W - 16, H - 30, '#3a3550', { align: 'right', font: 'small' });
+      return;
+    }
+    this.drawStageAndBand(ctx);
+    this.fx.draw(ctx);
+    // the snap of a light coming on
+    if (this.flash > 0) { ctx.globalAlpha = this.flash * 0.5; rect(ctx, 0, 0, W, H, '#fff8e0'); ctx.globalAlpha = 1; }
+    if (this.phase === 'roll') {
+      letterbox(ctx, 46, 1);
+      if (this.introIdx >= 0 && this.introIdx < ROSTER.length) {
+        const k = clamp((this.phaseT % 1.15) / 1.15, 0, 1);
+        this.drawNameCard(ctx, this.introIdx, k);
+      }
+      drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', W - 16, H - 30, '#6a6488', { align: 'right', font: 'small' });
+      return;
+    }
+    if (this.phase === 'out') {
+      // the blackout before the show
+      const k = clamp(this.phaseT / 1.1, 0, 1);
+      ctx.globalAlpha = easeIn(k); rect(ctx, 0, 0, W, H, '#07060c'); ctx.globalAlpha = 1;
+      if (this.phaseT > 0.7) { ctx.globalAlpha = clamp((this.phaseT - 0.7) * 2, 0, 1);
+        drawText(ctx, spec.name.toUpperCase(), W / 2, 240, '#ffd24a', { align: 'center', scale: 4, outline: '#2a1408' }); ctx.globalAlpha = 1; }
+      return;
+    }
+    // ---- picking. Name plates under everybody, big arrows either side.
     ROSTER.forEach((rr, i) => {
       const x = this.memberX(i), on = i === this.sel, spec2 = HERO_PRESETS[rr.key];
-      const y = floorY + 4 + (on ? 16 : 0);
+      const y = 408 + (on ? 16 : 0);
       const nw = textWidth(spec2.name, { scale: on ? 2 : 1 }) + 20;
       rect(ctx, x - nw / 2, y + 16, nw, on ? 22 : 15, on ? '#d9a520' : 'rgba(10,8,20,0.78)'); frame(ctx, x - nw / 2, y + 16, nw, on ? 22 : 15, on ? '#fff4d0' : '#4a4268');
       drawText(ctx, spec2.name, x, y + (on ? 23 : 20), on ? '#2a1a08' : '#cfc9e6', { align: 'center', scale: on ? 2 : 1 });
     });
-    this.fx.draw(ctx);
-    // HUD
     uiRibbon(ctx, W / 2, 10, 'WHO ARE YOU TONIGHT?', { scale: 3, color: '#c8433a' });
     const p = uiPanel(ctx, 24, 62, 268, 150);
     drawText(ctx, spec.name, p.x + 10, p.y + 6, '#7a4a10', { scale: 3 });
@@ -8732,10 +9342,22 @@ class SelectScene {
     drawText(ctx, ch.name.toUpperCase(), p2.x + 48, p2.y + 40, '#7a4a10', { font: 'small' });
     drawWrapped(ctx, ch.desc, p2.x + 48, p2.y + 50, 26, UI.ink, 9, { font: 'small' });
     ctx.drawImage(icon('coin'), p2.x + 214, p2.y + 40, 13, 12); drawText(ctx, fmtMoney(c.money), p2.x + 232, p2.y + 42, '#2a7a3a');
-    this.readyBtn = new Btn(W / 2 - 110, H - 50, 220, 30, this.confirmed ? 'READY!' : 'TAKE THE STAGE', () => this.confirm(),
-      { scale: 2, color: this.confirmed ? UI.gold : UI.green, hi: this.confirmed ? UI.goldHi : UI.greenHi, lo: this.confirmed ? UI.goldLo : UI.greenLo, ol: '#20180a' });
+    // big arrows, because this is a character select and they should be obvious
+    const ay = 300, aw = 54, ah = 76;
+    this.arrowL = new Btn(18, ay, aw, ah, '', () => this.move(-1), { tight: true });
+    this.arrowR = new Btn(W - 18 - aw, ay, aw, ah, '', () => this.move(1), { tight: true });
+    for (const [bt, dir] of [[this.arrowL, -1], [this.arrowR, 1]]) {
+      const pulse = 0.55 + 0.45 * Math.sin(this.t * 4 + (dir > 0 ? 1.6 : 0));
+      rect(ctx, bt.x + 3, bt.y + 4, aw, ah, 'rgba(6,4,12,0.45)');
+      rect(ctx, bt.x, bt.y, aw, ah, '#241d3e'); frame(ctx, bt.x, bt.y, aw, ah, '#6a5f9a');
+      ctx.globalAlpha = 0.25 + pulse * 0.4;
+      for (let i = 0; i < 22; i++) { const hw = Math.round(i * 0.8); rect(ctx, bt.x + aw / 2 + dir * (11 - i), bt.y + ah / 2 - hw, 2, hw * 2 + 1, '#ffd24a'); }
+      ctx.globalAlpha = 1;
+    }
+    this.readyBtn = new Btn(W / 2 - 130, H - 58, 260, 40, this.confirmed ? 'READY!' : 'TAKE THE STAGE', () => this.confirm(),
+      { color: this.confirmed ? UI.gold : UI.green, hi: this.confirmed ? UI.goldHi : UI.greenHi, lo: this.confirmed ? UI.goldLo : UI.greenLo, ol: '#20180a' });
     this.readyBtn.draw(ctx);
-    drawText(ctx, Game.touch ? 'TAP A BAND MEMBER' : 'LEFT / RIGHT     ENTER', W / 2, H - 14, '#8a86b0', { align: 'center', font: 'small' });
+    drawText(ctx, Game.touch ? 'TAP AN ARROW OR A BUG' : 'LEFT / RIGHT     ENTER', W / 2, H - 12, '#8a86b0', { align: 'center', font: 'small' });
     if (this.confirmed) {
       const k = clamp(this.confirmT / 0.4, 0, 1), sc = lerp(12, 6, easeOutBack(k));
       ctx.globalAlpha = clamp(2.2 - this.confirmT * 1.4, 0, 1);
@@ -8804,6 +9426,13 @@ class ConcertScene {
   }
   update(dt) {
     this.t += dt; this.phaseT += dt; this.lightT += dt; this.fx.update(dt); this.pyroT = Math.max(0, this.pyroT - dt);
+    this.singT = Math.max(0, (this.singT || 0) - dt); this.crowdSingT = Math.max(0, (this.crowdSingT || 0) - dt);
+    // smoke off the deck, always, because a stage this size is never clear
+    if (this.phase === 'play' && Math.random() < dt * 5) {
+      const sx = Math.random() * W;
+      this.fx.add({ x: sx, y: this.stageRect().bottom - 12, vx: (Math.random() - 0.5) * 26, vy: -14 - Math.random() * 22,
+        life: 2.6 + Math.random() * 1.4, kind: 'smoke', color: Math.random() < 0.3 ? '#8a7fc0' : '#5a5474', size: 9, grow: 30, alpha: 0.3, gravity: -5 });
+    }
     this.haze.update(dt);
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
@@ -8850,7 +9479,12 @@ class ConcertScene {
     const gear = gearInstrument(this.you.instrument, 5);
     const sections = [{ instrument: this.you.instrument, instr: gear, startBar: 0, endBar: song.bars }];
     const diff = mv.impossible ? 7 : mv.difficulty;
-    const notes = chartFromMelody(song, sections, diff, this.rng, { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6 });
+    // The stadium kit plays a part, not a loop, and it is pitched harder than
+    // anything on the street. You cannot lose this night either way — it is a
+    // memory, and it ends how it ends.
+    const kitHere = gear.view === 'kit';
+    const notes = chartFromMelody(song, sections, kitHere ? Math.max(diff, 4) + (mv.impossible ? 2 : 1) : diff, this.rng,
+      { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6, showcase: kitHere });
     if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
     const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: mv.impossible ? 0.75 : 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
     // An instrument you play by hand is played by hand here too, on a stage
@@ -8869,6 +9503,12 @@ class ConcertScene {
     this.backing = new Backing(song, start - song.leadIn,
       () => this.earMode && this.rhythm.phase === 'call' ? { bass: true, chords: true } : ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }),
       this.earMode ? { loop: true, steps } : {});
+    // A stadium has a singer in it and forty thousand people who know the
+    // words. The chip voice takes the tune; the room comes in on every
+    // turnaround, and you can see it as well as hear it.
+    this.backing.vocal = true;
+    this.backing.onSing = (when, midi) => { this.singT = 0.34; this.singPitch = midi; };
+    this.backing.onCrowdSing = () => { this.crowdSingT = 2.6; Audio.roar(1.2, 0.22); };
     this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map(); this.dragDrum = new Map();
     this.pyro(mv.pyro);
   }
@@ -9031,6 +9671,26 @@ class ConcertScene {
       this.haze.draw(ctx, 0, top, W, floorY - top, this.stageLights[1]);
     }
     drawArenaCrowd(ctx, this.crowd, this.t, bottom - Math.round(h * 0.22), bottom, dead ? 'angry' : 'happy', won ? 1.8 : 1);
+    // The room singing: notes coming up out of the crowd for a couple of bars
+    // after every turnaround, and the whole floor lifting while it lasts.
+    if (this.crowdSingT > 0) {
+      const k = clamp(this.crowdSingT / 2.6, 0, 1), cy = bottom - Math.round(h * 0.16);
+      for (let i = 0; i < 18; i++) {
+        const seed = (i * 137) % 100 / 100, rise = ((this.t * 0.55 + seed) % 1);
+        const cx = 20 + ((i * 213) % (W - 40));
+        ctx.globalAlpha = (1 - rise) * k * 0.85;
+        drawText(ctx, i % 3 ? '♪' : '♫', cx, cy - rise * 130, i % 2 ? '#ffd24a' : '#8ad8ff', { align: 'center', scale: 2, outline: '#12101c' });
+        ctx.globalAlpha = 1;
+      }
+      ctx.globalAlpha = k * 0.12; rect(ctx, 0, bottom - Math.round(h * 0.24), W, Math.round(h * 0.24), '#ffd88a'); ctx.globalAlpha = 1;
+    }
+    // and the singer's own note, thrown up off the stage as it is sung
+    if (this.singT > 0) {
+      const k = this.singT / 0.34, sx = W / 2 - 30;
+      ctx.globalAlpha = k * 0.9;
+      drawText(ctx, '♪', sx, bottom - h * 0.5 - (1 - k) * 26, '#fff8e0', { align: 'center', scale: 3, outline: '#2a1a40' });
+      ctx.globalAlpha = 1;
+    }
     if (dead && Math.floor(this.t * 3) % 2 === 0) for (let i = 0; i < 8; i++) drawText(ctx, 'BOO', (i * 137 + 50) % W, bottom - Math.round(h * 0.22) - 10 - (i % 3) * 12, '#ff5a5a', { align: 'center' });
     for (const o of this.throwables) { const c = propCanvas(o.kind); ctx.save(); ctx.translate(Math.round(o.x), Math.round(o.y)); ctx.rotate(o.rot); ctx.drawImage(c, -c.width, -c.height, c.width * 2, c.height * 2); ctx.restore(); }
     this.fx.draw(ctx);
@@ -9684,7 +10344,7 @@ function buildSF() {
   _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
 }
-const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', home: '#666' };
+const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
   // A question mark does not sit still. It bobs, and it throws a little light,
@@ -9801,6 +10461,7 @@ class CityScene {
       case 'recruit': Game.go(() => new RecruitScene(n), 'iris'); break;
       case 'event': Game.go(() => new EventScene(n), 'iris'); break;
       case 'mystery': Game.go(() => new MysteryScene(n), 'iris'); break;
+      case 'inside': Game.go(() => new InteriorScene(n), 'iris'); break;
       case 'rest': Game.go(() => new RestScene(n), 'fade'); break;
       case 'pickup': {
         if (done[n.id] === r.day) { this.flash('NOTHING LEFT HERE'); break; }
@@ -11217,7 +11878,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -11273,14 +11934,14 @@ class RunState {
   gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -11334,11 +11995,16 @@ const Game = {
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); if (e.repeat) return; Audio.init();
       if (e.code === 'KeyM' && !(this.scene && this.scene.isPlaying && this.scene.isPlaying())) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
+      if (e.code === 'KeyP' && this.run && this.scene && !(this.scene instanceof PhoneScene) && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => new PhoneScene(() => here), 'slideL'); return; }
       this.keys.add(e.code); if (this.trans.active) return; if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
     const c = this.canvas; c.style.touchAction = 'none'; c.addEventListener('contextmenu', (e) => e.preventDefault());
-    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.trans.active) return; if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
+    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.trans.active) return;
+      // the phone in the top bar opens from wherever you are, as long as you
+      // are not in the middle of playing something
+      if (this.openPhone(p.x, p.y)) return;
+      if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
     c.addEventListener('pointermove', (e) => { const p = this.toCanvas(e); this.mouse = p; if (this.pointers.has(e.pointerId)) { this.pointers.set(e.pointerId, p); if (this.scene && this.scene.pointerMove) this.scene.pointerMove(p.x, p.y, e.pointerId); } else if (e.pointerType === 'mouse' && this.scene && this.scene.hover) this.scene.hover(p.x, p.y); });
     const release = (e) => { if (!this.pointers.has(e.pointerId)) return; const p = this.toCanvas(e); this.pointers.delete(e.pointerId); if (this.scene && this.scene.pointerUp) this.scene.pointerUp(p.x, p.y, e.pointerId); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
@@ -11381,6 +12047,13 @@ const Game = {
     well(4, 96); well(104, 56);
     ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
     ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
+    // the phone, with a badge when somebody new is in it and has not been called
+    const un = (r.contacts || []).filter(k => !r.usedContacts.includes(k)).length;
+    this.phoneBtn = { x: 166, y: 2, w: 34, h: 20 };
+    well(166, 34);
+    ctx.drawImage(icon('phone'), 170, 6, 12, 12);
+    if (un) { rect(ctx, 184, 5, 12, 12, '#c8433a'); frame(ctx, 184, 5, 12, 12, '#ffd0c0'); drawText(ctx, String(un), 190, 8, '#fff8e8', { align: 'center', font: 'small' }); }
+    else drawText(ctx, String((r.contacts || []).length), 190, 8, '#8a8070', { align: 'center', font: 'small' });
     // the day, on a small plate, with a pip per day so the run has a shape
     const dayTxt = 'DAY ' + Math.min(5, r.day + 1) + '/5', dw = textWidth(dayTxt) + 56;
     rect(ctx, W / 2 - dw / 2, 2, dw, 20, UI.header); rect(ctx, W / 2 - dw / 2, 2, dw, 1, UI.headerHi);
@@ -11390,6 +12063,19 @@ const Game = {
     let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 20; uiSlotMini(ctx, cx, 3, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[ck].icon)), 0, 0, 32, 32, cx + 2, 5, 14, 14); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }
+  },
+  // Tapping the phone in the HUD. Not while a set is running, and not while
+  // the phone is already open.
+  openPhone(x, y) {
+    const b = this.phoneBtn;
+    if (!b || !this.run || !this.scene) return false;
+    if (this.scene instanceof PhoneScene) return false;
+    if (this.scene.isPlaying && this.scene.isPlaying()) return false;
+    if (x < b.x || x >= b.x + b.w || y < b.y || y >= b.y + b.h) return false;
+    const here = this.scene, back = () => here;
+    Audio.ui('select');
+    this.go(() => new PhoneScene(back), 'slideL');
+    return true;
   },
   afterNode() { this.run.save(); this.setScene(new CityScene()); },
 };

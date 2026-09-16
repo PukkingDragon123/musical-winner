@@ -13,6 +13,9 @@ const SCENES = [
   ['rest', "new RestScene(NODES.find(n=>n.type=='rest')||NODES[0])"],
   ['treasure', "new TreasureScene(NODES.find(n=>n.type=='treasure')||NODES[0])"],
   ['mystery', "new MysteryScene(NODES.find(n=>n.type=='mystery'))"],
+  ['inside-mall', "new InteriorScene(NODES.find(n=>n.interior=='mall'))"],
+  ['inside-metro', "new InteriorScene(NODES.find(n=>n.interior=='metro'))"],
+  ['phone', "(()=>{Game.run.contacts=['moth','scout'];return new PhoneScene(()=>new CityScene());})()"],
   ['event', "new EventScene(NODES.find(n=>n.type=='event')||NODES[0])"],
   ['draft', 'new DraftScene()'], ['night', 'new NightScene()'], ['band', 'new BandScene()'],
   ['backstage', 'new BackstageScene()'], ['flight', 'new FlightScene()'],
@@ -22,10 +25,19 @@ const INSTR = ['drums', 'guitar', 'piano', 'taiko', 'sax', 'violin', 'trumpet', 
 (async () => {
   const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   let bad = 0, checked = 0;
-  const lit = async (p) => p.evaluate(() => { const c = Game.canvas, g = c.getContext('2d');
+  const litNow = async (p) => p.evaluate(() => { const c = Game.canvas, g = c.getContext('2d');
     const d = g.getImageData(0, 0, c.width, c.height).data; let n = 0, l = 0;
     for (let i = 0; i < d.length; i += 4 * 97) { n++; if (d[i] + d[i+1] + d[i+2] > 90) l++; }
     return Math.round(l / n * 100); });
+  // A scene is allowed to be black for a moment — the opening deliberately is,
+  // and transitions pass through it. What is not allowed is never showing
+  // anything at all, so this waits for the first lit frame and only fails if
+  // one never arrives.
+  const lit = async (p, ms = 4200) => {
+    let best = 0, waited = 0;
+    while (waited < ms) { const v = await litNow(p); if (v > best) best = v; if (best >= 12) return best; await p.waitForTimeout(300); waited += 300; }
+    return best;
+  };
   for (const touch of [false, true]) {
     const ctx = await b.newContext({ viewport: { width: 960, height: 540 }, hasTouch: touch });
     const p = await ctx.newPage();

@@ -12,7 +12,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -68,14 +68,14 @@ class RunState {
   gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -129,11 +129,16 @@ const Game = {
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); if (e.repeat) return; Audio.init();
       if (e.code === 'KeyM' && !(this.scene && this.scene.isPlaying && this.scene.isPlaying())) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
+      if (e.code === 'KeyP' && this.run && this.scene && !(this.scene instanceof PhoneScene) && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => new PhoneScene(() => here), 'slideL'); return; }
       this.keys.add(e.code); if (this.trans.active) return; if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
     const c = this.canvas; c.style.touchAction = 'none'; c.addEventListener('contextmenu', (e) => e.preventDefault());
-    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.trans.active) return; if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
+    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touch = true; Audio.init(); try { c.setPointerCapture(e.pointerId); } catch (err) { } const p = this.toCanvas(e); this.pointers.set(e.pointerId, p); this.mouse = p; if (this.trans.active) return;
+      // the phone in the top bar opens from wherever you are, as long as you
+      // are not in the middle of playing something
+      if (this.openPhone(p.x, p.y)) return;
+      if (this.scene && this.scene.pointerDown) this.scene.pointerDown(p.x, p.y, e.pointerId); else if (this.scene && this.scene.click) this.scene.click(p.x, p.y); });
     c.addEventListener('pointermove', (e) => { const p = this.toCanvas(e); this.mouse = p; if (this.pointers.has(e.pointerId)) { this.pointers.set(e.pointerId, p); if (this.scene && this.scene.pointerMove) this.scene.pointerMove(p.x, p.y, e.pointerId); } else if (e.pointerType === 'mouse' && this.scene && this.scene.hover) this.scene.hover(p.x, p.y); });
     const release = (e) => { if (!this.pointers.has(e.pointerId)) return; const p = this.toCanvas(e); this.pointers.delete(e.pointerId); if (this.scene && this.scene.pointerUp) this.scene.pointerUp(p.x, p.y, e.pointerId); };
     c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
@@ -176,6 +181,13 @@ const Game = {
     well(4, 96); well(104, 56);
     ctx.drawImage(icon('coin'), 8, 7, 12, 11); drawText(ctx, fmtMoney(r.money), 24, 8, '#7a4a10');
     ctx.drawImage(icon('phone'), 108, 7, 11, 11); drawText(ctx, String(r.tickets), 124, 8, r.tickets > 0 ? '#2a5ab0' : '#b02a2a');
+    // the phone, with a badge when somebody new is in it and has not been called
+    const un = (r.contacts || []).filter(k => !r.usedContacts.includes(k)).length;
+    this.phoneBtn = { x: 166, y: 2, w: 34, h: 20 };
+    well(166, 34);
+    ctx.drawImage(icon('phone'), 170, 6, 12, 12);
+    if (un) { rect(ctx, 184, 5, 12, 12, '#c8433a'); frame(ctx, 184, 5, 12, 12, '#ffd0c0'); drawText(ctx, String(un), 190, 8, '#fff8e8', { align: 'center', font: 'small' }); }
+    else drawText(ctx, String((r.contacts || []).length), 190, 8, '#8a8070', { align: 'center', font: 'small' });
     // the day, on a small plate, with a pip per day so the run has a shape
     const dayTxt = 'DAY ' + Math.min(5, r.day + 1) + '/5', dw = textWidth(dayTxt) + 56;
     rect(ctx, W / 2 - dw / 2, 2, dw, 20, UI.header); rect(ctx, W / 2 - dw / 2, 2, dw, 1, UI.headerHi);
@@ -185,6 +197,19 @@ const Game = {
     let cx = W - 8; for (let i = r.charms.length - 1; i >= 0; i--) { const ck = r.charms[i]; cx -= 20; uiSlotMini(ctx, cx, 3, false, 18); ctx.drawImage(itemCanvas(charmArt(CHARMS[ck].icon)), 0, 0, 32, 32, cx + 2, 5, 14, 14); }
     for (let i = r.charms.length; i < r.charmSlots; i++) { cx -= 18; uiSlotMini(ctx, cx, 4, true, 16); }
     for (let i = r.members.length - 1; i >= 0; i--) { const m = r.members[i]; cx -= 24; circle(ctx, cx + 10, 12, 10, m.hunger >= 2 ? '#c8433a' : m.hunger === 1 ? '#d9a520' : '#4f8032'); ctx.save(); ctx.beginPath(); ctx.arc(cx + 10, 12, 9, 0, Math.PI * 2); ctx.clip(); drawBugAt(ctx, m.spec, cx + 10, 25, { pose: 'idle', scale: 0.55, bounce: 0 }); ctx.restore(); }
+  },
+  // Tapping the phone in the HUD. Not while a set is running, and not while
+  // the phone is already open.
+  openPhone(x, y) {
+    const b = this.phoneBtn;
+    if (!b || !this.run || !this.scene) return false;
+    if (this.scene instanceof PhoneScene) return false;
+    if (this.scene.isPlaying && this.scene.isPlaying()) return false;
+    if (x < b.x || x >= b.x + b.w || y < b.y || y >= b.y + b.h) return false;
+    const here = this.scene, back = () => here;
+    Audio.ui('select');
+    this.go(() => new PhoneScene(back), 'slideL');
+    return true;
   },
   afterNode() { this.run.save(); this.setScene(new CityScene()); },
 };

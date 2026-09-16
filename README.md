@@ -23,6 +23,24 @@ The last solo cannot be landed. The crowd boos and throws tomatoes, cans and a b
 Backstage is a dressing room with a bulb-lit mirror, a costume rack, gold records and one
 open door. They put you on a plane. You practise once at 30,000 feet.
 
+## Inside buildings
+
+Four pins on the map are not places, they are *buildings*: Nakano Broadway, Radio Kaikan, Shinjuku
+and Shibuya stations. You walk around inside them. Every room looks a lot like the last one, the
+exit signs disagree with each other, and going left after going right does not reliably bring you
+back — the connections are wired deliberately badly, because that is what being inside Nakano
+Broadway actually feels like. Somewhere in there is the shop or the platform you came for, and
+somewhere else is the way out, never the room you walked in on. Each room costs stamina, so getting
+lost is expensive.
+
+## The phone
+
+People you play well for give you their number, and it goes in the phone in the top bar — a cheap
+flip handset with a green screen. Six of them: the old moth off the dango cart feeds the whole band
+once for nothing, the officer from the koban makes a corner yours for a night, the busker from the
+underpass sits in for a set, the A&R wasp books you one night paid up front. Each one does its
+thing once and is then greyed out for the rest of the run. Press P, or tap the handset.
+
 ## Testing
 
 `node test/notblank.js` walks every scene the game can reach, on a mouse and on a touch screen,
@@ -66,6 +84,12 @@ street-corner pickups. Stamina runs out, night falls, dinner costs money per bug
 Dome unlocks on the last day. It is drawn like a map somebody actually printed: stations boxed on
 the Yamanote loop, painted crossings at the scrambles, torii at the shrines, bridges where a road
 meets water, clumps of trees inside the parks, and both towers marked where they really stand.
+
+**The camera is right in.** These are the only scenes in the game with one thing happening in them,
+so it pushes past the wide shot and holds at about 1.7x on the action, drifting slowly so it never
+sits still. The choices are cards across the bottom now rather than a list of small rows —
+colour-coded, one per option, big enough to read across a room and hit with a thumb, with the ones
+you cannot afford greyed out rather than hidden.
 
 **Every encounter opens as a scene.** Letterbox bars slide in, a portrait of whoever is talking
 slides up, and the line types itself out over the moving vignette — the coals still glowing, the
@@ -173,6 +197,19 @@ are on is a shot working against you. On a phone this is the whole point, becaus
 a target a thumb cannot miss. A struck drum answers properly: a sub under the shell you feel
 rather than hear, a tick of stick on skin, the room slapping back a few milliseconds later, a flat
 wave of light running out across the head, sparks, dust off the mat and a shove to the camera.
+
+**The opening is a sequence now.** The house lights are down and the room is black with a few
+lighters in it. Then they come up on one member at a time, each with their name thrown across the
+screen on a tilted slash with speed lines through it, the way a fighting game does a roll call.
+Only when the whole band has been introduced do you pick which one you are, with big arrows either
+side. Then it goes dark again, your name comes up alone, and the show starts — smoke off the deck
+the whole way through, an 8-bit voice singing the tune, and forty thousand people coming in
+underneath it on every turnaround, which you can see as well as hear.
+
+**The stadium kit plays a part, not a loop.** Four bar-shapes cycled, the kick syncopating against
+a backbeat that never moves, ghost notes in the gaps, a crash on every phrase and a real sixteenth
+fill at the end of it. Fourteen distinct bars out of sixteen, at four notes a second — where the
+street groove at day one is one bar repeated at two.
 
 **The stage had no drum input at all.** The opening concert draws its own scene and handled its own
 taps, and nothing in it knew what a drum kit was — so a drummer's biggest night could only be

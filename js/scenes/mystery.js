@@ -551,6 +551,13 @@ class MysteryScene {
   }
   key(code) {
     if (this.phase === 'talk') { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.cut.advance(); return; }
+    if (this.phase === 'choose') {
+      const n = this.menu.items.length;
+      if (code === 'ArrowLeft' || code === 'KeyA') { this.menu.idx = (this.menu.idx + n - 1) % n; Audio.ui('move'); return; }
+      if (code === 'ArrowRight' || code === 'KeyD') { this.menu.idx = (this.menu.idx + 1) % n; Audio.ui('move'); return; }
+      if (['Enter', 'Space', 'KeyZ'].includes(code)) { this.menu.select(); return; }
+      return;
+    }
     if (this.phase === 'game') {
       const g = this.game; if (!g || g.over) return;
       if (g.kind === 'timing') { if (['Space', 'Enter'].includes(code)) this.stopNeedle(); return; }
@@ -560,19 +567,41 @@ class MysteryScene {
     }
     this.menu.key(code);
   }
-  click(x, y) { if (this.phase === 'talk') { this.cut.advance(); return; } if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
-  hover(x, y) { if (this.phase !== 'game') this.menu.hover(x, y); }
+  click(x, y) {
+    if (this.phase === 'talk') { this.cut.advance(); return; }
+    if (this.phase === 'game') { this.hitGame(x, y); return; }
+    if (this.phase === 'choose' && this.cards) {
+      for (const k of this.cards) if (x >= k.x && x < k.x + k.w && y >= k.y - 12 && y < k.y + k.h) { this.menu.idx = k.i; this.menu.select(); return; }
+      return;
+    }
+    this.menu.click(x, y);
+  }
+  hover(x, y) {
+    if (this.phase === 'choose' && this.cards) { for (const k of this.cards) if (x >= k.x && x < k.x + k.w && y >= k.y - 12 && y < k.y + k.h) this.menu.idx = k.i; return; }
+    if (this.phase !== 'game') this.menu.hover(x, y);
+  }
   draw(ctx) {
     const art = MYSTERY_ART[this.m.scene] || MYSTERY_ART.dango;
-    // The panel owns the bottom of the screen, so the scene is played above
-    // it: every vignette is drawn to a full-height stage and then lifted, with
-    // a dark base under the lift so there is never a seam.
+    // Right in. These are the only scenes in the game with one thing happening
+    // in them, so the camera pushes past the wide shot and holds on it: about
+    // a 1.7x punch centred on the action, drifting slowly so it never sits
+    // still. Everything below is drawn on top of it, unscaled.
     rect(ctx, 0, 0, W, H, '#120e1e');
-    ctx.save(); ctx.translate(0, -LIFT); art(ctx, this.t); ctx.restore();
+    // The action in every vignette sits around (560, 360) in its own space —
+    // the cart, the bench, the machine, whoever is talking — so that is what
+    // the camera is pointed at, not the middle of a mostly empty frame.
+    const z = 1.7;
+    const fx2 = 560 + Math.sin(this.t * 0.2) * 18, fy2 = 352 + Math.cos(this.t * 0.15) * 8;
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 28); ctx.scale(z, z); ctx.translate(-fx2, -fy2);
+    art(ctx, this.t);
+    ctx.restore();
+    // vignette the punch-in, so the eye goes where the camera went
+    vignetteRect(ctx, 0, 0, W, H - 150, 0.5, '#0a0812');
     rect(ctx, 0, H - LIFT - 2, W, LIFT + 2, '#241c30');
     rect(ctx, 0, H - LIFT - 2, W, 2, '#3a2e48');
     // a little grade so the panel always reads over whatever is behind it
-    vgrad(ctx, 0, H - 250, W, 250, 'rgba(10,8,18,0)', 'rgba(10,8,18,0.55)');
+    vgrad(ctx, 0, H - 250, W, 250, 'rgba(10,8,18,0)', 'rgba(10,8,18,0.62)');
     if (this.phase === 'reveal') {
       // the ? cracking open
       const k = clamp(this.t / 0.5, 0, 1);
@@ -584,18 +613,59 @@ class MysteryScene {
     }
     if (this.phase === 'talk') { this.cut.draw(ctx); return; }
     if (this.phase === 'game') { this.drawGame(ctx); this.fx.draw(ctx); Game.drawHud(ctx); return; }
-    // the panel: who it is, what they want, what you can do about it
-    const inner = uiPanel(ctx, 60, H - 196, W - 120, 176, { title: this.m.title });
+    // The choices are cards across the bottom, not a list of small rows: one
+    // banner saying where you are, then two to four fat options you can read
+    // across a room and hit with a thumb.
+    const title = this.m.title;
+    uiRibbon(ctx, W / 2, H - 206, title, { scale: 3, color: '#8a4fd0' });
     if (this.phase === 'done') {
-      let y = inner.y + 10;
-      for (const l of this.log) y += drawWrapped(ctx, l, inner.x + 14, y, 88, '#7a4a10', 14) + 6;
-      this.menu.draw(ctx, inner.x + 14, Math.max(y + 6, inner.y + inner.h - 32), inner.w - 28, 24, 'list');
-    } else {
-      const th = drawWrapped(ctx, this.m.line, inner.x + 14, inner.y + 8, 92, UI.ink, 13);
-      this.menu.draw(ctx, inner.x + 14, inner.y + 10 + th + 4, inner.w - 28, Game.touch ? 23 : 21, 'list');
+      const inner = uiPanel(ctx, 60, H - 172, W - 120, 152);
+      let y = inner.y + 12;
+      for (const l of this.log) y += drawWrapped(ctx, l, inner.x + 16, y, 62, '#7a4a10', 20, { scale: 2 }) + 8;
+      this.menu.draw(ctx, inner.x + 16, inner.y + inner.h - 44, inner.w - 32, 36, 'buttons');
+      this.fx.draw(ctx); Game.drawHud(ctx); return;
     }
+    this.drawCards(ctx);
     this.fx.draw(ctx);
     Game.drawHud(ctx);
+  }
+  // Where each choice card sits. Two, three or four across the bottom.
+  cardRects() {
+    const n = this.m.choices.length;
+    const gap = 12, side = 40, total = W - side * 2;
+    const cw = Math.floor((total - gap * (n - 1)) / n), ch = 150;
+    return this.m.choices.map((c, i) => ({ i, c, x: side + i * (cw + gap), y: H - ch - 14, w: cw, h: ch }));
+  }
+  drawCards(ctx) {
+    const r = Game.run;
+    this.cards = this.cardRects();
+    for (const k of this.cards) {
+      const dis = k.c.req ? !k.c.req(r) : false, sel = this.menu.idx === k.i;
+      const lift = sel && !dis ? 6 : 0;
+      const y = k.y - lift;
+      const face = dis ? '#2a2736' : sel ? '#33294f' : '#221d38';
+      const edge = dis ? '#4a4658' : sel ? '#ffd24a' : '#6a5f9a';
+      rect(ctx, k.x + 4, y + 6, k.w, k.h, 'rgba(6,4,12,0.5)');
+      rect(ctx, k.x, y, k.w, k.h, face);
+      frame(ctx, k.x, k.y - lift, k.w, k.h, edge);
+      frame(ctx, k.x + 2, y + 2, k.w - 4, k.h - 4, dis ? '#241f30' : '#2e2748');
+      // a colour bar at the head of the card saying what kind of choice it is
+      const kind = k.c.game ? { col: '#c58bff', text: 'PLAY FOR IT' } : dis ? { col: '#5a5668', text: 'CANNOT' } : { col: '#3f8a52', text: 'CHOOSE' };
+      rect(ctx, k.x + 3, y + 3, k.w - 6, 22, kind.col);
+      rect(ctx, k.x + 3, y + 3, k.w - 6, 2, lighten(kind.col, 0.35));
+      drawText(ctx, kind.text, k.x + k.w / 2, y + 9, '#12101c', { align: 'center', scale: 2 });
+      // the label, as big as it will go
+      let sc = 3; while (sc > 1 && textWidth(k.c.label, { scale: sc }) > k.w - 16) sc--;
+      const lines = sc > 1 ? [k.c.label] : wrapText(k.c.label, Math.floor((k.w - 16) / 6));
+      let ty = y + 40;
+      for (const ln of lines.slice(0, 4)) { drawText(ctx, ln, k.x + k.w / 2, ty, dis ? '#6a6480' : '#f2ecff', { align: 'center', scale: sc }); ty += sc > 1 ? 7 * sc + 6 : 12; }
+      if (sel && !dis) {
+        // the marker, so the keyboard selection is as obvious as the hover
+        for (let i = 0; i < 6; i++) rect(ctx, k.x + k.w / 2 - (5 - i), y - 12 + i, (5 - i) * 2 + 1, 1, '#ffd24a');
+      }
+      if (dis) { ctx.globalAlpha = 0.35; rect(ctx, k.x + 3, y + 3, k.w - 6, k.h - 6, '#12101c'); ctx.globalAlpha = 1; }
+    }
+    drawText(ctx, Game.touch ? 'TAP A CARD' : 'LEFT / RIGHT     ENTER', W / 2, H - 172, '#a79ce0', { align: 'center', font: 'small' });
   }
   drawGame(ctx) {
     const g = this.game;

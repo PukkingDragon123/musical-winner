@@ -188,9 +188,41 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
   const topChance = [0, 0, 0, 0, 0.07, 0.14, 0.22, 0.3][d];         // a piece on top of a beat
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bars = sec.endBar - sec.startBar;
+  // A stadium is not a street corner. On the big stage the groove stops being
+  // one bar repeated and becomes a part: the pattern changes every four bars,
+  // the kick syncopates against the backbeat, ghost notes fill the gaps, and
+  // every phrase ends on a real fill. Four shapes, cycled, so eight bars never
+  // sound like the eight before them.
+  const show = !!opts.showcase;
+  const SHAPES = [
+    { kick: [0, 2.5], ghost: [1.75, 3.75], push: false },
+    { kick: [0, 1.5, 2.5], ghost: [0.75, 3.25], push: true },
+    { kick: [0, 2, 3.5], ghost: [1.25, 2.75, 3.25], push: false },
+    { kick: [0, 0.75, 2.5, 3], ghost: [1.75], push: true },
+  ];
   for (let bar = 0; bar < bars; bar++) {
     const barT = song.leadIn + (sec.startBar + bar) * 4 * beat;
-    const isPhraseEnd = d >= 5 && bar % 4 === 3;
+    const isPhraseEnd = (show ? bar % 4 === 3 : d >= 5 && bar % 4 === 3);
+    if (show) {
+      const sh = SHAPES[Math.floor(bar / 2) % SHAPES.length];
+      // the backbeat, which never moves: it is what everybody else is following
+      for (const b2 of [1, 3]) out.push({ t: barT + b2 * beat, lane: back, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
+      // the kick pattern, which does
+      for (const k of sh.kick) out.push({ t: barT + k * beat, lane: low, dur: 0, type: 'tap', midi: song.root });
+      // ghost notes on the mid piece, the bits that make it sound played
+      if (n >= 4) for (const g of sh.ghost) if (rng.chance(0.75)) out.push({ t: barT + g * beat, lane: mid, dur: 0, type: 'tap', midi: song.root });
+      // the cymbal: one on the downbeat of every phrase, and a push into the next
+      if (n >= 4 && bar % 4 === 0) out.push({ t: barT, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true, star: true });
+      if (n >= 4 && sh.push && rng.chance(0.6)) out.push({ t: barT + 3.5 * beat, lane: top, dur: 0, type: 'tap', midi: song.root });
+      if (isPhraseEnd) {
+        // a proper fill: sixteenths walking down the kit across the last beat
+        const order = byPitch.slice().reverse();
+        const steps = d >= 5 ? 4 : 3;
+        for (let i = 0; i < steps; i++)
+          out.push({ t: barT + 3 * beat + i * beat / steps, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
+      }
+      continue;
+    }
     for (let b = 0; b < 4; b++) {
       const t = barT + b * beat;
       // the backbone: low piece on one and three, backbeat on two and four
@@ -229,7 +261,7 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
     if (sec.qte) { for (let bar = sec.startBar; bar < sec.endBar; bar++) { const barT = song.leadIn + bar * 4 * beat; const slots = difficulty >= 4 ? [0, 2] : [0]; for (const s of slots) if (rng.chance(0.9)) notes.push({ t: barT + s * beat, lane: 0, dur: 0, type: 'qte', midi: song.root + 12 }); } continue; }
     // a kit plays a groove, not the tune, and never has bombs to dodge
     // — reading a chart is not what this instrument is asking of you
-    if (instr.view === 'kit') { notes.push(...kitGroove(song, sec, difficulty, rng, instr, opts)); continue; }
+    if (instr.view === 'kit') { notes.push(...kitGroove(song, sec, difficulty, rng, instr, opts)); continue; }   // opts carries `showcase` on the big stage
     // walk the melody, looping it to fill the section
     let t = secStart, i = 0, lastLane = Math.floor((instr.lanes || 2) / 2), lastDir = 1, guard = 0;
     while (t < secEnd - 0.001 && guard++ < 900) {

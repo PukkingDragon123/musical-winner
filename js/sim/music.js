@@ -92,6 +92,32 @@ class Backing {
     this.totalSteps = opts.steps || (song.bars + 4) * 16;
     this.stopped = false;
   }
+  // A chip vocal over the top, and the room answering it. The singer takes the
+  // tune; on the last bar of every phrase the crowd comes in underneath an
+  // octave down, five of them, none quite in tune with each other.
+  sing(step, t) {
+    const s = this.song, mel = s.melody; if (!mel || !mel.length) return;
+    const stepDur = this.stepDur;
+    if (this._sungTo == null) { this._sungTo = 0; this._melIdx = 0; this._melT = 0; }
+    while (this._melT <= step) {
+      const [midi, beats] = mel[this._melIdx % mel.length]; this._melIdx++;
+      const steps = Math.max(1, Math.round(beats * 4));
+      if (midi > 0 && this._melT >= step - 0.5) {
+        const when = this.start + this._melT * stepDur;
+        Audio.note('vox8', midi, when, steps * stepDur * 0.92, 0.5);
+        if (this.onSing) this.onSing(when, midi);
+      }
+      this._melT += steps;
+      if (this._melT > step + 16) break;
+    }
+    // the crowd, on the turnaround
+    const bar = Math.floor(step / 16);
+    if (step % 16 === 0 && bar > 1 && bar % 4 === 0) {
+      const chord = s.chords[Math.min(bar - 1, s.bars - 1)] || 0;
+      for (const m of chordTones(s.root, chord)) Audio.note('crowd8', m, t, s.beat * 3.4, 0.42);
+      if (this.onCrowdSing) this.onCrowdSing(t);
+    }
+  }
   update() { if (this.stopped || !Audio.ctx) return; const horizon = Audio.now() + 0.3; while (this.nextStep < this.totalSteps) { const t = this.start + this.nextStep * this.stepDur; if (t > horizon) break; this.schedule(this.nextStep, t); this.nextStep++; } }
   schedule(step, t) {
     const s = this.song, rawBar = Math.floor(step / 16), inBar = step % 16, beatIdx = Math.floor(inBar / 4), sub = inBar % 4;
@@ -100,6 +126,7 @@ class Backing {
     const countIn = rawBar === 0, outro = !this.loop && barIdx > s.bars;
     const mute = typeof this.mute === 'function' ? (this.mute(t) || {}) : this.mute;
     if (countIn) { if (sub === 0) Audio.drum('hat', t, 0.7); return; }
+    if (this.vocal && !outro) this.sing(step, t);
     const chord = s.chords[Math.min(barIdx - 1, s.bars - 1)], rootMidi = s.root - 12, style = s.style || 'rock';
     if (outro) { if (step === (s.bars + 1) * 16) { Audio.drum('crash', t, 0.5); if (style === 'concert') chordTones(s.root, chord).forEach(m => Audio.note('eguitar', m - 12, t, s.beat * 3, 0.4)); } return; }
     if (!mute.drums) {

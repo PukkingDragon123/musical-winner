@@ -77,6 +77,15 @@ const Audio = {
         this._env(out, t, 0.15, vel * 0.5, 0.2, 0.8, t + dur, 0.3); endAt = t + dur + 0.6; break;
       case 'vox': { const o = mk('sawtooth', f0, 0, 0.35); mk('triangle', f0, 6, 0.3); mk('sine', f0 * 2, 0, 0.12); vib(o, 5.8, 16);
         filt.type = 'bandpass'; filt.frequency.value = f0 * 2.6; filt.Q.value = 1.8; this._env(out, t, 0.06, vel * 0.65, 0.1, 0.85, t + dur, 0.18); release = 0.18; endAt = t + dur + 0.4; break; }
+      // ---- the 8-bit voice: a square-wave lead with a fast vibrato and a hard
+      // edge, the way a chip singer sounds. Two of them, slightly apart.
+      case 'vox8': { const o = mk('square', f0, 0, 0.42); mk('square', f0, 9, 0.3); mk('triangle', f0, -6, 0.14); vib(o, 6.4, 22);
+        filt.frequency.setValueAtTime(2600, t); filt.frequency.linearRampToValueAtTime(3600, t + 0.06); filt.Q.value = 1.1;
+        this._env(out, t, 0.012, vel * 0.62, 0.06, 0.88, t + dur, 0.07); release = 0.07; break; }
+      // ---- and a whole room of them, an octave down, none of them in tune
+      case 'crowd8': { for (let i = 0; i < 5; i++) mk('square', f0 / 2, (i - 2) * 17, 0.14); mk('triangle', f0, 0, 0.1);
+        filt.frequency.value = 1500; filt.Q.value = 0.8;
+        this._env(out, t, 0.07, vel * 0.5, 0.12, 0.85, t + dur, 0.2); release = 0.2; endAt = t + dur + 0.4; break; }
       case 'harmonica': { const o = mk('square', f0, 0, 0.25); mk('sawtooth', f0 * 2, 3, 0.2); vib(o, 6, 12); filt.frequency.value = 3000; this._env(out, t, 0.03, vel * 0.5, 0.1, 0.8, t + dur, 0.1); break; }
       // ---- shamisen: a hard plectrum strike on gut, with the buzzing sawari
       case 'shamisen': { mk('triangle', f0, 0, 0.55); mk('sawtooth', f0, 11, 0.3); mk('square', f0 * 2, 0, 0.12); mk('sawtooth', f0 * 3.02, 0, 0.06);

@@ -56,6 +56,13 @@ class ConcertScene {
   }
   update(dt) {
     this.t += dt; this.phaseT += dt; this.lightT += dt; this.fx.update(dt); this.pyroT = Math.max(0, this.pyroT - dt);
+    this.singT = Math.max(0, (this.singT || 0) - dt); this.crowdSingT = Math.max(0, (this.crowdSingT || 0) - dt);
+    // smoke off the deck, always, because a stage this size is never clear
+    if (this.phase === 'play' && Math.random() < dt * 5) {
+      const sx = Math.random() * W;
+      this.fx.add({ x: sx, y: this.stageRect().bottom - 12, vx: (Math.random() - 0.5) * 26, vy: -14 - Math.random() * 22,
+        life: 2.6 + Math.random() * 1.4, kind: 'smoke', color: Math.random() < 0.3 ? '#8a7fc0' : '#5a5474', size: 9, grow: 30, alpha: 0.3, gravity: -5 });
+    }
     this.haze.update(dt);
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
@@ -102,7 +109,12 @@ class ConcertScene {
     const gear = gearInstrument(this.you.instrument, 5);
     const sections = [{ instrument: this.you.instrument, instr: gear, startBar: 0, endBar: song.bars }];
     const diff = mv.impossible ? 7 : mv.difficulty;
-    const notes = chartFromMelody(song, sections, diff, this.rng, { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6 });
+    // The stadium kit plays a part, not a loop, and it is pitched harder than
+    // anything on the street. You cannot lose this night either way — it is a
+    // memory, and it ends how it ends.
+    const kitHere = gear.view === 'kit';
+    const notes = chartFromMelody(song, sections, kitHere ? Math.max(diff, 4) + (mv.impossible ? 2 : 1) : diff, this.rng,
+      { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6, showcase: kitHere });
     if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
     const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: mv.impossible ? 0.75 : 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
     // An instrument you play by hand is played by hand here too, on a stage
@@ -121,6 +133,12 @@ class ConcertScene {
     this.backing = new Backing(song, start - song.leadIn,
       () => this.earMode && this.rhythm.phase === 'call' ? { bass: true, chords: true } : ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }),
       this.earMode ? { loop: true, steps } : {});
+    // A stadium has a singer in it and forty thousand people who know the
+    // words. The chip voice takes the tune; the room comes in on every
+    // turnaround, and you can see it as well as hear it.
+    this.backing.vocal = true;
+    this.backing.onSing = (when, midi) => { this.singT = 0.34; this.singPitch = midi; };
+    this.backing.onCrowdSing = () => { this.crowdSingT = 2.6; Audio.roar(1.2, 0.22); };
     this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map(); this.dragDrum = new Map();
     this.pyro(mv.pyro);
   }
@@ -283,6 +301,26 @@ class ConcertScene {
       this.haze.draw(ctx, 0, top, W, floorY - top, this.stageLights[1]);
     }
     drawArenaCrowd(ctx, this.crowd, this.t, bottom - Math.round(h * 0.22), bottom, dead ? 'angry' : 'happy', won ? 1.8 : 1);
+    // The room singing: notes coming up out of the crowd for a couple of bars
+    // after every turnaround, and the whole floor lifting while it lasts.
+    if (this.crowdSingT > 0) {
+      const k = clamp(this.crowdSingT / 2.6, 0, 1), cy = bottom - Math.round(h * 0.16);
+      for (let i = 0; i < 18; i++) {
+        const seed = (i * 137) % 100 / 100, rise = ((this.t * 0.55 + seed) % 1);
+        const cx = 20 + ((i * 213) % (W - 40));
+        ctx.globalAlpha = (1 - rise) * k * 0.85;
+        drawText(ctx, i % 3 ? '♪' : '♫', cx, cy - rise * 130, i % 2 ? '#ffd24a' : '#8ad8ff', { align: 'center', scale: 2, outline: '#12101c' });
+        ctx.globalAlpha = 1;
+      }
+      ctx.globalAlpha = k * 0.12; rect(ctx, 0, bottom - Math.round(h * 0.24), W, Math.round(h * 0.24), '#ffd88a'); ctx.globalAlpha = 1;
+    }
+    // and the singer's own note, thrown up off the stage as it is sung
+    if (this.singT > 0) {
+      const k = this.singT / 0.34, sx = W / 2 - 30;
+      ctx.globalAlpha = k * 0.9;
+      drawText(ctx, '♪', sx, bottom - h * 0.5 - (1 - k) * 26, '#fff8e0', { align: 'center', scale: 3, outline: '#2a1a40' });
+      ctx.globalAlpha = 1;
+    }
     if (dead && Math.floor(this.t * 3) % 2 === 0) for (let i = 0; i < 8; i++) drawText(ctx, 'BOO', (i * 137 + 50) % W, bottom - Math.round(h * 0.22) - 10 - (i % 3) * 12, '#ff5a5a', { align: 'center' });
     for (const o of this.throwables) { const c = propCanvas(o.kind); ctx.save(); ctx.translate(Math.round(o.x), Math.round(o.y)); ctx.rotate(o.rot); ctx.drawImage(c, -c.width, -c.height, c.width * 2, c.height * 2); ctx.restore(); }
     this.fx.draw(ctx);
