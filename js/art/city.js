@@ -208,3 +208,134 @@ function blockCanvas(seed, w, d, h, style) {
     return P.toCanvas();
   });
 }
+
+// ---------- Tokyo from the air ----------
+// One picture, used twice: through the window on the way in, and under the
+// drone in the opening. It is built once into a canvas and then only the
+// things that actually move — traffic, warning lights, the beams off the dome
+// — are drawn live over the top.
+function tokyoAerial(w, h, seed = 5) {
+  const key = 'aerial|' + w + '|' + h + '|' + seed;
+  if (tokyoAerial.cache && tokyoAerial.cache[key]) return tokyoAerial.cache[key];
+  if (!tokyoAerial.cache) tokyoAerial.cache = {};
+  const c = makeCanvas(w, h), x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  const r = makeRng(seed * 977 + 13);
+  const hy = Math.round(h * 0.28);                     // the horizon
+  const depth = (d) => hy + (h - hy) * Math.pow(d, 1.9);
+  const spread = (d) => 0.22 + d * 1.5;                // how wide the grid is at that depth
+  // ---- sky, stars, and the glow the city throws up into it
+  vgrad(x, 0, 0, w, hy + 2, '#080a1e', '#241f48');
+  for (let i = 0; i < Math.round(w * h / 900); i++) { const sy = r.int(0, hy - 8); x.globalAlpha = r.range(0.2, 0.9) * (1 - sy / hy); px(x, r.int(0, w - 1), sy, '#e8e6ff'); }
+  x.globalAlpha = 1;
+  x.globalAlpha = 0.5; vgrad(x, 0, hy - Math.round(h * 0.12), w, Math.round(h * 0.12) + 2, 'rgba(255,170,120,0)', '#b06a5a'); x.globalAlpha = 1;
+  // ---- Fuji, out west, with snow on it
+  const fx0 = Math.round(w * 0.17), fw = Math.round(w * 0.2), fh = Math.round(h * 0.11);
+  x.fillStyle = '#1b1a34'; x.beginPath(); x.moveTo(fx0, hy + 1); x.lineTo(fx0 + fw / 2, hy - fh); x.lineTo(fx0 + fw, hy + 1); x.fill();
+  x.fillStyle = '#4a4a6e'; x.beginPath(); x.moveTo(fx0 + fw * 0.34, hy - fh * 0.42); x.lineTo(fx0 + fw / 2, hy - fh); x.lineTo(fx0 + fw * 0.66, hy - fh * 0.42);
+  x.lineTo(fx0 + fw * 0.56, hy - fh * 0.52); x.lineTo(fx0 + fw * 0.46, hy - fh * 0.38); x.fill();
+  // ---- the far bank: a solid band of light too distant to make out
+  rect(x, 0, hy, w, 3, '#5a4a6a');
+  for (let i = 0; i < w; i += 2) if (r.chance(0.5)) px(x, i, hy - 1 - r.int(0, 2), r.chance(0.2) ? '#ffd8a0' : '#8a8ab8');
+  // ---- the ground the whole city sits on
+  rect(x, 0, hy + 2, w, h - hy - 2, '#0c0c16');
+  // ---- the bay, bottom right, with the light of the shore running into it
+  const bayX = Math.round(w * 0.72);
+  x.fillStyle = '#0d1a30'; x.beginPath();
+  x.moveTo(w, depth(0.18)); x.lineTo(bayX, h); x.lineTo(w, h); x.fill();
+  for (let i = 0; i < 80; i++) { const ry = depth(r.range(0.2, 1)); const rx = r.range(bayX + (ry - hy) * 0.2, w); x.globalAlpha = r.range(0.1, 0.4); rect(x, rx, ry, r.int(2, 7), 1, '#6a90c8'); }
+  x.globalAlpha = 1;
+  // ---- the river, coming down out of the north
+  x.strokeStyle = '#122038'; x.lineWidth = Math.max(3, Math.round(h / 90)); x.beginPath();
+  x.moveTo(w * 0.62, hy + 2);
+  for (let d = 0; d <= 1; d += 0.1) x.lineTo(w * (0.62 + Math.sin(d * 3.1) * 0.06 + d * 0.06), depth(d));
+  x.stroke(); x.lineWidth = 1;
+  // ---- the grid: blocks of buildings, smaller and tighter the further out
+  const roads = [];
+  const ROWS = 15, COLS = 17;
+  for (let i = ROWS - 1; i >= 0; i--) {
+    const d0 = i / ROWS, d1 = (i + 1) / ROWS;
+    const y0 = depth(d0), y1 = depth(d1), rh = Math.max(2, y1 - y0);
+    const sp = spread(d0), cw = (w * sp) / COLS;
+    for (let j = 0; j < COLS; j++) {
+      const bx = w / 2 + (j - COLS / 2) * cw + cw * 0.08;
+      const bw = cw * 0.84;
+      if (bx + bw < 0 || bx > w) continue;
+      // the bay is water, not blocks
+      if (bx > bayX + (y0 - hy) * 0.2 && d0 > 0.2) continue;
+      const bh = rh * r.range(0.5, 1.25) * (1 + d0 * 0.6);
+      const by = y0 + rh - bh;
+      const tone = r.pick(['#1b1b2c', '#20203a', '#171726', '#25243e']);
+      rect(x, bx, by, Math.max(1, bw), Math.max(1, bh), tone);
+      rect(x, bx, by, Math.max(1, bw), 1, lighten(tone, 0.18));
+      // lit windows, in rows, thinning out with distance
+      const step = Math.max(2, Math.round(2 + d0 * 3));
+      for (let wy = by + 1; wy < by + bh - 1; wy += step)
+        for (let wx = bx + 1; wx < bx + bw - 1; wx += step) {
+          if (!r.chance(0.34)) continue;
+          px(x, Math.round(wx), Math.round(wy), r.chance(0.16) ? '#ffe6a0' : r.chance(0.2) ? '#a8d8ff' : '#f0d890');
+        }
+    }
+    // the road in front of that row, which is where the traffic goes
+    roads.push({ y: Math.round(y0 + rh - 1), w: w * sp, sp: 20 + d0 * 90 });
+  }
+  // ---- the expressway, looping through on its stilts
+  x.strokeStyle = '#2a2a3e'; x.lineWidth = Math.max(2, Math.round(h / 130)); x.beginPath();
+  x.moveTo(-10, depth(0.62));
+  x.bezierCurveTo(w * 0.3, depth(0.5), w * 0.55, depth(0.86), w + 10, depth(0.66));
+  x.stroke(); x.lineWidth = 1;
+  tokyoAerial.cache[key] = { canvas: c, roads, hy, depth, w, h, bayX };
+  return tokyoAerial.cache[key];
+}
+function drawTokyoFromAbove(ctx, ox, oy, w, h, t, opts = {}) {
+  const A = tokyoAerial(w, h, opts.seed || 5);
+  ctx.drawImage(A.canvas, ox, oy);
+  ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, w, h); ctx.clip(); ctx.translate(ox, oy);
+  // ---- traffic: every road carries headlights one way and tail lights back
+  for (let i = 0; i < A.roads.length; i++) {
+    const rd = A.roads[i], half = rd.w / 2;
+    for (let k = 0; k < 5; k++) {
+      const seed = i * 7 + k * 3;
+      const p = ((t * rd.sp * (0.6 + (seed % 4) * 0.2) + seed * 130) % (rd.w + 80)) - 40;
+      const cx = w / 2 - half + p;
+      if (cx < -4 || cx > w + 4) continue;
+      const back = (seed % 2) === 0;
+      rect(ctx, cx, rd.y, Math.max(1, Math.round(rd.sp / 26)), 1, back ? '#ff7a6a' : '#fff4c8');
+    }
+  }
+  // ---- the aircraft warning lights on everything tall, all slightly out of step
+  for (let i = 0; i < 9; i++) {
+    const lx = ((i * 137) % 100) / 100 * w, ly = A.depth(0.12 + (i % 5) * 0.14) - 4;
+    if (Math.sin(t * 2.2 + i * 1.3) < 0.45) continue;
+    px(ctx, Math.round(lx), Math.round(ly), '#ff4a4a');
+    ctx.globalAlpha = 0.35; circle(ctx, Math.round(lx), Math.round(ly), 2, '#ff4a4a'); ctx.globalAlpha = 1;
+  }
+  // ---- the landmarks, drawn on top because they are the point
+  const tt = { x: w * 0.36, y: A.depth(0.46) };            // the red lattice tower
+  const th = h * 0.13;
+  ctx.fillStyle = '#c8402c'; ctx.beginPath();
+  ctx.moveTo(tt.x, tt.y - th); ctx.lineTo(tt.x + th * 0.24, tt.y); ctx.lineTo(tt.x - th * 0.24, tt.y); ctx.fill();
+  rect(ctx, tt.x - th * 0.15, tt.y - th * 0.52, th * 0.3, 2, '#e8785a');
+  rect(ctx, tt.x - 1, tt.y - th - 4, 2, 5, '#ff8a6a');
+  ctx.globalAlpha = 0.4 + 0.2 * Math.sin(t * 3); circle(ctx, tt.x, tt.y - th - 4, 3, '#ff8a6a'); ctx.globalAlpha = 1;
+  const sk = { x: w * 0.68, y: A.depth(0.3) };             // and the tall one
+  const sh = h * 0.2;
+  rect(ctx, sk.x - 2, sk.y - sh, 4, sh, '#7a86b8');
+  rect(ctx, sk.x - 1, sk.y - sh, 2, sh, '#b8c4e8');
+  rect(ctx, sk.x - 4, sk.y - sh * 0.62, 8, 3, '#9aa6d8');
+  ctx.globalAlpha = 0.16; circle(ctx, sk.x, sk.y - sh * 0.6, 14, '#9ad8ff'); ctx.globalAlpha = 1;
+  // ---- the dome: the only white thing down there, with its beams up
+  const dm = { x: w * 0.5, y: A.depth(0.72) }, dw = w * 0.1, dh = dw * 0.42;
+  ellipsePx(ctx, dm.x, dm.y, dw / 2, dh, '#e8e4f0');
+  ellipsePx(ctx, dm.x, dm.y - dh * 0.3, dw / 2 - 1, dh * 0.7, '#fbf8ff');
+  ctx.globalAlpha = 0.2; ellipsePx(ctx, dm.x, dm.y, dw * 0.8, dh * 1.8, '#cfe0ff'); ctx.globalAlpha = 1;
+  for (let i = 0; i < 4; i++) {
+    const a = t * 0.5 + i * 1.57;
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = '#dfe8ff'; ctx.beginPath();
+    ctx.moveTo(dm.x - 3, dm.y); ctx.lineTo(dm.x + 3, dm.y);
+    ctx.lineTo(dm.x + Math.cos(a) * w * 0.3 + 14, A.hy); ctx.lineTo(dm.x + Math.cos(a) * w * 0.3 - 14, A.hy); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}

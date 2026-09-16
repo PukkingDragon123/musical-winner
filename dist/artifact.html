@@ -2689,6 +2689,137 @@ function blockCanvas(seed, w, d, h, style) {
   });
 }
 
+// ---------- Tokyo from the air ----------
+// One picture, used twice: through the window on the way in, and under the
+// drone in the opening. It is built once into a canvas and then only the
+// things that actually move — traffic, warning lights, the beams off the dome
+// — are drawn live over the top.
+function tokyoAerial(w, h, seed = 5) {
+  const key = 'aerial|' + w + '|' + h + '|' + seed;
+  if (tokyoAerial.cache && tokyoAerial.cache[key]) return tokyoAerial.cache[key];
+  if (!tokyoAerial.cache) tokyoAerial.cache = {};
+  const c = makeCanvas(w, h), x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  const r = makeRng(seed * 977 + 13);
+  const hy = Math.round(h * 0.28);                     // the horizon
+  const depth = (d) => hy + (h - hy) * Math.pow(d, 1.9);
+  const spread = (d) => 0.22 + d * 1.5;                // how wide the grid is at that depth
+  // ---- sky, stars, and the glow the city throws up into it
+  vgrad(x, 0, 0, w, hy + 2, '#080a1e', '#241f48');
+  for (let i = 0; i < Math.round(w * h / 900); i++) { const sy = r.int(0, hy - 8); x.globalAlpha = r.range(0.2, 0.9) * (1 - sy / hy); px(x, r.int(0, w - 1), sy, '#e8e6ff'); }
+  x.globalAlpha = 1;
+  x.globalAlpha = 0.5; vgrad(x, 0, hy - Math.round(h * 0.12), w, Math.round(h * 0.12) + 2, 'rgba(255,170,120,0)', '#b06a5a'); x.globalAlpha = 1;
+  // ---- Fuji, out west, with snow on it
+  const fx0 = Math.round(w * 0.17), fw = Math.round(w * 0.2), fh = Math.round(h * 0.11);
+  x.fillStyle = '#1b1a34'; x.beginPath(); x.moveTo(fx0, hy + 1); x.lineTo(fx0 + fw / 2, hy - fh); x.lineTo(fx0 + fw, hy + 1); x.fill();
+  x.fillStyle = '#4a4a6e'; x.beginPath(); x.moveTo(fx0 + fw * 0.34, hy - fh * 0.42); x.lineTo(fx0 + fw / 2, hy - fh); x.lineTo(fx0 + fw * 0.66, hy - fh * 0.42);
+  x.lineTo(fx0 + fw * 0.56, hy - fh * 0.52); x.lineTo(fx0 + fw * 0.46, hy - fh * 0.38); x.fill();
+  // ---- the far bank: a solid band of light too distant to make out
+  rect(x, 0, hy, w, 3, '#5a4a6a');
+  for (let i = 0; i < w; i += 2) if (r.chance(0.5)) px(x, i, hy - 1 - r.int(0, 2), r.chance(0.2) ? '#ffd8a0' : '#8a8ab8');
+  // ---- the ground the whole city sits on
+  rect(x, 0, hy + 2, w, h - hy - 2, '#0c0c16');
+  // ---- the bay, bottom right, with the light of the shore running into it
+  const bayX = Math.round(w * 0.72);
+  x.fillStyle = '#0d1a30'; x.beginPath();
+  x.moveTo(w, depth(0.18)); x.lineTo(bayX, h); x.lineTo(w, h); x.fill();
+  for (let i = 0; i < 80; i++) { const ry = depth(r.range(0.2, 1)); const rx = r.range(bayX + (ry - hy) * 0.2, w); x.globalAlpha = r.range(0.1, 0.4); rect(x, rx, ry, r.int(2, 7), 1, '#6a90c8'); }
+  x.globalAlpha = 1;
+  // ---- the river, coming down out of the north
+  x.strokeStyle = '#122038'; x.lineWidth = Math.max(3, Math.round(h / 90)); x.beginPath();
+  x.moveTo(w * 0.62, hy + 2);
+  for (let d = 0; d <= 1; d += 0.1) x.lineTo(w * (0.62 + Math.sin(d * 3.1) * 0.06 + d * 0.06), depth(d));
+  x.stroke(); x.lineWidth = 1;
+  // ---- the grid: blocks of buildings, smaller and tighter the further out
+  const roads = [];
+  const ROWS = 15, COLS = 17;
+  for (let i = ROWS - 1; i >= 0; i--) {
+    const d0 = i / ROWS, d1 = (i + 1) / ROWS;
+    const y0 = depth(d0), y1 = depth(d1), rh = Math.max(2, y1 - y0);
+    const sp = spread(d0), cw = (w * sp) / COLS;
+    for (let j = 0; j < COLS; j++) {
+      const bx = w / 2 + (j - COLS / 2) * cw + cw * 0.08;
+      const bw = cw * 0.84;
+      if (bx + bw < 0 || bx > w) continue;
+      // the bay is water, not blocks
+      if (bx > bayX + (y0 - hy) * 0.2 && d0 > 0.2) continue;
+      const bh = rh * r.range(0.5, 1.25) * (1 + d0 * 0.6);
+      const by = y0 + rh - bh;
+      const tone = r.pick(['#1b1b2c', '#20203a', '#171726', '#25243e']);
+      rect(x, bx, by, Math.max(1, bw), Math.max(1, bh), tone);
+      rect(x, bx, by, Math.max(1, bw), 1, lighten(tone, 0.18));
+      // lit windows, in rows, thinning out with distance
+      const step = Math.max(2, Math.round(2 + d0 * 3));
+      for (let wy = by + 1; wy < by + bh - 1; wy += step)
+        for (let wx = bx + 1; wx < bx + bw - 1; wx += step) {
+          if (!r.chance(0.34)) continue;
+          px(x, Math.round(wx), Math.round(wy), r.chance(0.16) ? '#ffe6a0' : r.chance(0.2) ? '#a8d8ff' : '#f0d890');
+        }
+    }
+    // the road in front of that row, which is where the traffic goes
+    roads.push({ y: Math.round(y0 + rh - 1), w: w * sp, sp: 20 + d0 * 90 });
+  }
+  // ---- the expressway, looping through on its stilts
+  x.strokeStyle = '#2a2a3e'; x.lineWidth = Math.max(2, Math.round(h / 130)); x.beginPath();
+  x.moveTo(-10, depth(0.62));
+  x.bezierCurveTo(w * 0.3, depth(0.5), w * 0.55, depth(0.86), w + 10, depth(0.66));
+  x.stroke(); x.lineWidth = 1;
+  tokyoAerial.cache[key] = { canvas: c, roads, hy, depth, w, h, bayX };
+  return tokyoAerial.cache[key];
+}
+function drawTokyoFromAbove(ctx, ox, oy, w, h, t, opts = {}) {
+  const A = tokyoAerial(w, h, opts.seed || 5);
+  ctx.drawImage(A.canvas, ox, oy);
+  ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, w, h); ctx.clip(); ctx.translate(ox, oy);
+  // ---- traffic: every road carries headlights one way and tail lights back
+  for (let i = 0; i < A.roads.length; i++) {
+    const rd = A.roads[i], half = rd.w / 2;
+    for (let k = 0; k < 5; k++) {
+      const seed = i * 7 + k * 3;
+      const p = ((t * rd.sp * (0.6 + (seed % 4) * 0.2) + seed * 130) % (rd.w + 80)) - 40;
+      const cx = w / 2 - half + p;
+      if (cx < -4 || cx > w + 4) continue;
+      const back = (seed % 2) === 0;
+      rect(ctx, cx, rd.y, Math.max(1, Math.round(rd.sp / 26)), 1, back ? '#ff7a6a' : '#fff4c8');
+    }
+  }
+  // ---- the aircraft warning lights on everything tall, all slightly out of step
+  for (let i = 0; i < 9; i++) {
+    const lx = ((i * 137) % 100) / 100 * w, ly = A.depth(0.12 + (i % 5) * 0.14) - 4;
+    if (Math.sin(t * 2.2 + i * 1.3) < 0.45) continue;
+    px(ctx, Math.round(lx), Math.round(ly), '#ff4a4a');
+    ctx.globalAlpha = 0.35; circle(ctx, Math.round(lx), Math.round(ly), 2, '#ff4a4a'); ctx.globalAlpha = 1;
+  }
+  // ---- the landmarks, drawn on top because they are the point
+  const tt = { x: w * 0.36, y: A.depth(0.46) };            // the red lattice tower
+  const th = h * 0.13;
+  ctx.fillStyle = '#c8402c'; ctx.beginPath();
+  ctx.moveTo(tt.x, tt.y - th); ctx.lineTo(tt.x + th * 0.24, tt.y); ctx.lineTo(tt.x - th * 0.24, tt.y); ctx.fill();
+  rect(ctx, tt.x - th * 0.15, tt.y - th * 0.52, th * 0.3, 2, '#e8785a');
+  rect(ctx, tt.x - 1, tt.y - th - 4, 2, 5, '#ff8a6a');
+  ctx.globalAlpha = 0.4 + 0.2 * Math.sin(t * 3); circle(ctx, tt.x, tt.y - th - 4, 3, '#ff8a6a'); ctx.globalAlpha = 1;
+  const sk = { x: w * 0.68, y: A.depth(0.3) };             // and the tall one
+  const sh = h * 0.2;
+  rect(ctx, sk.x - 2, sk.y - sh, 4, sh, '#7a86b8');
+  rect(ctx, sk.x - 1, sk.y - sh, 2, sh, '#b8c4e8');
+  rect(ctx, sk.x - 4, sk.y - sh * 0.62, 8, 3, '#9aa6d8');
+  ctx.globalAlpha = 0.16; circle(ctx, sk.x, sk.y - sh * 0.6, 14, '#9ad8ff'); ctx.globalAlpha = 1;
+  // ---- the dome: the only white thing down there, with its beams up
+  const dm = { x: w * 0.5, y: A.depth(0.72) }, dw = w * 0.1, dh = dw * 0.42;
+  ellipsePx(ctx, dm.x, dm.y, dw / 2, dh, '#e8e4f0');
+  ellipsePx(ctx, dm.x, dm.y - dh * 0.3, dw / 2 - 1, dh * 0.7, '#fbf8ff');
+  ctx.globalAlpha = 0.2; ellipsePx(ctx, dm.x, dm.y, dw * 0.8, dh * 1.8, '#cfe0ff'); ctx.globalAlpha = 1;
+  for (let i = 0; i < 4; i++) {
+    const a = t * 0.5 + i * 1.57;
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = '#dfe8ff'; ctx.beginPath();
+    ctx.moveTo(dm.x - 3, dm.y); ctx.lineTo(dm.x + 3, dm.y);
+    ctx.lineTo(dm.x + Math.cos(a) * w * 0.3 + 14, A.hy); ctx.lineTo(dm.x + Math.cos(a) * w * 0.3 - 14, A.hy); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
 // ===== js/art/instruments.js =====
 // ---------- Instrument UI: perspective fretboard, keyboard, drums, horns ----------
 'use strict';
@@ -4814,51 +4945,69 @@ const OPERA = {
   kana: 'MONAAKU',            // how the crowd chants the name back
   seats: '55,000 SOLD OUT',
   movements: [
-    // Three songs. Original tunes, written for this: a music-hall stomp with
-    // an operatic streak, a disco strut that lives on the bass, and one long
-    // piece that starts as a ballad and then falls off a cliff.
-    { key: 'queen', title: 'I. SIX LEGS AND A CROWN', instrument: 'piano', bpm: 132, style: 'opera', difficulty: 2, key_: 60,
-      chords: [0, 5, 1, 4, 0, 5, 4, 0],
+    // Three famous pieces, all long out of copyright: Beethoven's Ode to Joy
+    // (1824), Grieg's In the Hall of the Mountain King (1875) and
+    // Rimsky-Korsakov's Flight of the Bumblebee (1900). The last one is the
+    // joke the whole game is built on: the most famously unplayable run in
+    // music, played by an actual bug, and it is the one that ends you.
+    { key: 'joy', title: 'I. ODE TO JOY', composer: 'BEETHOVEN', instrument: 'piano', bpm: 112, style: 'opera', difficulty: 2, key_: 60,
+      chords: [0, 4, 5, 4, 0, 4, 4, 0],
       lights: ['#c58bff', '#ffd24a'], pyro: 1,
-      // staccato, music-hall, with chromatic approaches into every phrase end
-      notes: [[72,.5],[71,.5],[72,.5],[74,.5],[76,1],[74,.5],[72,.5],
-              [71,.5],[72,.5],[74,.5],[76,.5],[77,1],[76,1],
-              [79,.5],[77,.5],[76,.5],[74,.5],[72,1],[71,1],
-              [69,.5],[71,.5],[72,.5],[74,.5],[72,2],
-              [76,.5],[75,.5],[76,.5],[79,.5],[81,1],[79,.5],[76,.5],
-              [77,.5],[79,.5],[81,.5],[83,.5],[84,1],[83,1],
-              [81,.5],[79,.5],[77,.5],[76,.5],[74,1],[72,1],
-              [71,.5],[74,.5],[72,.5],[71,.5],[72,2]],
+      notes: [[76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [76,1.5],[74,.5],[74,2],
+              [76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [74,1.5],[72,.5],[72,2],
+              [74,1],[74,1],[76,1],[72,1], [74,1],[76,.5],[77,.5],[76,1],[72,1],
+              [74,1],[76,.5],[77,.5],[76,1],[74,1], [72,1],[74,1],[67,2],
+              [76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [74,1.5],[72,.5],[72,2]],
       tutorial: 'TAP THE NOTES ON THE LINE' },
-    { key: 'strut', title: 'II. FLOORBOARD STRUT', instrument: 'bass', bpm: 116, style: 'funk', difficulty: 3, key_: 40,
-      chords: [0, 0, 0, 0, 3, 3, 4, 4],
+    { key: 'hall', title: 'II. IN THE HALL OF THE MOUNTAIN KING', composer: 'GRIEG', instrument: 'bass', bpm: 124, style: 'funk', difficulty: 3, key_: 40,
+      chords: [0, 0, 0, 0, 0, 0, 4, 0],
       lights: ['#6be585', '#ffd24a'], pyro: 2,
-      // one riff, octaves and a slide, repeated until the floor gives way
-      notes: [[40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,1],
-              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[50,.5],[52,1],
-              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,.5],[40,.5],
-              [45,.5],[47,.5],[50,.5],[52,.5],[55,1],[52,1],
-              [43,.5],[43,.5],[55,.5],[43,.5],[50,.5],[48,.5],[46,1],
-              [45,.5],[45,.5],[57,.5],[45,.5],[52,.5],[50,.5],[48,1],
-              [40,.25],[43,.25],[45,.25],[47,.25],[50,.5],[52,.5],[55,1],
-              [52,.5],[50,.5],[47,.5],[45,.5],[40,2]],
-      tutorial: 'LOCK INTO THE GROOVE - GOLD PAYS TRIPLE' },
-    { key: 'epic', title: 'III. THE LONG WAY DOWN', instrument: 'guitar', bpm: 148, style: 'concert', difficulty: 3, key_: 57,
-      chords: [0, 5, 3, 4, 0, 5, 3, 4],
-      // The whole point of this one: it is an ordinary song for eight bars and
-      // then the solo starts and it is not survivable. That is the night you
-      // are remembering, and it ends the way it ended.
+      // it creeps in on the bass and then will not stop speeding up, which is
+      // what the piece does: same theme, twice the notes, an octave up
+      notes: [[52,.5],[54,.5],[55,.5],[57,.5],[55,.5],[59,.5],[55,1],
+              [51,.5],[54,.5],[57,.5],[55,.5],[54,.5],[57,.5],[54,1],
+              [52,.5],[54,.5],[55,.5],[57,.5],[55,.5],[59,.5],[55,1],
+              [52,.5],[55,.5],[59,.5],[57,.5],[55,.5],[59,.5],[55,.5],[52,.5],
+              [64,.5],[66,.5],[67,.5],[69,.5],[67,.5],[71,.5],[67,1],
+              [63,.5],[66,.5],[69,.5],[67,.5],[66,.5],[69,.5],[66,1],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [67,.25],[71,.25],[74,.25],[71,.25],[67,.25],[64,.25],[67,.25],[71,.25],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [67,.25],[71,.25],[76,.25],[74,.25],[71,.25],[67,.25],[64,.25],[52,.25],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [66,.25],[67,.25],[69,.25],[71,.25],[69,.25],[73,.25],[69,.25],[66,.25],
+              [67,.25],[69,.25],[71,.25],[73,.25],[71,.25],[74,.25],[71,.25],[67,.25],
+              [76,.25],[74,.25],[71,.25],[67,.25],[64,.25],[67,.25],[71,.25],[76,.25],
+              [79,.5],[76,.5],[71,.5],[67,.5],[64,.5],[67,.5],[71,.5],[76,.5],
+              [52,1],[52,1],[52,.5],[52,.5],[52,1]],
+      tutorial: 'IT GETS FASTER. IT ALWAYS GETS FASTER' },
+    { key: 'bee', title: 'III. FLIGHT OF THE BUMBLEBEE', composer: 'RIMSKY-KORSAKOV', instrument: 'guitar', bpm: 138, style: 'concert', difficulty: 3, key_: 57,
+      chords: [0, 0, 4, 4, 0, 0, 4, 0],
+      // Eight bars you can actually hold on to, and then the run starts. It is
+      // chromatic, it is sixteenths, and it does not stop for you.
       soloBar: 8, impossible: true,
       lights: ['#5bc0ff', '#ff2a2a', '#ffffff'], pyro: 4,
-      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],
-              [69,1],[67,1],[69,2],[64,2],[69,2],
-              [72,1],[74,1],[76,2],[74,1],[72,1],[71,2],
-              [69,1],[71,1],[72,2],[69,4]],
-      // what happens once the solo starts, which is a different instrument
-      solo: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
-             [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25],
-             [81,.25],[88,.25],[93,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],
-             [76,.25],[79,.25],[83,.25],[88,.25],[91,.25],[88,.25],[84,.25],[81,.25]],
+      notes: [[81,.5],[80,.5],[79,.5],[78,.5],[77,.5],[76,.5],[75,.5],[74,.5],
+              [73,.5],[72,.5],[71,.5],[70,.5],[69,2],
+              [69,.5],[70,.5],[71,.5],[72,.5],[73,.5],[74,.5],[75,.5],[76,.5],
+              [77,.5],[76,.5],[75,.5],[74,.5],[73,2],
+              [76,.5],[75,.5],[74,.5],[73,.5],[72,.5],[71,.5],[70,.5],[69,.5],
+              [68,.5],[69,.5],[71,.5],[72,.5],[74,2],
+              [81,.5],[80,.5],[79,.5],[78,.5],[77,.5],[76,.5],[75,.5],[74,.5],
+              [73,.5],[72,.5],[71,.5],[69,.5],[69,2]],
+      // the run itself: straight chromatic sixteenths, down and back up, which
+      // is very close to what is actually on the page
+      solo: [[93,.25],[92,.25],[91,.25],[90,.25],[89,.25],[88,.25],[87,.25],[86,.25],
+             [85,.25],[84,.25],[83,.25],[82,.25],[81,.25],[80,.25],[79,.25],[78,.25],
+             [77,.25],[78,.25],[79,.25],[80,.25],[81,.25],[82,.25],[83,.25],[84,.25],
+             [85,.25],[86,.25],[87,.25],[88,.25],[89,.25],[90,.25],[91,.25],[92,.25],
+             [93,.25],[92,.25],[91,.25],[90,.25],[89,.25],[88,.25],[87,.25],[86,.25],
+             [88,.25],[87,.25],[86,.25],[85,.25],[84,.25],[83,.25],[82,.25],[81,.25],
+             [83,.25],[82,.25],[81,.25],[80,.25],[79,.25],[78,.25],[77,.25],[76,.25],
+             [78,.25],[79,.25],[81,.25],[83,.25],[85,.25],[88,.25],[91,.25],[93,.25]],
       tutorial: 'HOLD THE LONG ONES. THEN HOLD ON.' },
   ],
 };
@@ -4877,7 +5026,7 @@ function songFromMovement(mv) {
   // bars where it comes apart.
   const songBars = Math.max(4, Math.ceil(totalBeats / 4));
   const bars = mv.soloBar ? songBars + 8 : songBars;
-  return { name: mv.title, composer: 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
+  return { name: mv.title, composer: mv.composer || 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
     songBars, soloBar: mv.soloBar ? songBars : 0, solo: mv.solo || null,
     leadIn: 4 * beat, length: 4 * beat + bars * 4 * beat + 1.6, style: mv.style };
 }
@@ -9263,6 +9412,48 @@ class TitleScene {
     this.shells = this.shells.filter(sh => !sh.done || sh.t < sh.burst + 2);
     this.flashT = Math.max(0, (this.flashT || 0) - dt);
   }
+  // ---- The road across the bottom of the menu, with the four of them
+  // crossing it in single file. Everything else on the street stops for them,
+  // which is the only time it ever does.
+  drawRoad(ctx) {
+    const t = this.t, kerbY = 398, roadTop = 412;
+    // the far pavement, and the people waiting on it
+    rect(ctx, 0, kerbY, W, roadTop - kerbY, '#8f8a80'); rect(ctx, 0, kerbY, W, 3, '#b4aea2');
+    for (const b of this.band.slice(4)) {
+      const x = ((b.x + t * 16) % (W + 110)) - 55;
+      ctx.globalAlpha = 0.7;
+      drawShadow(ctx, x, kerbY + 10, 18, 0.2);
+      drawBugAt(ctx, b.spec, x, kerbY + 10, { pose: Math.floor(t * 5 + b.o) % 2 ? 'walk1' : 'walk2', scale: 0.72, bounce: 0.5 });
+      ctx.globalAlpha = 1;
+    }
+    // the road itself
+    vgrad(ctx, 0, roadTop, W, H - roadTop, '#3c3c48', '#2c2c36');
+    rect(ctx, 0, roadTop, W, 3, '#d8d2c4');
+    // the crossing, painted straight across it
+    for (let x = 8; x < W; x += 54) { ctx.globalAlpha = 0.9; rect(ctx, x, roadTop + 8, 30, H - roadTop - 16, '#e8e6dc'); ctx.globalAlpha = 1; }
+    // a taxi stopped at the line, headlights on the paint
+    const tx = 40 + Math.sin(t * 0.6) * 3;
+    ctx.drawImage(carCanvas(7, 1), tx, roadTop + 16, 88, 40);
+    ctx.globalAlpha = 0.22; ellipsePx(ctx, tx + 96, roadTop + 44, 34, 10, '#ffe6a0'); ctx.globalAlpha = 1;
+    // the signal, counting them over
+    rect(ctx, W - 74, kerbY - 66, 12, 70, '#2a2a34');
+    rect(ctx, W - 82, kerbY - 96, 28, 34, '#1b1b24'); frame(ctx, W - 82, kerbY - 96, 28, 34, '#3f3f4e');
+    circle(ctx, W - 68, kerbY - 80, 8, Math.sin(t * 3) > -0.4 ? '#6be585' : '#1e3a24');
+    // ---- the four of them, in single file, all the way across
+    const walk = ((t * 34) % (W + 420)) - 210;
+    ROSTER.forEach((c, i) => {
+      const x = walk - i * 92, y = H - 48 + (i % 2) * 4;
+      if (x < -70 || x > W + 70) return;
+      // the long shadow the street lights throw back down the road
+      ctx.globalAlpha = 0.22; ctx.fillStyle = '#0a0a12';
+      ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y); ctx.lineTo(x - 30, y + 46); ctx.lineTo(x - 54, y + 46); ctx.fill();
+      ctx.globalAlpha = 1;
+      drawShadow(ctx, x, y, 34, 0.32);
+      drawBugAt(ctx, HERO_PRESETS[c.key], x, y + Math.round(Math.sin(t * 6 + i * 1.7) * 2), {
+        pose: Math.floor(t * 6 + i * 1.7) % 2 ? 'walk1' : 'walk2',
+        instrument: c.instrument !== 'drums' && c.instrument !== 'piano' ? c.instrument : null, scale: 1.7 });
+    });
+  }
   key(code) { if (this.page === 'help') { if (['Escape', 'Enter', 'Space'].includes(code)) { this.page = 'main'; Audio.ui('back'); } return; } this.menu.key(code); }
   click(x, y) { if (this.page === 'help') { this.page = 'main'; return; } this.menu.click(x, y); }
   hover(x, y) { this.menu.hover(x, y); }
@@ -9271,7 +9462,7 @@ class TitleScene {
     // the shells on their way up, and the sky lighting when one opens
     if (this.flashT > 0) { ctx.globalAlpha = this.flashT * 0.5; rect(ctx, 0, 0, W, 300, this.flashCol); ctx.globalAlpha = 1; }
     for (const sh of this.shells) if (!sh.done) { rect(ctx, sh.x - 1, sh.y - 2, 2, 5, '#fff2c0'); rect(ctx, sh.x - 1, sh.y - 4, 2, 2, sh.col); }
-    for (const b of this.band) { const x = ((b.x + this.t * 26) % (W + 110)) - 55; const sq = 1 + Math.sin(this.t * 12 + b.o) * 0.04; drawShadow(ctx, x, 452, 26); drawBugAt(ctx, b.spec, x, 452 + Math.round(Math.sin(this.t * 6 + b.o) * 2), { pose: Math.floor(this.t * 6 + b.o) % 2 ? 'walk1' : 'walk2', instrument: b.inst !== 'drums' && b.inst !== 'piano' ? b.inst : null, squash: sq }); }
+    this.drawRoad(ctx);
     this.fx.draw(ctx);
     this.motes.draw(ctx, this.t, '#ffe6a0');
     grade(ctx, 0, 0, W, H, '#3a2a7a', 0.12);
@@ -9280,8 +9471,10 @@ class TitleScene {
     const bob = Math.round(Math.sin(this.t * 2) * 3);
     drawText(ctx, 'BUG BUSKER', W / 2, 38 + bob, '#ffd24a', { align: 'center', scale: 8, outline: '#5a2a10', shadow: '#20100a' });
     drawText(ctx, 'ORCHESTRA', W / 2, 96 + bob, '#ff9f68', { align: 'center', scale: 5, outline: '#5a2a10' });
-    const n = this.menu.items.length, inner = uiPanel(ctx, W / 2 - 130, 150, 260, 30 * n + 26);
-    this.menu.draw(ctx, inner.x + 16, inner.y + 10, inner.w - 32, 30, 'buttons');
+    // a real menu: full-size buttons with room to be pressed, not a list
+    const n = this.menu.items.length, rowH = n > 4 ? 38 : 44;
+    const inner = uiPanel(ctx, W / 2 - 168, 146, 336, rowH * n + 26);
+    this.menu.draw(ctx, inner.x + 14, inner.y + 8, inner.w - 28, rowH, 'buttons');
     if (this.boot > 0) { const k = clamp(this.boot / 1, 0, 1); const h = H / 2 * easeInOut(k); vgrad(ctx, 0, 0, W, h, '#6a1020', '#3a0812'); vgrad(ctx, 0, H - h, W, h, '#3a0812', '#6a1020'); rect(ctx, 0, h - 4, W, 4, '#d9a520'); rect(ctx, 0, H - h, W, 4, '#d9a520'); }
   }
 }
@@ -9341,7 +9534,7 @@ class SelectScene {
       if (Math.random() < dt * 0.7) this.puff(this.rng.range(60, W - 60), 410, 2);
     } else if (this.phase === 'out') {
       // everything goes dark again, and then the show
-      if (this.phaseT > 1.5) { this.phase = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene(); }, 'fade', { dur: 0.7 }); }
+      if (this.phaseT > 1.5) { this.phase = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene({ straightIn: true }); }, 'fade', { dur: 0.7 }); }
     }
     if (this.confirmed && this.phase === 'pick') { this.confirmT += dt; if (this.confirmT > 1.4) { this.phase = 'out'; this.phaseT = 0; } }
   }
@@ -9554,12 +9747,14 @@ class DroneScene {
     this.cars = []; for (let i = 0; i < 26; i++) this.cars.push({ x: this.rng.range(-1.2, 1.2), z: this.rng.range(0.2, 1), s: this.rng.range(0.05, 0.18), c: this.rng.chance(0.5) ? '#ffe6a0' : '#ff8a7a' });
     // what the narrator says, and when
     this.lines = [
-      [0.4, 'TOKYO. ELEVEN AT NIGHT.'],
-      [3.2, 'FIFTY-FIVE THOUSAND OF THEM IN THERE.'],
-      [6.2, 'ALL OF THEM HERE FOR ONE BAND.'],
-      [9.4, 'THIS IS THE LAST GOOD NIGHT.'],
+      [0.6, 'TOKYO. ELEVEN AT NIGHT.'],
+      [4.0, 'THIRTEEN MILLION OF THEM DOWN THERE.'],
+      [7.4, 'FIFTY-FIVE THOUSAND IN THAT ONE BUILDING.'],
+      [10.8, 'ALL OF THEM HERE FOR ONE BAND.'],
+      [14.0, 'THIS IS THE LAST GOOD NIGHT.'],
     ];
-    this.dur = 13.2;
+    this.wideFor = 9.0;                 // how long we hold on the whole city
+    this.dur = 17.8;
   }
   skip() { if (this.left) return; this.left = true; Game.go(this.next, 'fade', { dur: 0.7 }); }
   update(dt) {
@@ -9570,11 +9765,14 @@ class DroneScene {
   click() { this.skip(); }
   draw(ctx) {
     const t = this.t, k = clamp(t / this.dur, 0, 1);
+    // how long the establishing plate stays up over everything else
+    const wide = clamp((this.wideFor + 1.4 - t) / 1.4, 0, 1);
     // the descent: high and wide, then low and tight on the dome
-    const alt = 1 - easeInOut(clamp(t / 10.5, 0, 1));          // 1 high, 0 low
-    const zoom = lerp(0.62, 3.4, easeInOut(clamp(t / 10.5, 0, 1)));
+    const alt = 1 - easeInOut(clamp((t - this.wideFor) / 5.2, 0, 1));          // 1 high, 0 low
+    const zoom = lerp(0.62, 3.4, easeInOut(clamp((t - this.wideFor) / 5.2, 0, 1)));
     // night sky and a horizon that rises as you come down
     const horizon = lerp(60, 250, 1 - alt);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
     vgrad(ctx, 0, 0, W, horizon, '#0a0a1e', '#241a3e');
     for (let i = 0; i < 90; i++) { const sx = (i * 173) % W, sy = (i * 61) % Math.max(1, horizon - 6); if (Math.sin(t * 2 + i) > 0.2) px(ctx, sx, sy, i % 4 ? '#8a86b0' : '#fff'); }
     // the city floor, in a cheap perspective: further blocks smaller and higher
@@ -9634,8 +9832,21 @@ class DroneScene {
     const bx = ((t * 26) % (W + 200)) - 100;
     if (alt > 0.3) { ctx.globalAlpha = alt; ellipsePx(ctx, bx, 64, 22, 8, '#3a3450'); ellipsePx(ctx, bx, 62, 21, 7, '#59527a'); rect(ctx, bx - 6, 70, 12, 4, '#2a2438');
       drawText(ctx, 'MONARCH', bx, 59, '#ffd24a', { align: 'center', font: 'small' }); ctx.globalAlpha = 1; }
+    ctx.restore(); ctx.globalAlpha = 1;
+    // ---- the establishing shot: the entire city in one frame, pushing in
+    // slowly, and only then handing over to the drone dropping into it
+    if (wide > 0) {
+      const z = 1 + clamp(t / this.wideFor, 0, 1.4) * 0.34;
+      ctx.save(); ctx.globalAlpha = wide;
+      ctx.translate(W / 2, H * 0.62); ctx.scale(z, z); ctx.translate(-W / 2, -H * 0.62);
+      drawTokyoFromAbove(ctx, 0, 0, W, H, t, { seed: 5 });
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
     // ---- the finish: through the roof
-    if (t > 11) { ctx.globalAlpha = clamp((t - 11) / 1.6, 0, 1); rect(ctx, 0, 0, W, H, '#f6f2ff'); ctx.globalAlpha = 1; }
+    if (t > this.dur - 2.2) { ctx.globalAlpha = clamp((t - (this.dur - 2.2)) / 1.6, 0, 1); rect(ctx, 0, 0, W, H, '#f6f2ff'); ctx.globalAlpha = 1; }
+    this.drawFrame(ctx, t, alt);
+  }
+  drawFrame(ctx, t, alt) {
     // ---- the frame it is all shot in
     letterbox(ctx, 58, 1);
     vignette(ctx, 0.5);
@@ -9811,7 +10022,10 @@ const MONARCH_CREW = [{ key: 'dot', instrument: 'drums' }, { key: 'hopper', inst
 
 const PLATE_H = 136;
 class ConcertScene {
-  constructor() {
+  constructor(opts = {}) {
+    // Coming out of character select there is nothing left to introduce: the
+    // lights are already down and the song starts.
+    this.straightIn = !!opts.straightIn;
     this.t = 0; this.phase = 'rise'; this.phaseT = 0; this.moveIdx = 0; this.fx = new Particles(); this.lightT = 0; this.strobe = 0; this.results = [];
     this.rng = makeRng(777); this.crowd = [];
     for (let i = 0; i < 260; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 4), o: this.rng.range(0, 6), lighter: this.rng.chance(0.32), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
@@ -9864,7 +10078,10 @@ class ConcertScene {
     this.haze.update(dt);
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
-    if (this.phase === 'rise') { if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); } }
+    if (this.phase === 'rise') {
+      if (this.straightIn && this.phaseT > 0.9) { Audio.roar(2.2, 0.45); this.startMovement(0); this.startPlay(); }
+      else if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); }
+    }
     else if (this.phase === 'hello') { if (this.phaseT > 3.4) this.startMovement(0); }
     else if (this.phase === 'card') { if (this.phaseT > 30) this.startPlay(); }
     else if (this.phase === 'play') {
@@ -10470,64 +10687,41 @@ class FlightScene {
     this.t = 0; this.phase = 'board'; this.phaseT = 0; this.fx = new Particles(); this.clouds = [];
     const r = makeRng(21); for (let i = 0; i < 14; i++) this.clouds.push({ x: r.range(0, W), y: r.range(30, 200), s: r.range(0.6, 1.6), sp: r.range(20, 50) });
     this.you = Game.run.members[0];
+    // Nobody practises on a plane. You sit by the window and you look at the
+    // place that is about to happen to you.
+    this.lines = [
+      'THE CAPTAIN SAYS WE BEGIN OUR DESCENT.',
+      'IT GOES ON PAST THE HORIZON IN EVERY DIRECTION.',
+      'THIRTY-SEVEN MILLION OF THEM DOWN THERE.',
+      'AND NOT ONE OF THEM KNOWS YOUR NAME ANY MORE.',
+    ];
+    this.li = 0; this.lineT = 0;
     this.layout();
   }
-  layout() { const t = Game.touch; this.L = t ? { rhythmY: 150, rhythmH: 250, padY: 404, padH: 130, seatTop: 18, seatH: 128 } : { rhythmY: 150, rhythmH: 300, padY: 0, padH: 0, seatTop: 18, seatH: 130 }; }
-  isPlaying() { return this.phase === 'play'; }
-  startPlay() {
-    Audio.init(); Audio.setStageReverb(false);
-    const tune = this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy';
-    const song = songFromTune(tune, { bpm: 96 });
-    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
-    const notes = chartFromMelody(song, sections, 2, makeRng(7), { starRate: 0.14, bombMult: 0 });
-    const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.35 });
-    this.rhythm = new RhythmGame(song, sections, notes, mods, {});
-    const start = Audio.now() + 0.5 + song.leadIn; this.rhythm.begin(start);
-    this.backing = new Backing(song, start - song.leadIn, () => ({ drums: true, bass: false, pad: false }));
-    this.song = song; this.phase = 'play'; this.padKey = null; this.pads = []; this.padPointers = new Map();
-  }
+  layout() { this.L = { seatTop: 18, seatH: 130, padY: 0, padH: 0 }; }
+  isPlaying() { return false; }
   update(dt) {
     this.t += dt; this.phaseT += dt; this.fx.update(dt);
     for (const c of this.clouds) { c.x -= c.sp * dt; if (c.x < -60) { c.x = W + 40; c.y = 30 + Math.random() * 170; } }
-    if (this.phase === 'board' && this.phaseT > 3.2) { this.phase = 'intro'; this.phaseT = 0; }
-    else if (this.phase === 'intro' && this.phaseT > 3.4) this.startPlay();
-    else if (this.phase === 'play') {
-      this.backing.update(); this.rhythm.update(dt);
-      if (Game.touch) { const k = this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, false); } }
-      if (this.rhythm.finished) { this.backing.stop(); this.phase = 'land'; this.phaseT = 0; const res = this.rhythm.results(); Game.run.money += Math.round(res.acc * 10); Game.run.practiceAcc = res.acc; }
+    if (this.phase === 'board') { if (this.phaseT > 3.4) { this.phase = 'window'; this.phaseT = 0; } }
+    else if (this.phase === 'window') {
+      this.lineT += dt;
+      if (this.lineT > 3.4 && this.li < this.lines.length - 1) { this.li++; this.lineT = 0; }
+      else if (this.lineT > 4.4 && this.li >= this.lines.length - 1) this.leave();
     }
-    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
   }
-  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); } } }
-  keyUp(code) { if (this.phase === 'play') this.rhythm.keyUp(code); }
-  padAt(x, y) { return this.pads ? this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) : null; }
-  pointerDown(x, y, id) { if (this.phase === 'play') { const p = this.padAt(x, y); if (p) { this.padPointers.set(id, p.code); this.rhythm.keyDown(p.code); } return; } this.key('Enter'); }
-  pointerMove(x, y, id) { if (this.phase !== 'play') return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
-  pointerUp(x, y, id) { const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
-  drawCabin(ctx, top, h) {
-    ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, h); ctx.clip();
-    vgrad(ctx, 0, top, W, h, '#d8d4cc', '#b0aca4');
-    rect(ctx, 0, top, W, 6, '#e8e4dc');
-    // windows with sky
-    for (let i = 0; i < 6; i++) {
-      const wx = 56 + i * 152, wy = top + 20;
-      rect(ctx, wx - 8, wy - 8, 76, 62, '#c0bcb4'); rect(ctx, wx - 6, wy - 6, 72, 58, '#9a968e');
-      ctx.save(); ctx.beginPath(); ctx.ellipse(wx + 30, wy + 22, 32, 25, 0, 0, Math.PI * 2); ctx.clip();
-      const dawn = this.phase === 'land';
-      vgrad(ctx, wx - 6, wy - 6, 72, 58, dawn ? '#f0a060' : '#6ab8f0', dawn ? '#f8d0a0' : '#cfe8ff');
-      for (const c of this.clouds) { const cx = ((c.x + i * 60) % (W + 120)) - 60; if (Math.abs(cx - (wx + 30)) < 56) { ctx.globalAlpha = 0.9; ctx.drawImage(propCanvas('cloud'), Math.round(wx + 30 + (cx - wx - 30) * 0.5 - 28), Math.round(wy + 6 + (c.y % 26)), Math.round(52 * c.s), Math.round(18 * c.s)); ctx.globalAlpha = 1; } }
-      if (this.phase === 'land') {
-        rect(ctx, wx - 6, wy + 32, 72, 22, '#3a6a9a');
-        for (let b = 0; b < 12; b++) rect(ctx, wx - 2 + b * 7, wy + 28 - (b % 3) * 5, 5, 18, '#8a90a8');
-        rect(ctx, wx + 8, wy + 20, 22, 3, '#c8432a');
-      }
-      ctx.restore();
-      ringPx(ctx, wx + 30, wy + 22, 31, '#e8e4dc');
-    }
-    rect(ctx, 0, top + h - 14, W, 14, '#8a867e');
-    ctx.restore();
+  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
+  advance() {
+    if (this.phase === 'board') { this.phase = 'window'; this.phaseT = 0; return; }
+    if (this.li < this.lines.length - 1) { this.li++; this.lineT = 0; return; }
+    this.leave();
   }
-  // ---- SFO, an hour before the flight
+  key(code) { if (['Enter', 'Space', 'Escape', 'KeyZ'].includes(code)) this.advance(); }
+  keyUp() {}
+  pointerDown() { this.advance(); }
+  pointerMove() {}
+  pointerUp() {}
+  // ---- the gate, an hour before the flight
   drawGate(ctx) {
     const t = this.t;
     if (!this.gate) {
@@ -10645,33 +10839,92 @@ class FlightScene {
     vignette(ctx, 0.36);
   }
   draw(ctx) {
-    rect(ctx, 0, 0, W, H, '#0d0b18'); const L = this.L;
-    this.drawCabin(ctx, L.seatTop, L.seatH);
+    rect(ctx, 0, 0, W, H, '#0d0b18');
     if (this.phase === 'board') { this.drawGate(ctx); return; }
-    // cabin seats
-    const seatY = L.seatTop + L.seatH;
-    vgrad(ctx, 0, seatY, W, H - seatY, '#2a3040', '#1a1f2b');
-    for (let i = 0; i < 6; i++) ctx.drawImage(propCanvas('seat'), 26 + i * 160, seatY + 8, 56, 62);
-    drawShadow(ctx, 480, seatY + 78, 40, 0.3);
-    drawBugAt(ctx, this.you.spec, 480, seatY + 78, { pose: this.phase === 'play' ? 'play' : 'idle', instrument: this.you.instrument, scale: 2.1 });
-    if (this.phase === 'intro') {
-      const inner = uiPanel(ctx, W / 2 - 230, L.rhythmY + 30, 460, 110, { title: 'ONE LAST PRACTICE' });
-      drawText(ctx, TUNES[this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy'].title.toUpperCase(), inner.x + inner.w / 2, inner.y + 16, '#7a4a10', { align: 'center', scale: 2 });
-      drawText(ctx, Game.touch ? 'TAP TO PLAY' : 'PRESS ENTER', inner.x + inner.w / 2, inner.y + 54, UI.inkSoft, { align: 'center' });
-      return;
+    this.drawWindow(ctx);
+  }
+  // ---- The window seat, coming in over Tokyo. There is no practice on this
+  // plane any more; there is a pane of glass and a city on the other side.
+  drawWindow(ctx) {
+    const t = this.t;
+    // the cabin wall, the panel lines and the trim under the window
+    vgrad(ctx, 0, 0, W, H, '#2b2736', '#14121c');
+    for (let y = 0; y < H; y += 46) { ctx.globalAlpha = 0.25; rect(ctx, 0, y, W, 1, '#3a3648'); ctx.globalAlpha = 1; }
+    rect(ctx, 0, 0, W, 30, '#343040'); rect(ctx, 0, 30, W, 3, '#1b1824');
+    // the reading lights and the seatbelt sign overhead
+    for (let i = 0; i < 7; i++) { const lx = 74 + i * 136; circle(ctx, lx, 14, 5, '#3f3a4e'); if (i % 3 === 0) { circle(ctx, lx, 14, 3, '#ffe6a0'); lightPool(ctx, lx, 22, 70, '#ffdf9a', 0.07); } }
+    rect(ctx, W / 2 - 34, 6, 68, 18, '#2a2634'); frame(ctx, W / 2 - 34, 6, 68, 18, '#4a4458');
+    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 2.4); drawText(ctx, 'SEATBELTS', W / 2, 12, '#ffcf6a', { align: 'center', font: 'small' }); ctx.globalAlpha = 1;
+    // ---- the window itself: a big rounded pane with the city in it
+    const wx = 168, wy = 74, ww = 636, wh = 328, rr = 58;
+    const pane = (px2, py2, pw, ph, rad) => {
+      ctx.beginPath();
+      ctx.moveTo(px2 + rad, py2);
+      ctx.lineTo(px2 + pw - rad, py2); ctx.quadraticCurveTo(px2 + pw, py2, px2 + pw, py2 + rad);
+      ctx.lineTo(px2 + pw, py2 + ph - rad); ctx.quadraticCurveTo(px2 + pw, py2 + ph, px2 + pw - rad, py2 + ph);
+      ctx.lineTo(px2 + rad, py2 + ph); ctx.quadraticCurveTo(px2, py2 + ph, px2, py2 + ph - rad);
+      ctx.lineTo(px2, py2 + rad); ctx.quadraticCurveTo(px2, py2, px2 + rad, py2);
+      ctx.closePath();
+    };
+    // the frame: three rings of trim, the way a cabin window is built
+    ctx.fillStyle = '#4a4458'; pane(wx - 16, wy - 16, ww + 32, wh + 32, rr + 14); ctx.fill();
+    ctx.fillStyle = '#2f2b3c'; pane(wx - 8, wy - 8, ww + 16, wh + 16, rr + 7); ctx.fill();
+    ctx.fillStyle = '#0a0a12'; pane(wx, wy, ww, wh, rr); ctx.fill();
+    ctx.save(); pane(wx, wy, ww, wh, rr); ctx.clip();
+    // the whole city, out to the horizon
+    drawTokyoFromAbove(ctx, wx, wy, ww, wh, t, { seed: 5 });
+    // the wing, coming in from the bottom left with its light going
+    ctx.fillStyle = '#20202e'; ctx.beginPath();
+    ctx.moveTo(wx - 10, wy + wh); ctx.lineTo(wx + 210, wy + wh); ctx.lineTo(wx + 96, wy + wh - 74); ctx.lineTo(wx - 10, wy + wh - 46); ctx.fill();
+    rect(ctx, wx + 60, wy + wh - 54, 40, 3, '#3a3a52');
+    if (Math.sin(t * 3.4) > 0.72) { circle(ctx, wx + 96, wy + wh - 72, 3, '#9fe8ff'); ctx.globalAlpha = 0.4; circle(ctx, wx + 96, wy + wh - 72, 8, '#9fe8ff'); ctx.globalAlpha = 1; }
+    // cloud passing under the wing
+    for (let i = 0; i < 4; i++) {
+      const cx2 = wx + ww - ((t * 40 + i * 260) % (ww + 300));
+      ctx.globalAlpha = 0.13; ctx.drawImage(propCanvas('cloud'), cx2, wy + wh - 120 + (i % 2) * 40, 150, 52); ctx.globalAlpha = 1;
     }
-    if (this.phase === 'play') {
-      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads });
-      drawText(ctx, this.song.name.toUpperCase() + '   ' + this.song.composer.toUpperCase(), 10, L.rhythmY + 8, '#ffd24a', { outline: '#1a1410' });
-      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
-      return;
+    // ---- the glass: a sheen across it, and his own face looking back
+    ctx.globalAlpha = 0.09; ctx.fillStyle = '#cfe0ff';
+    ctx.beginPath(); ctx.moveTo(wx, wy + wh * 0.62); ctx.lineTo(wx + ww * 0.5, wy); ctx.lineTo(wx + ww * 0.78, wy); ctx.lineTo(wx, wy + wh); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.16;
+    drawBugAt(ctx, this.you.spec, wx + ww - 150, wy + wh - 26, { pose: 'sad', scale: 2.6, expr: 'sad', t: t, rate: 0.7, bounce: 0.35 });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // condensation and a scratch or two on the pane
+    ctx.globalAlpha = 0.1; for (let i = 0; i < 30; i++) { const sx = wx + ((i * 137) % ww), sy = wy + ((i * 71) % wh); rect(ctx, sx, sy, 1, 2 + (i % 3), '#dfe8ff'); } ctx.globalAlpha = 1;
+    // the shade, pulled up, and the little tray edge below
+    rect(ctx, wx - 16, wy - 22, ww + 32, 10, '#3a3648'); rect(ctx, wx - 16, wy - 22, ww + 32, 3, '#544e68');
+    // ---- him, in the seat: the back of the chair, then him in it, turned to
+    // the glass, which is the whole shot
+    rect(ctx, 14, 384, 176, 156, '#241f30'); rect(ctx, 14, 384, 176, 5, '#3c364e');
+    rect(ctx, 24, 398, 156, 124, '#2e2940');
+    for (let i = 0; i < 6; i++) rect(ctx, 32, 408 + i * 19, 140, 2, '#241f30');
+    const hx = 128, hy2 = 470;
+    drawBugAt(ctx, this.you.spec, hx, hy2, { pose: 'sad', scale: 3.6, expr: 'sad', t: t, rate: 0.6, bounce: 0.3 });
+    // the armrest between him and the window, and his hand on it
+    rect(ctx, 176, 462, 78, 12, '#3a3448'); rect(ctx, 176, 462, 78, 3, '#544e68');
+    rect(ctx, 176, 474, 78, 8, '#241f30');
+    // the seat in front, with a tray table down and a paper cup on it
+    rect(ctx, 706, 392, 240, 148, '#2a2636'); rect(ctx, 706, 392, 240, 5, '#453f58');
+    rect(ctx, 690, 446, 250, 10, '#4a4458'); rect(ctx, 690, 446, 250, 3, '#655d7c');
+    rect(ctx, 760, 424, 22, 24, '#d8d2c4'); rect(ctx, 760, 424, 22, 4, '#f0ebe0'); rect(ctx, 762, 430, 18, 3, '#8a7a5a');
+    ctx.drawImage(icon('note'), 818, 418, 18, 16);
+    // ---- the line he is thinking, in a plate along the bottom
+    const plate = 92;
+    ctx.globalAlpha = 0.86; rect(ctx, 0, H - plate, W, plate, '#0b0914'); ctx.globalAlpha = 1;
+    rect(ctx, 0, H - plate, W, 2, '#c8a03a');
+    const shown = this.lines[this.li] || '';
+    const chars = Math.min(shown.length, Math.floor(this.lineT * 34));
+    drawText(ctx, shown.slice(0, chars), W / 2, H - plate + 30, '#f2ecd8', { align: 'center', scale: 3 });
+    for (let i = 0; i < this.lines.length; i++) {
+      rect(ctx, W / 2 - this.lines.length * 9 + i * 18, H - 22, 12, 3, i <= this.li ? '#c8a03a' : '#3a3444');
     }
-    if (this.phase === 'land') {
-      const inner = uiPanel(ctx, W / 2 - 230, L.rhythmY + 40, 460, 120, { title: 'WELCOME TO SAN FRANCISCO' });
-      drawText(ctx, Math.round((Game.run.practiceAcc || 0) * 100) + '%  STILL GOT IT', inner.x + inner.w / 2, inner.y + 16, '#4f8032', { align: 'center', scale: 3 });
-      drawText(ctx, 'THE FOG SMELLS LIKE SOURDOUGH', inner.x + inner.w / 2, inner.y + 58, UI.inkSoft, { align: 'center' });
-      drawText(ctx, Game.touch ? 'TAP' : 'ENTER', inner.x + inner.w / 2, inner.y + 82, UI.inkFaint, { align: 'center' });
-    }
+    ctx.globalAlpha = 0.45 + 0.35 * Math.sin(t * 4);
+    drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W - 20, H - 26, '#cfc9e6', { align: 'right', font: 'small' });
+    ctx.globalAlpha = 1;
+    letterbox(ctx, 22, 1);
+    vignette(ctx, 0.4);
   }
 }
 

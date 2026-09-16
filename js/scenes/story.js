@@ -13,7 +13,10 @@ const MONARCH_CREW = [{ key: 'dot', instrument: 'drums' }, { key: 'hopper', inst
 
 const PLATE_H = 136;
 class ConcertScene {
-  constructor() {
+  constructor(opts = {}) {
+    // Coming out of character select there is nothing left to introduce: the
+    // lights are already down and the song starts.
+    this.straightIn = !!opts.straightIn;
     this.t = 0; this.phase = 'rise'; this.phaseT = 0; this.moveIdx = 0; this.fx = new Particles(); this.lightT = 0; this.strobe = 0; this.results = [];
     this.rng = makeRng(777); this.crowd = [];
     for (let i = 0; i < 260; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 4), o: this.rng.range(0, 6), lighter: this.rng.chance(0.32), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
@@ -66,7 +69,10 @@ class ConcertScene {
     this.haze.update(dt);
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
-    if (this.phase === 'rise') { if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); } }
+    if (this.phase === 'rise') {
+      if (this.straightIn && this.phaseT > 0.9) { Audio.roar(2.2, 0.45); this.startMovement(0); this.startPlay(); }
+      else if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); }
+    }
     else if (this.phase === 'hello') { if (this.phaseT > 3.4) this.startMovement(0); }
     else if (this.phase === 'card') { if (this.phaseT > 30) this.startPlay(); }
     else if (this.phase === 'play') {
@@ -672,64 +678,41 @@ class FlightScene {
     this.t = 0; this.phase = 'board'; this.phaseT = 0; this.fx = new Particles(); this.clouds = [];
     const r = makeRng(21); for (let i = 0; i < 14; i++) this.clouds.push({ x: r.range(0, W), y: r.range(30, 200), s: r.range(0.6, 1.6), sp: r.range(20, 50) });
     this.you = Game.run.members[0];
+    // Nobody practises on a plane. You sit by the window and you look at the
+    // place that is about to happen to you.
+    this.lines = [
+      'THE CAPTAIN SAYS WE BEGIN OUR DESCENT.',
+      'IT GOES ON PAST THE HORIZON IN EVERY DIRECTION.',
+      'THIRTY-SEVEN MILLION OF THEM DOWN THERE.',
+      'AND NOT ONE OF THEM KNOWS YOUR NAME ANY MORE.',
+    ];
+    this.li = 0; this.lineT = 0;
     this.layout();
   }
-  layout() { const t = Game.touch; this.L = t ? { rhythmY: 150, rhythmH: 250, padY: 404, padH: 130, seatTop: 18, seatH: 128 } : { rhythmY: 150, rhythmH: 300, padY: 0, padH: 0, seatTop: 18, seatH: 130 }; }
-  isPlaying() { return this.phase === 'play'; }
-  startPlay() {
-    Audio.init(); Audio.setStageReverb(false);
-    const tune = this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy';
-    const song = songFromTune(tune, { bpm: 96 });
-    const sections = [{ instrument: this.you.instrument, instr: gearInstrument(this.you.instrument, this.you.quality), startBar: 0, endBar: song.bars }];
-    const notes = chartFromMelody(song, sections, 2, makeRng(7), { starRate: 0.14, bombMult: 0 });
-    const mods = collectMods(null, { difficulty: 2, fx: { shake: Game.shake }, windowMult: 1.35 });
-    this.rhythm = new RhythmGame(song, sections, notes, mods, {});
-    const start = Audio.now() + 0.5 + song.leadIn; this.rhythm.begin(start);
-    this.backing = new Backing(song, start - song.leadIn, () => ({ drums: true, bass: false, pad: false }));
-    this.song = song; this.phase = 'play'; this.padKey = null; this.pads = []; this.padPointers = new Map();
-  }
+  layout() { this.L = { seatTop: 18, seatH: 130, padY: 0, padH: 0 }; }
+  isPlaying() { return false; }
   update(dt) {
     this.t += dt; this.phaseT += dt; this.fx.update(dt);
     for (const c of this.clouds) { c.x -= c.sp * dt; if (c.x < -60) { c.x = W + 40; c.y = 30 + Math.random() * 170; } }
-    if (this.phase === 'board' && this.phaseT > 3.2) { this.phase = 'intro'; this.phaseT = 0; }
-    else if (this.phase === 'intro' && this.phaseT > 3.4) this.startPlay();
-    else if (this.phase === 'play') {
-      this.backing.update(); this.rhythm.update(dt);
-      if (Game.touch) { const k = this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, false); } }
-      if (this.rhythm.finished) { this.backing.stop(); this.phase = 'land'; this.phaseT = 0; const res = this.rhythm.results(); Game.run.money += Math.round(res.acc * 10); Game.run.practiceAcc = res.acc; }
+    if (this.phase === 'board') { if (this.phaseT > 3.4) { this.phase = 'window'; this.phaseT = 0; } }
+    else if (this.phase === 'window') {
+      this.lineT += dt;
+      if (this.lineT > 3.4 && this.li < this.lines.length - 1) { this.li++; this.lineT = 0; }
+      else if (this.lineT > 4.4 && this.li >= this.lines.length - 1) this.leave();
     }
-    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
   }
-  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); } } }
-  keyUp(code) { if (this.phase === 'play') this.rhythm.keyUp(code); }
-  padAt(x, y) { return this.pads ? this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) : null; }
-  pointerDown(x, y, id) { if (this.phase === 'play') { const p = this.padAt(x, y); if (p) { this.padPointers.set(id, p.code); this.rhythm.keyDown(p.code); } return; } this.key('Enter'); }
-  pointerMove(x, y, id) { if (this.phase !== 'play') return; const prev = this.padPointers.get(id); if (prev === undefined) return; const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return; this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id); }
-  pointerUp(x, y, id) { const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); } }
-  drawCabin(ctx, top, h) {
-    ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, h); ctx.clip();
-    vgrad(ctx, 0, top, W, h, '#d8d4cc', '#b0aca4');
-    rect(ctx, 0, top, W, 6, '#e8e4dc');
-    // windows with sky
-    for (let i = 0; i < 6; i++) {
-      const wx = 56 + i * 152, wy = top + 20;
-      rect(ctx, wx - 8, wy - 8, 76, 62, '#c0bcb4'); rect(ctx, wx - 6, wy - 6, 72, 58, '#9a968e');
-      ctx.save(); ctx.beginPath(); ctx.ellipse(wx + 30, wy + 22, 32, 25, 0, 0, Math.PI * 2); ctx.clip();
-      const dawn = this.phase === 'land';
-      vgrad(ctx, wx - 6, wy - 6, 72, 58, dawn ? '#f0a060' : '#6ab8f0', dawn ? '#f8d0a0' : '#cfe8ff');
-      for (const c of this.clouds) { const cx = ((c.x + i * 60) % (W + 120)) - 60; if (Math.abs(cx - (wx + 30)) < 56) { ctx.globalAlpha = 0.9; ctx.drawImage(propCanvas('cloud'), Math.round(wx + 30 + (cx - wx - 30) * 0.5 - 28), Math.round(wy + 6 + (c.y % 26)), Math.round(52 * c.s), Math.round(18 * c.s)); ctx.globalAlpha = 1; } }
-      if (this.phase === 'land') {
-        rect(ctx, wx - 6, wy + 32, 72, 22, '#3a6a9a');
-        for (let b = 0; b < 12; b++) rect(ctx, wx - 2 + b * 7, wy + 28 - (b % 3) * 5, 5, 18, '#8a90a8');
-        rect(ctx, wx + 8, wy + 20, 22, 3, '#c8432a');
-      }
-      ctx.restore();
-      ringPx(ctx, wx + 30, wy + 22, 31, '#e8e4dc');
-    }
-    rect(ctx, 0, top + h - 14, W, 14, '#8a867e');
-    ctx.restore();
+  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
+  advance() {
+    if (this.phase === 'board') { this.phase = 'window'; this.phaseT = 0; return; }
+    if (this.li < this.lines.length - 1) { this.li++; this.lineT = 0; return; }
+    this.leave();
   }
-  // ---- SFO, an hour before the flight
+  key(code) { if (['Enter', 'Space', 'Escape', 'KeyZ'].includes(code)) this.advance(); }
+  keyUp() {}
+  pointerDown() { this.advance(); }
+  pointerMove() {}
+  pointerUp() {}
+  // ---- the gate, an hour before the flight
   drawGate(ctx) {
     const t = this.t;
     if (!this.gate) {
@@ -847,32 +830,91 @@ class FlightScene {
     vignette(ctx, 0.36);
   }
   draw(ctx) {
-    rect(ctx, 0, 0, W, H, '#0d0b18'); const L = this.L;
-    this.drawCabin(ctx, L.seatTop, L.seatH);
+    rect(ctx, 0, 0, W, H, '#0d0b18');
     if (this.phase === 'board') { this.drawGate(ctx); return; }
-    // cabin seats
-    const seatY = L.seatTop + L.seatH;
-    vgrad(ctx, 0, seatY, W, H - seatY, '#2a3040', '#1a1f2b');
-    for (let i = 0; i < 6; i++) ctx.drawImage(propCanvas('seat'), 26 + i * 160, seatY + 8, 56, 62);
-    drawShadow(ctx, 480, seatY + 78, 40, 0.3);
-    drawBugAt(ctx, this.you.spec, 480, seatY + 78, { pose: this.phase === 'play' ? 'play' : 'idle', instrument: this.you.instrument, scale: 2.1 });
-    if (this.phase === 'intro') {
-      const inner = uiPanel(ctx, W / 2 - 230, L.rhythmY + 30, 460, 110, { title: 'ONE LAST PRACTICE' });
-      drawText(ctx, TUNES[this.you.instrument === 'drums' ? 'saints' : this.you.instrument === 'piano' ? 'furElise' : 'odeToJoy'].title.toUpperCase(), inner.x + inner.w / 2, inner.y + 16, '#7a4a10', { align: 'center', scale: 2 });
-      drawText(ctx, Game.touch ? 'TAP TO PLAY' : 'PRESS ENTER', inner.x + inner.w / 2, inner.y + 54, UI.inkSoft, { align: 'center' });
-      return;
+    this.drawWindow(ctx);
+  }
+  // ---- The window seat, coming in over Tokyo. There is no practice on this
+  // plane any more; there is a pane of glass and a city on the other side.
+  drawWindow(ctx) {
+    const t = this.t;
+    // the cabin wall, the panel lines and the trim under the window
+    vgrad(ctx, 0, 0, W, H, '#2b2736', '#14121c');
+    for (let y = 0; y < H; y += 46) { ctx.globalAlpha = 0.25; rect(ctx, 0, y, W, 1, '#3a3648'); ctx.globalAlpha = 1; }
+    rect(ctx, 0, 0, W, 30, '#343040'); rect(ctx, 0, 30, W, 3, '#1b1824');
+    // the reading lights and the seatbelt sign overhead
+    for (let i = 0; i < 7; i++) { const lx = 74 + i * 136; circle(ctx, lx, 14, 5, '#3f3a4e'); if (i % 3 === 0) { circle(ctx, lx, 14, 3, '#ffe6a0'); lightPool(ctx, lx, 22, 70, '#ffdf9a', 0.07); } }
+    rect(ctx, W / 2 - 34, 6, 68, 18, '#2a2634'); frame(ctx, W / 2 - 34, 6, 68, 18, '#4a4458');
+    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 2.4); drawText(ctx, 'SEATBELTS', W / 2, 12, '#ffcf6a', { align: 'center', font: 'small' }); ctx.globalAlpha = 1;
+    // ---- the window itself: a big rounded pane with the city in it
+    const wx = 168, wy = 74, ww = 636, wh = 328, rr = 58;
+    const pane = (px2, py2, pw, ph, rad) => {
+      ctx.beginPath();
+      ctx.moveTo(px2 + rad, py2);
+      ctx.lineTo(px2 + pw - rad, py2); ctx.quadraticCurveTo(px2 + pw, py2, px2 + pw, py2 + rad);
+      ctx.lineTo(px2 + pw, py2 + ph - rad); ctx.quadraticCurveTo(px2 + pw, py2 + ph, px2 + pw - rad, py2 + ph);
+      ctx.lineTo(px2 + rad, py2 + ph); ctx.quadraticCurveTo(px2, py2 + ph, px2, py2 + ph - rad);
+      ctx.lineTo(px2, py2 + rad); ctx.quadraticCurveTo(px2, py2, px2 + rad, py2);
+      ctx.closePath();
+    };
+    // the frame: three rings of trim, the way a cabin window is built
+    ctx.fillStyle = '#4a4458'; pane(wx - 16, wy - 16, ww + 32, wh + 32, rr + 14); ctx.fill();
+    ctx.fillStyle = '#2f2b3c'; pane(wx - 8, wy - 8, ww + 16, wh + 16, rr + 7); ctx.fill();
+    ctx.fillStyle = '#0a0a12'; pane(wx, wy, ww, wh, rr); ctx.fill();
+    ctx.save(); pane(wx, wy, ww, wh, rr); ctx.clip();
+    // the whole city, out to the horizon
+    drawTokyoFromAbove(ctx, wx, wy, ww, wh, t, { seed: 5 });
+    // the wing, coming in from the bottom left with its light going
+    ctx.fillStyle = '#20202e'; ctx.beginPath();
+    ctx.moveTo(wx - 10, wy + wh); ctx.lineTo(wx + 210, wy + wh); ctx.lineTo(wx + 96, wy + wh - 74); ctx.lineTo(wx - 10, wy + wh - 46); ctx.fill();
+    rect(ctx, wx + 60, wy + wh - 54, 40, 3, '#3a3a52');
+    if (Math.sin(t * 3.4) > 0.72) { circle(ctx, wx + 96, wy + wh - 72, 3, '#9fe8ff'); ctx.globalAlpha = 0.4; circle(ctx, wx + 96, wy + wh - 72, 8, '#9fe8ff'); ctx.globalAlpha = 1; }
+    // cloud passing under the wing
+    for (let i = 0; i < 4; i++) {
+      const cx2 = wx + ww - ((t * 40 + i * 260) % (ww + 300));
+      ctx.globalAlpha = 0.13; ctx.drawImage(propCanvas('cloud'), cx2, wy + wh - 120 + (i % 2) * 40, 150, 52); ctx.globalAlpha = 1;
     }
-    if (this.phase === 'play') {
-      this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads });
-      drawText(ctx, this.song.name.toUpperCase() + '   ' + this.song.composer.toUpperCase(), 10, L.rhythmY + 8, '#ffd24a', { outline: '#1a1410' });
-      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
-      return;
+    // ---- the glass: a sheen across it, and his own face looking back
+    ctx.globalAlpha = 0.09; ctx.fillStyle = '#cfe0ff';
+    ctx.beginPath(); ctx.moveTo(wx, wy + wh * 0.62); ctx.lineTo(wx + ww * 0.5, wy); ctx.lineTo(wx + ww * 0.78, wy); ctx.lineTo(wx, wy + wh); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.16;
+    drawBugAt(ctx, this.you.spec, wx + ww - 150, wy + wh - 26, { pose: 'sad', scale: 2.6, expr: 'sad', t: t, rate: 0.7, bounce: 0.35 });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // condensation and a scratch or two on the pane
+    ctx.globalAlpha = 0.1; for (let i = 0; i < 30; i++) { const sx = wx + ((i * 137) % ww), sy = wy + ((i * 71) % wh); rect(ctx, sx, sy, 1, 2 + (i % 3), '#dfe8ff'); } ctx.globalAlpha = 1;
+    // the shade, pulled up, and the little tray edge below
+    rect(ctx, wx - 16, wy - 22, ww + 32, 10, '#3a3648'); rect(ctx, wx - 16, wy - 22, ww + 32, 3, '#544e68');
+    // ---- him, in the seat: the back of the chair, then him in it, turned to
+    // the glass, which is the whole shot
+    rect(ctx, 14, 384, 176, 156, '#241f30'); rect(ctx, 14, 384, 176, 5, '#3c364e');
+    rect(ctx, 24, 398, 156, 124, '#2e2940');
+    for (let i = 0; i < 6; i++) rect(ctx, 32, 408 + i * 19, 140, 2, '#241f30');
+    const hx = 128, hy2 = 470;
+    drawBugAt(ctx, this.you.spec, hx, hy2, { pose: 'sad', scale: 3.6, expr: 'sad', t: t, rate: 0.6, bounce: 0.3 });
+    // the armrest between him and the window, and his hand on it
+    rect(ctx, 176, 462, 78, 12, '#3a3448'); rect(ctx, 176, 462, 78, 3, '#544e68');
+    rect(ctx, 176, 474, 78, 8, '#241f30');
+    // the seat in front, with a tray table down and a paper cup on it
+    rect(ctx, 706, 392, 240, 148, '#2a2636'); rect(ctx, 706, 392, 240, 5, '#453f58');
+    rect(ctx, 690, 446, 250, 10, '#4a4458'); rect(ctx, 690, 446, 250, 3, '#655d7c');
+    rect(ctx, 760, 424, 22, 24, '#d8d2c4'); rect(ctx, 760, 424, 22, 4, '#f0ebe0'); rect(ctx, 762, 430, 18, 3, '#8a7a5a');
+    ctx.drawImage(icon('note'), 818, 418, 18, 16);
+    // ---- the line he is thinking, in a plate along the bottom
+    const plate = 92;
+    ctx.globalAlpha = 0.86; rect(ctx, 0, H - plate, W, plate, '#0b0914'); ctx.globalAlpha = 1;
+    rect(ctx, 0, H - plate, W, 2, '#c8a03a');
+    const shown = this.lines[this.li] || '';
+    const chars = Math.min(shown.length, Math.floor(this.lineT * 34));
+    drawText(ctx, shown.slice(0, chars), W / 2, H - plate + 30, '#f2ecd8', { align: 'center', scale: 3 });
+    for (let i = 0; i < this.lines.length; i++) {
+      rect(ctx, W / 2 - this.lines.length * 9 + i * 18, H - 22, 12, 3, i <= this.li ? '#c8a03a' : '#3a3444');
     }
-    if (this.phase === 'land') {
-      const inner = uiPanel(ctx, W / 2 - 230, L.rhythmY + 40, 460, 120, { title: 'WELCOME TO SAN FRANCISCO' });
-      drawText(ctx, Math.round((Game.run.practiceAcc || 0) * 100) + '%  STILL GOT IT', inner.x + inner.w / 2, inner.y + 16, '#4f8032', { align: 'center', scale: 3 });
-      drawText(ctx, 'THE FOG SMELLS LIKE SOURDOUGH', inner.x + inner.w / 2, inner.y + 58, UI.inkSoft, { align: 'center' });
-      drawText(ctx, Game.touch ? 'TAP' : 'ENTER', inner.x + inner.w / 2, inner.y + 82, UI.inkFaint, { align: 'center' });
-    }
+    ctx.globalAlpha = 0.45 + 0.35 * Math.sin(t * 4);
+    drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W - 20, H - 26, '#cfc9e6', { align: 'right', font: 'small' });
+    ctx.globalAlpha = 1;
+    letterbox(ctx, 22, 1);
+    vignette(ctx, 0.4);
   }
 }

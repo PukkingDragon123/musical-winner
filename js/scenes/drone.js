@@ -17,12 +17,14 @@ class DroneScene {
     this.cars = []; for (let i = 0; i < 26; i++) this.cars.push({ x: this.rng.range(-1.2, 1.2), z: this.rng.range(0.2, 1), s: this.rng.range(0.05, 0.18), c: this.rng.chance(0.5) ? '#ffe6a0' : '#ff8a7a' });
     // what the narrator says, and when
     this.lines = [
-      [0.4, 'TOKYO. ELEVEN AT NIGHT.'],
-      [3.2, 'FIFTY-FIVE THOUSAND OF THEM IN THERE.'],
-      [6.2, 'ALL OF THEM HERE FOR ONE BAND.'],
-      [9.4, 'THIS IS THE LAST GOOD NIGHT.'],
+      [0.6, 'TOKYO. ELEVEN AT NIGHT.'],
+      [4.0, 'THIRTEEN MILLION OF THEM DOWN THERE.'],
+      [7.4, 'FIFTY-FIVE THOUSAND IN THAT ONE BUILDING.'],
+      [10.8, 'ALL OF THEM HERE FOR ONE BAND.'],
+      [14.0, 'THIS IS THE LAST GOOD NIGHT.'],
     ];
-    this.dur = 13.2;
+    this.wideFor = 9.0;                 // how long we hold on the whole city
+    this.dur = 17.8;
   }
   skip() { if (this.left) return; this.left = true; Game.go(this.next, 'fade', { dur: 0.7 }); }
   update(dt) {
@@ -33,11 +35,14 @@ class DroneScene {
   click() { this.skip(); }
   draw(ctx) {
     const t = this.t, k = clamp(t / this.dur, 0, 1);
+    // how long the establishing plate stays up over everything else
+    const wide = clamp((this.wideFor + 1.4 - t) / 1.4, 0, 1);
     // the descent: high and wide, then low and tight on the dome
-    const alt = 1 - easeInOut(clamp(t / 10.5, 0, 1));          // 1 high, 0 low
-    const zoom = lerp(0.62, 3.4, easeInOut(clamp(t / 10.5, 0, 1)));
+    const alt = 1 - easeInOut(clamp((t - this.wideFor) / 5.2, 0, 1));          // 1 high, 0 low
+    const zoom = lerp(0.62, 3.4, easeInOut(clamp((t - this.wideFor) / 5.2, 0, 1)));
     // night sky and a horizon that rises as you come down
     const horizon = lerp(60, 250, 1 - alt);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
     vgrad(ctx, 0, 0, W, horizon, '#0a0a1e', '#241a3e');
     for (let i = 0; i < 90; i++) { const sx = (i * 173) % W, sy = (i * 61) % Math.max(1, horizon - 6); if (Math.sin(t * 2 + i) > 0.2) px(ctx, sx, sy, i % 4 ? '#8a86b0' : '#fff'); }
     // the city floor, in a cheap perspective: further blocks smaller and higher
@@ -97,8 +102,21 @@ class DroneScene {
     const bx = ((t * 26) % (W + 200)) - 100;
     if (alt > 0.3) { ctx.globalAlpha = alt; ellipsePx(ctx, bx, 64, 22, 8, '#3a3450'); ellipsePx(ctx, bx, 62, 21, 7, '#59527a'); rect(ctx, bx - 6, 70, 12, 4, '#2a2438');
       drawText(ctx, 'MONARCH', bx, 59, '#ffd24a', { align: 'center', font: 'small' }); ctx.globalAlpha = 1; }
+    ctx.restore(); ctx.globalAlpha = 1;
+    // ---- the establishing shot: the entire city in one frame, pushing in
+    // slowly, and only then handing over to the drone dropping into it
+    if (wide > 0) {
+      const z = 1 + clamp(t / this.wideFor, 0, 1.4) * 0.34;
+      ctx.save(); ctx.globalAlpha = wide;
+      ctx.translate(W / 2, H * 0.62); ctx.scale(z, z); ctx.translate(-W / 2, -H * 0.62);
+      drawTokyoFromAbove(ctx, 0, 0, W, H, t, { seed: 5 });
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
     // ---- the finish: through the roof
-    if (t > 11) { ctx.globalAlpha = clamp((t - 11) / 1.6, 0, 1); rect(ctx, 0, 0, W, H, '#f6f2ff'); ctx.globalAlpha = 1; }
+    if (t > this.dur - 2.2) { ctx.globalAlpha = clamp((t - (this.dur - 2.2)) / 1.6, 0, 1); rect(ctx, 0, 0, W, H, '#f6f2ff'); ctx.globalAlpha = 1; }
+    this.drawFrame(ctx, t, alt);
+  }
+  drawFrame(ctx, t, alt) {
     // ---- the frame it is all shot in
     letterbox(ctx, 58, 1);
     vignette(ctx, 0.5);

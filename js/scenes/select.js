@@ -99,6 +99,48 @@ class TitleScene {
     this.shells = this.shells.filter(sh => !sh.done || sh.t < sh.burst + 2);
     this.flashT = Math.max(0, (this.flashT || 0) - dt);
   }
+  // ---- The road across the bottom of the menu, with the four of them
+  // crossing it in single file. Everything else on the street stops for them,
+  // which is the only time it ever does.
+  drawRoad(ctx) {
+    const t = this.t, kerbY = 398, roadTop = 412;
+    // the far pavement, and the people waiting on it
+    rect(ctx, 0, kerbY, W, roadTop - kerbY, '#8f8a80'); rect(ctx, 0, kerbY, W, 3, '#b4aea2');
+    for (const b of this.band.slice(4)) {
+      const x = ((b.x + t * 16) % (W + 110)) - 55;
+      ctx.globalAlpha = 0.7;
+      drawShadow(ctx, x, kerbY + 10, 18, 0.2);
+      drawBugAt(ctx, b.spec, x, kerbY + 10, { pose: Math.floor(t * 5 + b.o) % 2 ? 'walk1' : 'walk2', scale: 0.72, bounce: 0.5 });
+      ctx.globalAlpha = 1;
+    }
+    // the road itself
+    vgrad(ctx, 0, roadTop, W, H - roadTop, '#3c3c48', '#2c2c36');
+    rect(ctx, 0, roadTop, W, 3, '#d8d2c4');
+    // the crossing, painted straight across it
+    for (let x = 8; x < W; x += 54) { ctx.globalAlpha = 0.9; rect(ctx, x, roadTop + 8, 30, H - roadTop - 16, '#e8e6dc'); ctx.globalAlpha = 1; }
+    // a taxi stopped at the line, headlights on the paint
+    const tx = 40 + Math.sin(t * 0.6) * 3;
+    ctx.drawImage(carCanvas(7, 1), tx, roadTop + 16, 88, 40);
+    ctx.globalAlpha = 0.22; ellipsePx(ctx, tx + 96, roadTop + 44, 34, 10, '#ffe6a0'); ctx.globalAlpha = 1;
+    // the signal, counting them over
+    rect(ctx, W - 74, kerbY - 66, 12, 70, '#2a2a34');
+    rect(ctx, W - 82, kerbY - 96, 28, 34, '#1b1b24'); frame(ctx, W - 82, kerbY - 96, 28, 34, '#3f3f4e');
+    circle(ctx, W - 68, kerbY - 80, 8, Math.sin(t * 3) > -0.4 ? '#6be585' : '#1e3a24');
+    // ---- the four of them, in single file, all the way across
+    const walk = ((t * 34) % (W + 420)) - 210;
+    ROSTER.forEach((c, i) => {
+      const x = walk - i * 92, y = H - 48 + (i % 2) * 4;
+      if (x < -70 || x > W + 70) return;
+      // the long shadow the street lights throw back down the road
+      ctx.globalAlpha = 0.22; ctx.fillStyle = '#0a0a12';
+      ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y); ctx.lineTo(x - 30, y + 46); ctx.lineTo(x - 54, y + 46); ctx.fill();
+      ctx.globalAlpha = 1;
+      drawShadow(ctx, x, y, 34, 0.32);
+      drawBugAt(ctx, HERO_PRESETS[c.key], x, y + Math.round(Math.sin(t * 6 + i * 1.7) * 2), {
+        pose: Math.floor(t * 6 + i * 1.7) % 2 ? 'walk1' : 'walk2',
+        instrument: c.instrument !== 'drums' && c.instrument !== 'piano' ? c.instrument : null, scale: 1.7 });
+    });
+  }
   key(code) { if (this.page === 'help') { if (['Escape', 'Enter', 'Space'].includes(code)) { this.page = 'main'; Audio.ui('back'); } return; } this.menu.key(code); }
   click(x, y) { if (this.page === 'help') { this.page = 'main'; return; } this.menu.click(x, y); }
   hover(x, y) { this.menu.hover(x, y); }
@@ -107,7 +149,7 @@ class TitleScene {
     // the shells on their way up, and the sky lighting when one opens
     if (this.flashT > 0) { ctx.globalAlpha = this.flashT * 0.5; rect(ctx, 0, 0, W, 300, this.flashCol); ctx.globalAlpha = 1; }
     for (const sh of this.shells) if (!sh.done) { rect(ctx, sh.x - 1, sh.y - 2, 2, 5, '#fff2c0'); rect(ctx, sh.x - 1, sh.y - 4, 2, 2, sh.col); }
-    for (const b of this.band) { const x = ((b.x + this.t * 26) % (W + 110)) - 55; const sq = 1 + Math.sin(this.t * 12 + b.o) * 0.04; drawShadow(ctx, x, 452, 26); drawBugAt(ctx, b.spec, x, 452 + Math.round(Math.sin(this.t * 6 + b.o) * 2), { pose: Math.floor(this.t * 6 + b.o) % 2 ? 'walk1' : 'walk2', instrument: b.inst !== 'drums' && b.inst !== 'piano' ? b.inst : null, squash: sq }); }
+    this.drawRoad(ctx);
     this.fx.draw(ctx);
     this.motes.draw(ctx, this.t, '#ffe6a0');
     grade(ctx, 0, 0, W, H, '#3a2a7a', 0.12);
@@ -116,8 +158,10 @@ class TitleScene {
     const bob = Math.round(Math.sin(this.t * 2) * 3);
     drawText(ctx, 'BUG BUSKER', W / 2, 38 + bob, '#ffd24a', { align: 'center', scale: 8, outline: '#5a2a10', shadow: '#20100a' });
     drawText(ctx, 'ORCHESTRA', W / 2, 96 + bob, '#ff9f68', { align: 'center', scale: 5, outline: '#5a2a10' });
-    const n = this.menu.items.length, inner = uiPanel(ctx, W / 2 - 130, 150, 260, 30 * n + 26);
-    this.menu.draw(ctx, inner.x + 16, inner.y + 10, inner.w - 32, 30, 'buttons');
+    // a real menu: full-size buttons with room to be pressed, not a list
+    const n = this.menu.items.length, rowH = n > 4 ? 38 : 44;
+    const inner = uiPanel(ctx, W / 2 - 168, 146, 336, rowH * n + 26);
+    this.menu.draw(ctx, inner.x + 14, inner.y + 8, inner.w - 28, rowH, 'buttons');
     if (this.boot > 0) { const k = clamp(this.boot / 1, 0, 1); const h = H / 2 * easeInOut(k); vgrad(ctx, 0, 0, W, h, '#6a1020', '#3a0812'); vgrad(ctx, 0, H - h, W, h, '#3a0812', '#6a1020'); rect(ctx, 0, h - 4, W, 4, '#d9a520'); rect(ctx, 0, H - h, W, 4, '#d9a520'); }
   }
 }
@@ -177,7 +221,7 @@ class SelectScene {
       if (Math.random() < dt * 0.7) this.puff(this.rng.range(60, W - 60), 410, 2);
     } else if (this.phase === 'out') {
       // everything goes dark again, and then the show
-      if (this.phaseT > 1.5) { this.phase = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene(); }, 'fade', { dur: 0.7 }); }
+      if (this.phaseT > 1.5) { this.phase = 'gone'; Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene({ straightIn: true }); }, 'fade', { dur: 0.7 }); }
     }
     if (this.confirmed && this.phase === 'pick') { this.confirmT += dt; if (this.confirmT > 1.4) { this.phase = 'out'; this.phaseT = 0; } }
   }

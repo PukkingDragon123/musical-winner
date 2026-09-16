@@ -97,51 +97,69 @@ const OPERA = {
   kana: 'MONAAKU',            // how the crowd chants the name back
   seats: '55,000 SOLD OUT',
   movements: [
-    // Three songs. Original tunes, written for this: a music-hall stomp with
-    // an operatic streak, a disco strut that lives on the bass, and one long
-    // piece that starts as a ballad and then falls off a cliff.
-    { key: 'queen', title: 'I. SIX LEGS AND A CROWN', instrument: 'piano', bpm: 132, style: 'opera', difficulty: 2, key_: 60,
-      chords: [0, 5, 1, 4, 0, 5, 4, 0],
+    // Three famous pieces, all long out of copyright: Beethoven's Ode to Joy
+    // (1824), Grieg's In the Hall of the Mountain King (1875) and
+    // Rimsky-Korsakov's Flight of the Bumblebee (1900). The last one is the
+    // joke the whole game is built on: the most famously unplayable run in
+    // music, played by an actual bug, and it is the one that ends you.
+    { key: 'joy', title: 'I. ODE TO JOY', composer: 'BEETHOVEN', instrument: 'piano', bpm: 112, style: 'opera', difficulty: 2, key_: 60,
+      chords: [0, 4, 5, 4, 0, 4, 4, 0],
       lights: ['#c58bff', '#ffd24a'], pyro: 1,
-      // staccato, music-hall, with chromatic approaches into every phrase end
-      notes: [[72,.5],[71,.5],[72,.5],[74,.5],[76,1],[74,.5],[72,.5],
-              [71,.5],[72,.5],[74,.5],[76,.5],[77,1],[76,1],
-              [79,.5],[77,.5],[76,.5],[74,.5],[72,1],[71,1],
-              [69,.5],[71,.5],[72,.5],[74,.5],[72,2],
-              [76,.5],[75,.5],[76,.5],[79,.5],[81,1],[79,.5],[76,.5],
-              [77,.5],[79,.5],[81,.5],[83,.5],[84,1],[83,1],
-              [81,.5],[79,.5],[77,.5],[76,.5],[74,1],[72,1],
-              [71,.5],[74,.5],[72,.5],[71,.5],[72,2]],
+      notes: [[76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [76,1.5],[74,.5],[74,2],
+              [76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [74,1.5],[72,.5],[72,2],
+              [74,1],[74,1],[76,1],[72,1], [74,1],[76,.5],[77,.5],[76,1],[72,1],
+              [74,1],[76,.5],[77,.5],[76,1],[74,1], [72,1],[74,1],[67,2],
+              [76,1],[76,1],[77,1],[79,1], [79,1],[77,1],[76,1],[74,1],
+              [72,1],[72,1],[74,1],[76,1], [74,1.5],[72,.5],[72,2]],
       tutorial: 'TAP THE NOTES ON THE LINE' },
-    { key: 'strut', title: 'II. FLOORBOARD STRUT', instrument: 'bass', bpm: 116, style: 'funk', difficulty: 3, key_: 40,
-      chords: [0, 0, 0, 0, 3, 3, 4, 4],
+    { key: 'hall', title: 'II. IN THE HALL OF THE MOUNTAIN KING', composer: 'GRIEG', instrument: 'bass', bpm: 124, style: 'funk', difficulty: 3, key_: 40,
+      chords: [0, 0, 0, 0, 0, 0, 4, 0],
       lights: ['#6be585', '#ffd24a'], pyro: 2,
-      // one riff, octaves and a slide, repeated until the floor gives way
-      notes: [[40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,1],
-              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[50,.5],[52,1],
-              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,.5],[40,.5],
-              [45,.5],[47,.5],[50,.5],[52,.5],[55,1],[52,1],
-              [43,.5],[43,.5],[55,.5],[43,.5],[50,.5],[48,.5],[46,1],
-              [45,.5],[45,.5],[57,.5],[45,.5],[52,.5],[50,.5],[48,1],
-              [40,.25],[43,.25],[45,.25],[47,.25],[50,.5],[52,.5],[55,1],
-              [52,.5],[50,.5],[47,.5],[45,.5],[40,2]],
-      tutorial: 'LOCK INTO THE GROOVE - GOLD PAYS TRIPLE' },
-    { key: 'epic', title: 'III. THE LONG WAY DOWN', instrument: 'guitar', bpm: 148, style: 'concert', difficulty: 3, key_: 57,
-      chords: [0, 5, 3, 4, 0, 5, 3, 4],
-      // The whole point of this one: it is an ordinary song for eight bars and
-      // then the solo starts and it is not survivable. That is the night you
-      // are remembering, and it ends the way it ended.
+      // it creeps in on the bass and then will not stop speeding up, which is
+      // what the piece does: same theme, twice the notes, an octave up
+      notes: [[52,.5],[54,.5],[55,.5],[57,.5],[55,.5],[59,.5],[55,1],
+              [51,.5],[54,.5],[57,.5],[55,.5],[54,.5],[57,.5],[54,1],
+              [52,.5],[54,.5],[55,.5],[57,.5],[55,.5],[59,.5],[55,1],
+              [52,.5],[55,.5],[59,.5],[57,.5],[55,.5],[59,.5],[55,.5],[52,.5],
+              [64,.5],[66,.5],[67,.5],[69,.5],[67,.5],[71,.5],[67,1],
+              [63,.5],[66,.5],[69,.5],[67,.5],[66,.5],[69,.5],[66,1],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [67,.25],[71,.25],[74,.25],[71,.25],[67,.25],[64,.25],[67,.25],[71,.25],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [67,.25],[71,.25],[76,.25],[74,.25],[71,.25],[67,.25],[64,.25],[52,.25],
+              [64,.25],[66,.25],[67,.25],[69,.25],[67,.25],[71,.25],[67,.25],[64,.25],
+              [66,.25],[67,.25],[69,.25],[71,.25],[69,.25],[73,.25],[69,.25],[66,.25],
+              [67,.25],[69,.25],[71,.25],[73,.25],[71,.25],[74,.25],[71,.25],[67,.25],
+              [76,.25],[74,.25],[71,.25],[67,.25],[64,.25],[67,.25],[71,.25],[76,.25],
+              [79,.5],[76,.5],[71,.5],[67,.5],[64,.5],[67,.5],[71,.5],[76,.5],
+              [52,1],[52,1],[52,.5],[52,.5],[52,1]],
+      tutorial: 'IT GETS FASTER. IT ALWAYS GETS FASTER' },
+    { key: 'bee', title: 'III. FLIGHT OF THE BUMBLEBEE', composer: 'RIMSKY-KORSAKOV', instrument: 'guitar', bpm: 138, style: 'concert', difficulty: 3, key_: 57,
+      chords: [0, 0, 4, 4, 0, 0, 4, 0],
+      // Eight bars you can actually hold on to, and then the run starts. It is
+      // chromatic, it is sixteenths, and it does not stop for you.
       soloBar: 8, impossible: true,
       lights: ['#5bc0ff', '#ff2a2a', '#ffffff'], pyro: 4,
-      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],
-              [69,1],[67,1],[69,2],[64,2],[69,2],
-              [72,1],[74,1],[76,2],[74,1],[72,1],[71,2],
-              [69,1],[71,1],[72,2],[69,4]],
-      // what happens once the solo starts, which is a different instrument
-      solo: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
-             [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25],
-             [81,.25],[88,.25],[93,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],
-             [76,.25],[79,.25],[83,.25],[88,.25],[91,.25],[88,.25],[84,.25],[81,.25]],
+      notes: [[81,.5],[80,.5],[79,.5],[78,.5],[77,.5],[76,.5],[75,.5],[74,.5],
+              [73,.5],[72,.5],[71,.5],[70,.5],[69,2],
+              [69,.5],[70,.5],[71,.5],[72,.5],[73,.5],[74,.5],[75,.5],[76,.5],
+              [77,.5],[76,.5],[75,.5],[74,.5],[73,2],
+              [76,.5],[75,.5],[74,.5],[73,.5],[72,.5],[71,.5],[70,.5],[69,.5],
+              [68,.5],[69,.5],[71,.5],[72,.5],[74,2],
+              [81,.5],[80,.5],[79,.5],[78,.5],[77,.5],[76,.5],[75,.5],[74,.5],
+              [73,.5],[72,.5],[71,.5],[69,.5],[69,2]],
+      // the run itself: straight chromatic sixteenths, down and back up, which
+      // is very close to what is actually on the page
+      solo: [[93,.25],[92,.25],[91,.25],[90,.25],[89,.25],[88,.25],[87,.25],[86,.25],
+             [85,.25],[84,.25],[83,.25],[82,.25],[81,.25],[80,.25],[79,.25],[78,.25],
+             [77,.25],[78,.25],[79,.25],[80,.25],[81,.25],[82,.25],[83,.25],[84,.25],
+             [85,.25],[86,.25],[87,.25],[88,.25],[89,.25],[90,.25],[91,.25],[92,.25],
+             [93,.25],[92,.25],[91,.25],[90,.25],[89,.25],[88,.25],[87,.25],[86,.25],
+             [88,.25],[87,.25],[86,.25],[85,.25],[84,.25],[83,.25],[82,.25],[81,.25],
+             [83,.25],[82,.25],[81,.25],[80,.25],[79,.25],[78,.25],[77,.25],[76,.25],
+             [78,.25],[79,.25],[81,.25],[83,.25],[85,.25],[88,.25],[91,.25],[93,.25]],
       tutorial: 'HOLD THE LONG ONES. THEN HOLD ON.' },
   ],
 };
@@ -160,7 +178,7 @@ function songFromMovement(mv) {
   // bars where it comes apart.
   const songBars = Math.max(4, Math.ceil(totalBeats / 4));
   const bars = mv.soloBar ? songBars + 8 : songBars;
-  return { name: mv.title, composer: 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
+  return { name: mv.title, composer: mv.composer || 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
     songBars, soloBar: mv.soloBar ? songBars : 0, solo: mv.solo || null,
     leadIn: 4 * beat, length: 4 * beat + bars * 4 * beat + 1.6, style: mv.style };
 }
