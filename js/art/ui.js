@@ -58,22 +58,39 @@ function uiButton(ctx, x, y, w, h, label, state = 'normal', opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
   const down = state === 'down'; const dis = state === 'disabled';
   const base = opts.color || (dis ? '#8a8a7a' : UI.green), hi = dis ? '#a8a898' : (opts.hi || UI.greenHi), lo = dis ? '#5a5a50' : (opts.lo || UI.greenLo), ol = opts.ol || UI.greenOl;
-  const oy = down ? 1 : 0;
-  // shadow/base
-  rect(ctx, x + 1, y + 1 + h - 3, w - 2, 3, ol);
-  rect(ctx, x + 1, y + oy, w - 2, h - 1 - oy, ol); rect(ctx, x, y + 1 + oy, w, h - 3 - oy, ol);
-  rect(ctx, x + 2, y + 1 + oy, w - 4, h - 3 - oy, base); rect(ctx, x + 1, y + 2 + oy, w - 2, h - 5 - oy, base);
-  rect(ctx, x + 2, y + 1 + oy, w - 4, 1, hi); rect(ctx, x + 1, y + 2 + oy, 1, h - 6, hi);
-  rect(ctx, x + 2, y + h - 3, w - 4, 1, lo); rect(ctx, x + w - 2, y + 2 + oy, 1, h - 6, lo);
-  if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.fillRect(x + 1, y + 1 + oy, w - 2, h - 3 - oy); }
+  // A real button has a side to it. The face sits on a lip, and pressing it
+  // drops the face onto the lip instead of just tinting the same rectangle.
+  const lip = h >= 34 ? 5 : h >= 22 ? 4 : 2;
+  const oy = down ? lip - 1 : 0;
+  const fh = h - lip;                                    // the face itself
+  // the body under the face, and the shadow it casts
+  ctx.globalAlpha = 0.28; rect(ctx, x + 2, y + h - 1, w - 4, 3, '#000'); ctx.globalAlpha = 1;
+  rect(ctx, x + 1, y + 2, w - 2, h - 3, darken(ol, 0.18));
+  rect(ctx, x, y + 3, w, h - 5, darken(ol, 0.18));
+  // the face: a slab with a bevel, a gradient and a gloss across the top half
+  const fy = y + oy;
+  rect(ctx, x + 1, fy, w - 2, fh, ol); rect(ctx, x, fy + 1, w, fh - 2, ol);
+  vgrad(ctx, x + 2, fy + 1, w - 4, fh - 2, hi, base);
+  vgrad(ctx, x + 1, fy + 2, w - 2, fh - 4, hi, base);
+  ctx.globalAlpha = 0.16; rect(ctx, x + 2, fy + 1, w - 4, Math.floor(fh * 0.42), '#ffffff'); ctx.globalAlpha = 1;
+  rect(ctx, x + 2, fy + 1, w - 4, 1, lighten(hi, 0.3));
+  rect(ctx, x + 1, fy + 2, 1, fh - 4, lighten(hi, 0.18));
+  rect(ctx, x + 2, fy + fh - 2, w - 4, 1, lo);
+  rect(ctx, x + w - 2, fy + 2, 1, fh - 4, lo);
+  // the corners knocked off, so it reads as moulded and not as a rectangle
+  for (const [cx, cy] of [[x + 1, fy + 1], [x + w - 2, fy + 1], [x + 1, fy + fh - 2], [x + w - 2, fy + fh - 2]]) rect(ctx, cx, cy, 1, 1, ol);
+  if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 2, fy + 1, w - 4, fh - 2); frame(ctx, x, fy, w, fh, lighten(hi, 0.4)); }
+  if (down) { ctx.globalAlpha = 0.18; rect(ctx, x + 2, fy + 1, w - 4, 3, '#000'); ctx.globalAlpha = 1; }
   const tc = dis ? '#dcdccc' : (opts.text || '#fff8e8');
   // The label is drawn as large as the button will hold. Without a scale it
   // grows to fill; with one it still shrinks rather than spilling out of the
   // box, which is what used to happen to the longer labels.
   let sc = opts.scale || 4;
-  while (sc > 1 && textWidth(label, { scale: sc }) > w - 12) sc--;
-  drawText(ctx, label, x + w / 2, y + Math.floor((h - 2 - 7 * sc) / 2) + oy, tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
-  if (opts.icon) ctx.drawImage(opts.icon, x + 6, y + Math.floor((h - opts.icon.height) / 2) + oy);
+  const room = w - 12 - (opts.icon ? opts.icon.width + 8 : 0);
+  while (sc > 1 && textWidth(label, { scale: sc }) > room) sc--;
+  const tx = opts.icon ? x + 8 + opts.icon.width + (w - 16 - opts.icon.width) / 2 : x + w / 2;
+  drawText(ctx, label, tx, fy + Math.floor((fh - 7 * sc) / 2), tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
+  if (opts.icon) ctx.drawImage(opts.icon, x + 8, fy + Math.floor((fh - opts.icon.height) / 2));
 }
 // Ornate gold slot with dark leather interior
 function uiSlot(ctx, x, y, size = 26, opts = {}) {

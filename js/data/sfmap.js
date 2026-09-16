@@ -163,6 +163,69 @@ const MAP_DETAILS = [
   // the two towers, marked on the map the way landmarks are
   { kind: 'tower', x: 610, y: 470, text: 'TOKYO TOWER' }, { kind: 'tower', x: 965, y: 215, text: 'SKYTREE' },
 ];
+// ---- Blossom, mascots, awnings and parked cars. A city map with nothing on
+// it but roads is a diagram; this is the layer that makes it a place. All of
+// it is seeded, so the map is the same map every run.
+(function () {
+  const rng = makeRng(3131);
+  const push = (o) => MAP_DETAILS.push(o);
+  // sakura follows the avenues, the way it does along every Tokyo canal
+  for (const st of STREETS) {
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 26; d < len - 12; d += st.big ? 64 : 44) {
+        if (rng.chance(st.big ? 0.62 : 0.42)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'sakura', x: ax + (bx - ax) * k + nx * 15 * side, y: ay + (by - ay) * k + ny * 15 * side, r: rng.range(0.85, 1.3) });
+      }
+    }
+  }
+  // and fills the parks, mixed in with the green
+  for (const d of DISTRICTS) {
+    if (!d.park) continue;
+    const xs = d.poly.map(p2 => p2[0]), ys = d.poly.map(p2 => p2[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    for (let i = 0; i < 16; i++) push({ kind: 'sakura', x: rng.range(x0 + 10, x1 - 10), y: rng.range(y0 + 10, y1 - 10), r: rng.range(0.9, 1.4) });
+    for (let i = 0; i < 5; i++) push({ kind: 'flowers', x: rng.range(x0 + 10, x1 - 10), y: rng.range(y0 + 10, y1 - 10), c: rng.int(0, 3) });
+  }
+  // a mascot standing outside somewhere in every district, waving at nobody
+  const MK = ['cat', 'bird', 'bean', 'fish', 'bear'];
+  for (const d of DISTRICTS) {
+    if (d.park) continue;
+    push({ kind: 'mascot', x: d.x + rng.range(-46, 46), y: d.y + rng.range(18, 40), m: rng.pick(MK), c: rng.int(0, 5) });
+  }
+  // awnings: a strip of shopfront colour along the smaller streets
+  for (const st of STREETS) {
+    if (st.big) continue;
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const ang = Math.atan2(by - ay, bx - ax);
+      for (let d = 18; d < len - 10; d += 22) {
+        if (rng.chance(0.45)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'awning', x: ax + (bx - ax) * k + nx * 11 * side, y: ay + (by - ay) * k + ny * 11 * side, a: ang, c: rng.int(0, 5) });
+      }
+    }
+  }
+  // parked cars nosed up to the kerb, for colour and for scale
+  for (const st of STREETS) {
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const ang = Math.atan2(by - ay, bx - ax);
+      for (let d = 34; d < len - 20; d += 58) {
+        if (rng.chance(0.68)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'parked', x: ax + (bx - ax) * k + nx * 7 * side, y: ay + (by - ay) * k + ny * 7 * side, a: ang, c: rng.int(0, 6) });
+      }
+    }
+  }
+})();
 function nodeById(id) { return NODES.find(n => n.id === id); }
 function buildGraph() {
   const map = {}; for (const n of NODES) map[n.id] = Object.assign({}, n, { links: [] });

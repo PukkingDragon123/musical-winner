@@ -50,7 +50,7 @@ class TitleScene {
   constructor() {
     this.t = 0; this.page = 'main'; this.boot = 1;
     const items = [
-      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new SelectScene(), 'curtain', { dur: 0.55 }); } },
+      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new DroneScene(() => new SelectScene()), 'fade', { dur: 0.55 }); } },
       { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => r.nightPending ? new NightScene() : new CityScene(), 'iris'); } } },
       { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
       { label: Game.muted ? 'SOUND OFF' : 'SOUND ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = Game.muted ? 'SOUND OFF' : 'SOUND ON'; } },
@@ -61,16 +61,52 @@ class TitleScene {
     this.band = ROSTER.concat([{ key: 'duke', instrument: 'sax' }, { key: 'fitz', instrument: 'trumpet' }, { key: 'cici', instrument: 'violin' }, { key: 'roly', instrument: 'tambourine' }, { key: 'elder', instrument: null }, { key: 'glow', instrument: null }, { key: 'pinch', instrument: null }, { key: 'scout', instrument: null }, { key: 'smoke', instrument: null }, { key: 'dot', instrument: 'tambourine' }])
       .map((c, i) => ({ spec: HERO_PRESETS[c.key], x: 60 + i * 118, inst: c.instrument, o: r.range(0, 6) }));
     this.fx = new Particles(); this.motes = new Motes(34, 9);
+    this.shells = []; this.nextShell = 0.4;
+  }
+  // A firework: a shell goes up, hangs, and opens. Two or three in the air at
+  // once over the bay, because a title screen should look like an occasion.
+  launch() {
+    const r = Math.random;
+    this.shells.push({
+      x: 90 + r() * (W - 180), y: H - 60, vy: -(210 + r() * 90), t: 0,
+      burst: 0.9 + r() * 0.5, col: ['#ffd24a', '#ff5a9a', '#8ad8ff', '#6be585', '#c58bff', '#ff8a4a'][Math.floor(r() * 6)],
+      kind: r() < 0.3 ? 'willow' : 'peony', done: false,
+    });
+    Audio.ui('pop');
   }
   update(dt) {
     this.t += dt; this.boot = Math.max(0, this.boot - dt * 0.7); this.fx.update(dt, Game.wind.px); this.motes.update(dt, this.t);
     if (Math.random() < dt * 2.4) this.fx.add({ x: Game.wind.v > 0 ? -6 : W + 6, y: 90 + Math.random() * 220, vx: Game.wind.v * 42 + (Game.wind.v > 0 ? 16 : -16), vy: 10, life: 14, kind: 'leaf', gravity: 3 });
+    this.nextShell -= dt;
+    if (this.nextShell <= 0 && this.shells.filter(s2 => !s2.done).length < 3) { this.launch(); this.nextShell = 0.7 + Math.random() * 1.6; }
+    for (const sh of this.shells) {
+      if (sh.done) continue;
+      sh.t += dt; sh.y += sh.vy * dt; sh.vy += 150 * dt;
+      // a trail of sparks on the way up
+      if (Math.random() < dt * 40) this.fx.add({ x: sh.x + (Math.random() - 0.5) * 3, y: sh.y, vx: (Math.random() - 0.5) * 16, vy: 12, life: 0.4, color: '#ffd9a0', kind: 'spark', size: 1, gravity: 30 });
+      if (sh.t >= sh.burst) {
+        sh.done = true; Audio.ui('pyro'); Game.shake.hit(1.6, 0.14);
+        const n = sh.kind === 'willow' ? 46 : 62;
+        for (let i = 0; i < n; i++) {
+          const a2 = (i / n) * Math.PI * 2 + Math.random() * 0.2, sp = sh.kind === 'willow' ? 60 + Math.random() * 40 : 110 + Math.random() * 70;
+          this.fx.add({ x: sh.x, y: sh.y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, life: sh.kind === 'willow' ? 1.6 : 1.0,
+            color: i % 5 === 0 ? '#fff8e0' : sh.col, kind: 'star', size: 2, gravity: sh.kind === 'willow' ? 90 : 46 });
+        }
+        // and a flash of the whole sky
+        this.flashT = 0.22; this.flashCol = sh.col;
+      }
+    }
+    this.shells = this.shells.filter(sh => !sh.done || sh.t < sh.burst + 2);
+    this.flashT = Math.max(0, (this.flashT || 0) - dt);
   }
   key(code) { if (this.page === 'help') { if (['Escape', 'Enter', 'Space'].includes(code)) { this.page = 'main'; Audio.ui('back'); } return; } this.menu.key(code); }
   click(x, y) { if (this.page === 'help') { this.page = 'main'; return; } this.menu.click(x, y); }
   hover(x, y) { this.menu.hover(x, y); }
   draw(ctx) {
     drawNightCity(ctx, this.t);
+    // the shells on their way up, and the sky lighting when one opens
+    if (this.flashT > 0) { ctx.globalAlpha = this.flashT * 0.5; rect(ctx, 0, 0, W, 300, this.flashCol); ctx.globalAlpha = 1; }
+    for (const sh of this.shells) if (!sh.done) { rect(ctx, sh.x - 1, sh.y - 2, 2, 5, '#fff2c0'); rect(ctx, sh.x - 1, sh.y - 4, 2, 2, sh.col); }
     for (const b of this.band) { const x = ((b.x + this.t * 26) % (W + 110)) - 55; const sq = 1 + Math.sin(this.t * 12 + b.o) * 0.04; drawShadow(ctx, x, 452, 26); drawBugAt(ctx, b.spec, x, 452 + Math.round(Math.sin(this.t * 6 + b.o) * 2), { pose: Math.floor(this.t * 6 + b.o) % 2 ? 'walk1' : 'walk2', instrument: b.inst !== 'drums' && b.inst !== 'piano' ? b.inst : null, squash: sq }); }
     this.fx.draw(ctx);
     this.motes.draw(ctx, this.t, '#ffe6a0');

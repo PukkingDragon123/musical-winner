@@ -97,54 +97,52 @@ const OPERA = {
   kana: 'MONAAKU',            // how the crowd chants the name back
   seats: '55,000 SOLD OUT',
   movements: [
-    { key: 'intro', title: 'I. HOUSE LIGHTS', instrument: 'piano', bpm: 72, style: 'opera', difficulty: 1, key_: 57, chords: [0, 5, 3, 4],
-      lights: ['#c58bff', '#5bc0ff'], pyro: 0,
-      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],[69,1],[67,1],[69,2],[64,4],
-              [76,1],[74,1],[72,2],[71,1],[72,1],[74,2],[76,1],[79,1],[81,2],[76,4]],
+    // Three songs. Original tunes, written for this: a music-hall stomp with
+    // an operatic streak, a disco strut that lives on the bass, and one long
+    // piece that starts as a ballad and then falls off a cliff.
+    { key: 'queen', title: 'I. SIX LEGS AND A CROWN', instrument: 'piano', bpm: 132, style: 'opera', difficulty: 2, key_: 60,
+      chords: [0, 5, 1, 4, 0, 5, 4, 0],
+      lights: ['#c58bff', '#ffd24a'], pyro: 1,
+      // staccato, music-hall, with chromatic approaches into every phrase end
+      notes: [[72,.5],[71,.5],[72,.5],[74,.5],[76,1],[74,.5],[72,.5],
+              [71,.5],[72,.5],[74,.5],[76,.5],[77,1],[76,1],
+              [79,.5],[77,.5],[76,.5],[74,.5],[72,1],[71,1],
+              [69,.5],[71,.5],[72,.5],[74,.5],[72,2],
+              [76,.5],[75,.5],[76,.5],[79,.5],[81,1],[79,.5],[76,.5],
+              [77,.5],[79,.5],[81,.5],[83,.5],[84,1],[83,1],
+              [81,.5],[79,.5],[77,.5],[76,.5],[74,1],[72,1],
+              [71,.5],[74,.5],[72,.5],[71,.5],[72,2]],
       tutorial: 'TAP THE NOTES ON THE LINE' },
-    { key: 'ballad', title: 'II. SLOW BURN', instrument: 'piano', bpm: 84, style: 'ballad', difficulty: 2, key_: 57, chords: [0, 4, 5, 3, 0, 4, 0, 0],
-      lights: ['#5bc0ff', '#ffd24a'], pyro: 1,
-      notes: [[72,1.5],[71,.5],[69,2],[67,1],[69,1],[71,2],[72,1.5],[74,.5],[76,2],[74,1],[72,1],[71,2],
-              [76,1.5],[77,.5],[79,2],[81,1],[79,1],[76,2],[74,1],[76,1],[77,2],[76,4]],
-      tutorial: 'HOLD THE LONG ONES - GOLD PAYS TRIPLE' },
-    { key: 'groove', title: 'III. LOW ROAD', instrument: 'bass', bpm: 108, style: 'rock', difficulty: 2, key_: 45, chords: [0, 0, 5, 5, 3, 3, 4, 4],
-      lights: ['#6be585', '#5bc0ff'], pyro: 1,
-      notes: [[45,.5],[45,.5],[52,.5],[45,.5],[48,.5],[45,.5],[50,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[55,.5],[52,.5],[48,1],
-              [43,.5],[43,.5],[50,.5],[43,.5],[46,.5],[43,.5],[48,1],
-              [45,.5],[48,.5],[52,.5],[55,.5],[57,1],[52,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[48,.5],[45,.5],[50,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[55,.5],[57,.5],[59,1],
-              [60,.5],[59,.5],[57,.5],[55,.5],[52,1],[50,1],
-              [48,.5],[50,.5],[52,.5],[55,.5],[57,2]],
-      tutorial: 'LOCK INTO THE GROOVE' },
-    { key: 'solo', title: 'IV. SIX STRINGS', instrument: 'guitar', bpm: 128, style: 'rock', difficulty: 3, key_: 57, chords: [0, 5, 3, 4],
-      lights: ['#ff5a5a', '#ffb340'], pyro: 2,
-      notes: [[69,.5],[72,.5],[74,.5],[76,.5],[79,1],[76,.5],[74,.5],
-              [72,.5],[74,.5],[76,.5],[79,.5],[81,1],[79,1],
-              [83,.5],[81,.5],[79,.5],[76,.5],[74,.5],[72,.5],[69,1],
-              [67,.5],[69,.5],[72,.5],[76,.5],[74,2],
-              [69,.25],[72,.25],[76,.25],[79,.25],[81,.25],[79,.25],[76,.25],[72,.25],[74,1],[76,1],
-              [71,.25],[74,.25],[79,.25],[83,.25],[81,.25],[79,.25],[76,.25],[74,.25],[72,1],[71,1],
-              [69,.5],[76,.5],[81,.5],[88,.5],[86,1],[84,1],
-              [81,.5],[79,.5],[76,.5],[74,.5],[69,2]],
-      tutorial: 'RED BOMBS - LET THEM PASS' },
-    { key: 'opera', title: 'V. CHOIR OF THOUSANDS', instrument: 'drums', bpm: 140, style: 'opera', difficulty: 4, key_: 60, chords: [0, 3, 4, 0, 5, 3, 4, 0],
-      lights: ['#ffd24a', '#ffffff', '#ff5ab0'], pyro: 3,
-      notes: [[72,.5],[72,.5],[72,.5],[60,.5],[72,1],[60,1],
-              [60,.5],[60,.5],[72,.5],[72,.5],[60,2],
-              [72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[72,.5],[60,1],
-              [60,.5],[72,.5],[72,.5],[60,.5],[72,2],
-              [72,.25],[72,.25],[60,.5],[72,.25],[72,.25],[60,.5],[72,.5],[60,.5],[72,1],
-              [60,.5],[60,.5],[72,.5],[60,.5],[72,.5],[72,.5],[60,1],
-              [72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[60,.5],
-              [60,2],[72,2]],
-      tutorial: 'CALL AND ANSWER - KEEP THE COMBO' },
-    { key: 'impossible', title: 'VI. THE LAST SOLO', instrument: 'guitar', bpm: 184, style: 'concert', difficulty: 9, key_: 57, chords: [0, 5, 3, 4], impossible: true,
-      lights: ['#ff2a2a', '#ffffff'], pyro: 5,
-      notes: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
-              [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25]],
-      tutorial: 'NOBODY HAS EVER LANDED THIS ONE' },
+    { key: 'strut', title: 'II. FLOORBOARD STRUT', instrument: 'bass', bpm: 116, style: 'funk', difficulty: 3, key_: 40,
+      chords: [0, 0, 0, 0, 3, 3, 4, 4],
+      lights: ['#6be585', '#ffd24a'], pyro: 2,
+      // one riff, octaves and a slide, repeated until the floor gives way
+      notes: [[40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,1],
+              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[50,.5],[52,1],
+              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,.5],[40,.5],
+              [45,.5],[47,.5],[50,.5],[52,.5],[55,1],[52,1],
+              [43,.5],[43,.5],[55,.5],[43,.5],[50,.5],[48,.5],[46,1],
+              [45,.5],[45,.5],[57,.5],[45,.5],[52,.5],[50,.5],[48,1],
+              [40,.25],[43,.25],[45,.25],[47,.25],[50,.5],[52,.5],[55,1],
+              [52,.5],[50,.5],[47,.5],[45,.5],[40,2]],
+      tutorial: 'LOCK INTO THE GROOVE - GOLD PAYS TRIPLE' },
+    { key: 'epic', title: 'III. THE LONG WAY DOWN', instrument: 'guitar', bpm: 148, style: 'concert', difficulty: 3, key_: 57,
+      chords: [0, 5, 3, 4, 0, 5, 3, 4],
+      // The whole point of this one: it is an ordinary song for eight bars and
+      // then the solo starts and it is not survivable. That is the night you
+      // are remembering, and it ends the way it ended.
+      soloBar: 8, impossible: true,
+      lights: ['#5bc0ff', '#ff2a2a', '#ffffff'], pyro: 4,
+      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],
+              [69,1],[67,1],[69,2],[64,2],[69,2],
+              [72,1],[74,1],[76,2],[74,1],[72,1],[71,2],
+              [69,1],[71,1],[72,2],[69,4]],
+      // what happens once the solo starts, which is a different instrument
+      solo: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
+             [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25],
+             [81,.25],[88,.25],[93,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],
+             [76,.25],[79,.25],[83,.25],[88,.25],[91,.25],[88,.25],[84,.25],[81,.25]],
+      tutorial: 'HOLD THE LONG ONES. THEN HOLD ON.' },
   ],
 };
 
@@ -158,8 +156,12 @@ function songFromTune(key, opts = {}) {
 function expandChords(chords, bars) { const out = []; for (let b = 0; b < bars; b++) out.push(chords[b % chords.length]); return out; }
 function songFromMovement(mv) {
   const beat = 60 / mv.bpm; const totalBeats = mv.notes.reduce((a, n) => a + n[1], 0);
-  const bars = mv.impossible ? 8 : Math.max(4, Math.ceil(totalBeats / 4));
+  // A movement with a solo in it runs past the tune: the song proper, then the
+  // bars where it comes apart.
+  const songBars = Math.max(4, Math.ceil(totalBeats / 4));
+  const bars = mv.soloBar ? songBars + 8 : songBars;
   return { name: mv.title, composer: 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
+    songBars, soloBar: mv.soloBar ? songBars : 0, solo: mv.solo || null,
     leadIn: 4 * beat, length: 4 * beat + bars * 4 * beat + 1.6, style: mv.style };
 }
 // ---- Chart from a melody. Lanes follow the melodic contour so the chart IS the tune.

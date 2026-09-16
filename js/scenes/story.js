@@ -73,7 +73,12 @@ class ConcertScene {
       this.backing.update(); this.rhythm.update(dt);
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
       if (this.rhythm.events.perfects && Math.random() < 0.3) this.pyro(1);
-      if (this.mv.impossible) { this.strobe = Math.floor(this.t * 14) % 2; if (this.rhythm.counts.miss >= 10 || this.rhythm.finished) { this.meltdown(); return; } }
+      // The song is survivable; the solo is not. Nothing goes wrong until the
+      // moment it starts, and then it goes wrong very fast.
+      const inSolo = this.soloAt != null && this.rhythm.now >= this.soloAt;
+      if (inSolo && !this.soloSeen) { this.soloSeen = true; this.soloT = 0; Audio.ui('pyro'); Game.shake.hit(9, 0.6); this.pyro(4); }
+      if (inSolo) { this.soloT = (this.soloT || 0) + dt; this.strobe = Math.floor(this.t * 14) % 2; if (this.rhythm.counts.miss >= 12 || this.rhythm.finished) { this.meltdown(); return; } }
+      else if (this.mv.impossible && this.rhythm.finished) { this.meltdown(); return; }
       else if (this.rhythm.finished) this.finishMovement();
     }
     else if (this.phase === 'fail') {
@@ -108,15 +113,28 @@ class ConcertScene {
     // chrome five-piece, the works. The whole point is that you had it all.
     const gear = gearInstrument(this.you.instrument, 5);
     const sections = [{ instrument: this.you.instrument, instr: gear, startBar: 0, endBar: song.bars }];
-    const diff = mv.impossible ? 7 : mv.difficulty;
+    // The last movement is an ordinary song until the solo starts, so it is
+    // charted in two halves: the tune at its own difficulty, then the part
+    // nobody has ever landed.
+    const diff = mv.difficulty;
     // The stadium kit plays a part, not a loop, and it is pitched harder than
     // anything on the street. You cannot lose this night either way — it is a
     // memory, and it ends how it ends.
     const kitHere = gear.view === 'kit';
     const notes = chartFromMelody(song, sections, kitHere ? Math.max(diff, 4) + (mv.impossible ? 2 : 1) : diff, this.rng,
       { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6, showcase: kitHere });
-    if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
-    const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: mv.impossible ? 0.75 : 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
+    if (song.soloBar) {
+      // everything from the solo bar on is a wall of sixteenths
+      const cut = song.leadIn + song.soloBar * 4 * song.beat;
+      for (let i = notes.length - 1; i >= 0; i--) if (notes[i].t >= cut) notes.splice(i, 1);
+      const L = gear.lanes || 4, extra = [];
+      for (let bar = song.soloBar; bar < song.bars; bar++)
+        for (let st = 0; st < 16; st++)
+          extra.push({ t: song.leadIn + bar * 4 * song.beat + st * song.beat / 4, lane: this.rng.int(0, L - 1), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12), solo: true });
+      notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; });
+      this.soloAt = cut;
+    }
+    const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
     // An instrument you play by hand is played by hand here too, on a stage
     // this size. The last movement is meant to be unplayable either way.
     this.earMode = gear.game === 'ear';
@@ -327,7 +345,77 @@ class ConcertScene {
     if (!dead) bloom(ctx, 0, top, W, h, 0.085, 1);
     ctx.restore();
     if (this.phase === 'play' && this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.1; rect(ctx, 0, top, W, h, '#fff'); ctx.globalAlpha = 1; }
+    if (this.phase === 'play' || this.phase === 'hello' || this.phase === 'fail') this.drawCrowdCam(ctx, { top, bottom });
     if (this.phase === 'rise') { ctx.globalAlpha = 1 - rise; rect(ctx, 0, top, W, h, '#000'); ctx.globalAlpha = 1; }
+  }
+  // ---- the house broadcast. Every real show has a camera crew and a screen
+  // over the stage; this is that feed, cutting between the floor and each
+  // player on a four-shot rotation, with the tally light on.
+  camShot() { return Math.floor(this.t / 3.4) % 4; }
+  drawCrowdCam(ctx, S) {
+    // the unit is sized to the stage it hangs over: on the split layout the
+    // stage is a strip, and a full-size feed would bury the band in it
+    let pw = Math.min(248, Math.round(W * 0.27));
+    let ph = Math.min(Math.round(pw * 0.56), Math.round((S.bottom - S.top) * 0.42));
+    pw = Math.round(ph / 0.56);
+    if (pw < 120) return;
+    const px = W - pw - 14, py = Math.max(S.top + 10, 14);
+    if (py + ph > S.bottom - 8) return;
+    const shot = this.camShot(), since = this.t % 3.4;
+    const cut = since < 0.14;                       // one frame of cut noise
+    const beat = this.rhythm ? this.rhythm.beatPulse > 0.8 : false;
+    const dead = this.phase === 'fail';
+    ctx.save();
+    // the body of the unit, then the picture inside it
+    rect(ctx, px - 3, py - 3, pw + 6, ph + 6, '#0a0812');
+    frame(ctx, px - 3, py - 3, pw + 6, ph + 6, '#3a3352');
+    ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+    rect(ctx, px, py, pw, ph, '#0d0a18');
+    const shake = cut ? 0 : Math.sin(this.t * 9 + shot) * 1.4;
+    ctx.save(); ctx.translate(0, shake);
+    if (shot === 0) {
+      // the floor, tight: a slow pan along the front rows
+      const cTop = S.bottom - Math.round((S.bottom - S.top) * 0.22);
+      const z = 2.8, panX = W / 2 + Math.sin(this.t * 0.18) * (W * 0.34);
+      ctx.save();
+      ctx.translate(px + pw / 2, py + ph * 0.62); ctx.scale(z, z);
+      ctx.translate(-panX, -(cTop + (S.bottom - cTop) * 0.5));
+      drawArenaCrowd(ctx, this.crowd, this.t, cTop, S.bottom, dead ? 'angry' : 'happy', 1.9);
+      ctx.restore();
+    } else {
+      // a player, framed chest-up against the wash off the rig
+      const who = shot === 1 ? (this.mates.find(m => m.instrument === 'drums') || this.mates[0])
+                : shot === 2 ? this.singer : this.you;
+      const col = this.stageLights[shot % 2];
+      hgrad(ctx, px, py, pw, ph, '#1b1430', '#0d0a18');
+      ctx.globalAlpha = 0.16 + (beat ? 0.14 : 0); rect(ctx, px, py, pw, ph, col); ctx.globalAlpha = 1;
+      // a few blown-out lamps behind the head
+      for (let i = 0; i < 5; i++) {
+        const lx = px + 18 + i * (pw - 36) / 4, ly = py + 14 + Math.sin(this.t * 2 + i) * 2;
+        ctx.globalAlpha = 0.5; circle(ctx, lx, ly, beat ? 4 : 3, i % 2 ? '#fff0c0' : col); ctx.globalAlpha = 1;
+      }
+      const inst = who.instrument === 'drums' || who.instrument === 'piano' ? null : who.instrument;
+      drawBugAt(ctx, who.spec, px + pw / 2, py + ph + 24, { pose: dead ? 'sad' : (beat ? 'play' : 'play2'),
+        instrument: inst, scale: 3.4, expr: dead ? 'sad' : null, rate: 2.6, bounce: dead ? 0.3 : 1.3 });
+      if (who.instrument === 'piano' && !dead) ctx.drawImage(propCanvas('micstand'), px + pw / 2 - 46, py + ph - 52, 12, 46);
+      // the name strip broadcast puts under a face
+      rect(ctx, px, py + ph - 20, pw, 20, 'rgba(10,8,18,0.72)');
+      rect(ctx, px, py + ph - 20, 4, 20, '#e03a4a');
+      drawText(ctx, (who.name || 'YOU').toUpperCase(), px + 10, py + ph - 14, '#f6efe2', { scale: 2 });
+    }
+    ctx.restore();
+    // scanlines and a cut flash, so it reads as a screen and not a window
+    ctx.globalAlpha = 0.16; for (let y = py; y < py + ph; y += 3) rect(ctx, px, y, pw, 1, '#000'); ctx.globalAlpha = 1;
+    if (cut) { ctx.globalAlpha = 0.35; rect(ctx, px, py, pw, ph, '#cfd8ff'); ctx.globalAlpha = 1; }
+    ctx.restore();
+    // tally light, shot number and a running timecode
+    const on = Math.floor(this.t * 2) % 2 === 0;
+    circle(ctx, px + 12, py + 12, 4, on ? '#ff3a3a' : '#5a1a1a');
+    drawText(ctx, 'LIVE', px + 22, py + 7, on ? '#ff6a6a' : '#7a4a4a', { scale: 2 });
+    drawText(ctx, 'CAM ' + (shot + 1), px + pw - 8, py + 7, '#9a92b8', { align: 'right', scale: 2 });
+    const secs = Math.floor(this.t);
+    const tc = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0');
+    drawText(ctx, tc, px + pw - 8, py + ph - 14, '#9a92b8', { align: 'right', scale: 2 });
   }
   // a wide cinematic plate across the lower third
   cinePlate(ctx, y, h) {
@@ -610,9 +698,9 @@ class FlightScene {
       if (Game.touch) { const k = this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, false); } }
       if (this.rhythm.finished) { this.backing.stop(); this.phase = 'land'; this.phaseT = 0; const res = this.rhythm.results(); Game.run.money += Math.round(res.acc * 10); Game.run.practiceAcc = res.acc; }
     }
-    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CityScene(true), 'iris', { dur: 0.6 }); }
+    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
   }
-  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CityScene(true), 'iris', { dur: 0.6 }); } } }
+  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); } } }
   keyUp(code) { if (this.phase === 'play') this.rhythm.keyUp(code); }
   padAt(x, y) { return this.pads ? this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) : null; }
   pointerDown(x, y, id) { if (this.phase === 'play') { const p = this.padAt(x, y); if (p) { this.padPointers.set(id, p.code); this.rhythm.keyDown(p.code); } return; } this.key('Enter'); }

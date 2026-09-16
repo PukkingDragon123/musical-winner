@@ -28,9 +28,38 @@ function drawMysteryStreet(ctx, t, seed, opts = {}) {
   for (let sx = 0; sx < W; sx += 36) rect(ctx, sx, 376, 2, 54, 'rgba(0,0,0,0.11)');
   rect(ctx, 0, 428, W, 6, '#d8d2c4'); rect(ctx, 0, 434, W, H - 434, '#3c3c46');
   for (let sx = 0; sx < W; sx += 50) rect(ctx, sx, 486, 28, 3, '#d8c860');
-  // street furniture
+  // street furniture, and the trees the whole street is planted with
+  for (const tx2 of [128, 392, 648, 900]) {
+    const tc = treeCanvas(((tx2 / 8) % 3) ? 'sakura' : 'round', 0);
+    rect(ctx, tx2 + 26, 332, 8, 42, '#5a3a20'); rect(ctx, tx2 + 26, 332, 3, 42, '#7a5a34');
+    ctx.drawImage(tc, tx2 - 6, 262, 72, 94);
+    rect(ctx, tx2 + 20, 370, 22, 5, '#6a6254');
+    drawShadow(ctx, tx2 + 30, 377, 46, 0.16);
+  }
+  // and a few people further down it, so the street is not deserted
+  for (let i = 0; i < 6; i++) {
+    const seed2 = i * 67 + seed, bx = ((seed2 * 137) % (W - 60)) + 30;
+    const by = 392 + (seed2 % 3) * 7, walk = Math.sin(t * 1.2 + i) * 26;
+    ctx.globalAlpha = 0.85;
+    ellipsePx(ctx, bx + walk, by + 1, 5, 2, 'rgba(0,0,0,0.2)');
+    const col = ['#4a5a8a', '#8a4a5a', '#3a6a5a', '#7a6a3a', '#5a3a6a', '#2f4a68'][i % 6];
+    const bob = Math.sin(t * 6 + i * 2) > 0 ? 1 : 0;
+    rect(ctx, bx + walk - 3, by - 14 - bob, 7, 10, col);
+    rect(ctx, bx + walk - 3, by - 19 - bob, 7, 5, '#f0d0b0');
+    rect(ctx, bx + walk - 3, by - 21 - bob, 7, 3, '#2e2636');
+    ctx.globalAlpha = 1;
+  }
   ctx.drawImage(propCanvas(night ? 'lamp' : 'lampOff'), 38, 306, 17, 67);
   ctx.drawImage(propCanvas('vending'), 862, 318, 42, 56);
+  // blossom drifting down the frame
+  for (let i = 0; i < 20; i++) {
+    const s2 = i * 91;
+    const py2 = ((t * (18 + (s2 % 11)) + s2 * 29) % (H + 60)) - 30;
+    const px2 = ((s2 * 53) % W) + Math.sin(t * (0.5 + (s2 % 4) * 0.2) + s2) * 20;
+    ctx.globalAlpha = 0.7;
+    rect(ctx, ((px2 % W) + W) % W, py2, 2 + (s2 % 2), 2, i % 3 ? '#ffc6dd' : '#ffe4ef');
+    ctx.globalAlpha = 1;
+  }
   if (night) { ctx.globalAlpha = 0.16; circle(ctx, 46, 336, 60, '#ffe680'); ctx.globalAlpha = 1; }
   if (wet) {
     // the road turns into a mirror, which is most of what rain looks like

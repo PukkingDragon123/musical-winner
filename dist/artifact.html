@@ -1676,22 +1676,39 @@ function uiButton(ctx, x, y, w, h, label, state = 'normal', opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
   const down = state === 'down'; const dis = state === 'disabled';
   const base = opts.color || (dis ? '#8a8a7a' : UI.green), hi = dis ? '#a8a898' : (opts.hi || UI.greenHi), lo = dis ? '#5a5a50' : (opts.lo || UI.greenLo), ol = opts.ol || UI.greenOl;
-  const oy = down ? 1 : 0;
-  // shadow/base
-  rect(ctx, x + 1, y + 1 + h - 3, w - 2, 3, ol);
-  rect(ctx, x + 1, y + oy, w - 2, h - 1 - oy, ol); rect(ctx, x, y + 1 + oy, w, h - 3 - oy, ol);
-  rect(ctx, x + 2, y + 1 + oy, w - 4, h - 3 - oy, base); rect(ctx, x + 1, y + 2 + oy, w - 2, h - 5 - oy, base);
-  rect(ctx, x + 2, y + 1 + oy, w - 4, 1, hi); rect(ctx, x + 1, y + 2 + oy, 1, h - 6, hi);
-  rect(ctx, x + 2, y + h - 3, w - 4, 1, lo); rect(ctx, x + w - 2, y + 2 + oy, 1, h - 6, lo);
-  if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.fillRect(x + 1, y + 1 + oy, w - 2, h - 3 - oy); }
+  // A real button has a side to it. The face sits on a lip, and pressing it
+  // drops the face onto the lip instead of just tinting the same rectangle.
+  const lip = h >= 34 ? 5 : h >= 22 ? 4 : 2;
+  const oy = down ? lip - 1 : 0;
+  const fh = h - lip;                                    // the face itself
+  // the body under the face, and the shadow it casts
+  ctx.globalAlpha = 0.28; rect(ctx, x + 2, y + h - 1, w - 4, 3, '#000'); ctx.globalAlpha = 1;
+  rect(ctx, x + 1, y + 2, w - 2, h - 3, darken(ol, 0.18));
+  rect(ctx, x, y + 3, w, h - 5, darken(ol, 0.18));
+  // the face: a slab with a bevel, a gradient and a gloss across the top half
+  const fy = y + oy;
+  rect(ctx, x + 1, fy, w - 2, fh, ol); rect(ctx, x, fy + 1, w, fh - 2, ol);
+  vgrad(ctx, x + 2, fy + 1, w - 4, fh - 2, hi, base);
+  vgrad(ctx, x + 1, fy + 2, w - 2, fh - 4, hi, base);
+  ctx.globalAlpha = 0.16; rect(ctx, x + 2, fy + 1, w - 4, Math.floor(fh * 0.42), '#ffffff'); ctx.globalAlpha = 1;
+  rect(ctx, x + 2, fy + 1, w - 4, 1, lighten(hi, 0.3));
+  rect(ctx, x + 1, fy + 2, 1, fh - 4, lighten(hi, 0.18));
+  rect(ctx, x + 2, fy + fh - 2, w - 4, 1, lo);
+  rect(ctx, x + w - 2, fy + 2, 1, fh - 4, lo);
+  // the corners knocked off, so it reads as moulded and not as a rectangle
+  for (const [cx, cy] of [[x + 1, fy + 1], [x + w - 2, fy + 1], [x + 1, fy + fh - 2], [x + w - 2, fy + fh - 2]]) rect(ctx, cx, cy, 1, 1, ol);
+  if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 2, fy + 1, w - 4, fh - 2); frame(ctx, x, fy, w, fh, lighten(hi, 0.4)); }
+  if (down) { ctx.globalAlpha = 0.18; rect(ctx, x + 2, fy + 1, w - 4, 3, '#000'); ctx.globalAlpha = 1; }
   const tc = dis ? '#dcdccc' : (opts.text || '#fff8e8');
   // The label is drawn as large as the button will hold. Without a scale it
   // grows to fill; with one it still shrinks rather than spilling out of the
   // box, which is what used to happen to the longer labels.
   let sc = opts.scale || 4;
-  while (sc > 1 && textWidth(label, { scale: sc }) > w - 12) sc--;
-  drawText(ctx, label, x + w / 2, y + Math.floor((h - 2 - 7 * sc) / 2) + oy, tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
-  if (opts.icon) ctx.drawImage(opts.icon, x + 6, y + Math.floor((h - opts.icon.height) / 2) + oy);
+  const room = w - 12 - (opts.icon ? opts.icon.width + 8 : 0);
+  while (sc > 1 && textWidth(label, { scale: sc }) > room) sc--;
+  const tx = opts.icon ? x + 8 + opts.icon.width + (w - 16 - opts.icon.width) / 2 : x + w / 2;
+  drawText(ctx, label, tx, fy + Math.floor((fh - 7 * sc) / 2), tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
+  if (opts.icon) ctx.drawImage(opts.icon, x + 8, fy + Math.floor((fh - opts.icon.height) / 2));
 }
 // Ornate gold slot with dark leather interior
 function uiSlot(ctx, x, y, size = 26, opts = {}) {
@@ -2406,9 +2423,15 @@ function treeCanvas(variant, frame) {
     } else {
       P.mLine(trunk, 19, 55, 20 + sway, 30, 4); P.fill(trunk, '#6a4a2a', { outline: OL }); P.paint(trunk, (x, y) => x === 19 ? '#8a6a3a' : null);
       const m = P.mask(); P.mEllipse(m, 20 + sway * 2, 20, 16, 13); P.mEllipse(m, 12 + sway, 26, 9, 8); P.mEllipse(m, 29 + sway * 2, 25, 9, 8); P.mEllipse(m, 20 + sway * 2, 10, 9, 7);
-      const cols = [['#3f8a3f', '#6ab04a', '#2a6a2a'], ['#5a9a3a', '#8ac850', '#3a6a2a'], ['#c8703a', '#e8a050', '#8a4a2a']][variant === 'autumn' ? 2 : variant === 'light' ? 1 : 0];
+      const cols = [['#3f8a3f', '#6ab04a', '#2a6a2a'], ['#5a9a3a', '#8ac850', '#3a6a2a'], ['#c8703a', '#e8a050', '#8a4a2a'],
+                    ['#f2a7c2', '#ffe4ef', '#d9829f']][variant === 'autumn' ? 2 : variant === 'sakura' ? 3 : variant === 'light' ? 1 : 0];
       P.fill(m, cols[0], { outline: OL, hi: cols[1], lo: cols[2] });
       P.paint(m, (x, y) => ((x * 5 + y * 3 + sway) % 9 === 0) ? cols[1] : ((x * 3 + y * 7) % 11 === 0) ? cols[2] : null);
+      // blossom is not a solid mass: a few holes, and petals coming off it
+      if (variant === 'sakura') {
+        P.paint(m, (x, y) => ((x * 7 + y * 11) % 17 === 0) ? '#ffffff' : ((x * 13 + y * 5) % 23 === 0) ? '#ffd0e2' : null);
+        for (const [dx, dy] of [[4, 34], [33, 33], [10, 38], [28, 40]]) { const pm = P.mask(); P.mRect(pm, dx, dy, 1, 1); P.fill(pm, '#ffc6dd'); }
+      }
     }
     return P.toCanvas();
   });
@@ -4791,54 +4814,52 @@ const OPERA = {
   kana: 'MONAAKU',            // how the crowd chants the name back
   seats: '55,000 SOLD OUT',
   movements: [
-    { key: 'intro', title: 'I. HOUSE LIGHTS', instrument: 'piano', bpm: 72, style: 'opera', difficulty: 1, key_: 57, chords: [0, 5, 3, 4],
-      lights: ['#c58bff', '#5bc0ff'], pyro: 0,
-      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],[69,1],[67,1],[69,2],[64,4],
-              [76,1],[74,1],[72,2],[71,1],[72,1],[74,2],[76,1],[79,1],[81,2],[76,4]],
+    // Three songs. Original tunes, written for this: a music-hall stomp with
+    // an operatic streak, a disco strut that lives on the bass, and one long
+    // piece that starts as a ballad and then falls off a cliff.
+    { key: 'queen', title: 'I. SIX LEGS AND A CROWN', instrument: 'piano', bpm: 132, style: 'opera', difficulty: 2, key_: 60,
+      chords: [0, 5, 1, 4, 0, 5, 4, 0],
+      lights: ['#c58bff', '#ffd24a'], pyro: 1,
+      // staccato, music-hall, with chromatic approaches into every phrase end
+      notes: [[72,.5],[71,.5],[72,.5],[74,.5],[76,1],[74,.5],[72,.5],
+              [71,.5],[72,.5],[74,.5],[76,.5],[77,1],[76,1],
+              [79,.5],[77,.5],[76,.5],[74,.5],[72,1],[71,1],
+              [69,.5],[71,.5],[72,.5],[74,.5],[72,2],
+              [76,.5],[75,.5],[76,.5],[79,.5],[81,1],[79,.5],[76,.5],
+              [77,.5],[79,.5],[81,.5],[83,.5],[84,1],[83,1],
+              [81,.5],[79,.5],[77,.5],[76,.5],[74,1],[72,1],
+              [71,.5],[74,.5],[72,.5],[71,.5],[72,2]],
       tutorial: 'TAP THE NOTES ON THE LINE' },
-    { key: 'ballad', title: 'II. SLOW BURN', instrument: 'piano', bpm: 84, style: 'ballad', difficulty: 2, key_: 57, chords: [0, 4, 5, 3, 0, 4, 0, 0],
-      lights: ['#5bc0ff', '#ffd24a'], pyro: 1,
-      notes: [[72,1.5],[71,.5],[69,2],[67,1],[69,1],[71,2],[72,1.5],[74,.5],[76,2],[74,1],[72,1],[71,2],
-              [76,1.5],[77,.5],[79,2],[81,1],[79,1],[76,2],[74,1],[76,1],[77,2],[76,4]],
-      tutorial: 'HOLD THE LONG ONES - GOLD PAYS TRIPLE' },
-    { key: 'groove', title: 'III. LOW ROAD', instrument: 'bass', bpm: 108, style: 'rock', difficulty: 2, key_: 45, chords: [0, 0, 5, 5, 3, 3, 4, 4],
-      lights: ['#6be585', '#5bc0ff'], pyro: 1,
-      notes: [[45,.5],[45,.5],[52,.5],[45,.5],[48,.5],[45,.5],[50,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[55,.5],[52,.5],[48,1],
-              [43,.5],[43,.5],[50,.5],[43,.5],[46,.5],[43,.5],[48,1],
-              [45,.5],[48,.5],[52,.5],[55,.5],[57,1],[52,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[48,.5],[45,.5],[50,1],
-              [45,.5],[45,.5],[52,.5],[45,.5],[55,.5],[57,.5],[59,1],
-              [60,.5],[59,.5],[57,.5],[55,.5],[52,1],[50,1],
-              [48,.5],[50,.5],[52,.5],[55,.5],[57,2]],
-      tutorial: 'LOCK INTO THE GROOVE' },
-    { key: 'solo', title: 'IV. SIX STRINGS', instrument: 'guitar', bpm: 128, style: 'rock', difficulty: 3, key_: 57, chords: [0, 5, 3, 4],
-      lights: ['#ff5a5a', '#ffb340'], pyro: 2,
-      notes: [[69,.5],[72,.5],[74,.5],[76,.5],[79,1],[76,.5],[74,.5],
-              [72,.5],[74,.5],[76,.5],[79,.5],[81,1],[79,1],
-              [83,.5],[81,.5],[79,.5],[76,.5],[74,.5],[72,.5],[69,1],
-              [67,.5],[69,.5],[72,.5],[76,.5],[74,2],
-              [69,.25],[72,.25],[76,.25],[79,.25],[81,.25],[79,.25],[76,.25],[72,.25],[74,1],[76,1],
-              [71,.25],[74,.25],[79,.25],[83,.25],[81,.25],[79,.25],[76,.25],[74,.25],[72,1],[71,1],
-              [69,.5],[76,.5],[81,.5],[88,.5],[86,1],[84,1],
-              [81,.5],[79,.5],[76,.5],[74,.5],[69,2]],
-      tutorial: 'RED BOMBS - LET THEM PASS' },
-    { key: 'opera', title: 'V. CHOIR OF THOUSANDS', instrument: 'drums', bpm: 140, style: 'opera', difficulty: 4, key_: 60, chords: [0, 3, 4, 0, 5, 3, 4, 0],
-      lights: ['#ffd24a', '#ffffff', '#ff5ab0'], pyro: 3,
-      notes: [[72,.5],[72,.5],[72,.5],[60,.5],[72,1],[60,1],
-              [60,.5],[60,.5],[72,.5],[72,.5],[60,2],
-              [72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[72,.5],[60,1],
-              [60,.5],[72,.5],[72,.5],[60,.5],[72,2],
-              [72,.25],[72,.25],[60,.5],[72,.25],[72,.25],[60,.5],[72,.5],[60,.5],[72,1],
-              [60,.5],[60,.5],[72,.5],[60,.5],[72,.5],[72,.5],[60,1],
-              [72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[60,.5],[72,.5],[60,.5],
-              [60,2],[72,2]],
-      tutorial: 'CALL AND ANSWER - KEEP THE COMBO' },
-    { key: 'impossible', title: 'VI. THE LAST SOLO', instrument: 'guitar', bpm: 184, style: 'concert', difficulty: 9, key_: 57, chords: [0, 5, 3, 4], impossible: true,
-      lights: ['#ff2a2a', '#ffffff'], pyro: 5,
-      notes: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
-              [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25]],
-      tutorial: 'NOBODY HAS EVER LANDED THIS ONE' },
+    { key: 'strut', title: 'II. FLOORBOARD STRUT', instrument: 'bass', bpm: 116, style: 'funk', difficulty: 3, key_: 40,
+      chords: [0, 0, 0, 0, 3, 3, 4, 4],
+      lights: ['#6be585', '#ffd24a'], pyro: 2,
+      // one riff, octaves and a slide, repeated until the floor gives way
+      notes: [[40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,1],
+              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[50,.5],[52,1],
+              [40,.5],[40,.5],[52,.5],[40,.5],[47,.5],[45,.5],[43,.5],[40,.5],
+              [45,.5],[47,.5],[50,.5],[52,.5],[55,1],[52,1],
+              [43,.5],[43,.5],[55,.5],[43,.5],[50,.5],[48,.5],[46,1],
+              [45,.5],[45,.5],[57,.5],[45,.5],[52,.5],[50,.5],[48,1],
+              [40,.25],[43,.25],[45,.25],[47,.25],[50,.5],[52,.5],[55,1],
+              [52,.5],[50,.5],[47,.5],[45,.5],[40,2]],
+      tutorial: 'LOCK INTO THE GROOVE - GOLD PAYS TRIPLE' },
+    { key: 'epic', title: 'III. THE LONG WAY DOWN', instrument: 'guitar', bpm: 148, style: 'concert', difficulty: 3, key_: 57,
+      chords: [0, 5, 3, 4, 0, 5, 3, 4],
+      // The whole point of this one: it is an ordinary song for eight bars and
+      // then the solo starts and it is not survivable. That is the night you
+      // are remembering, and it ends the way it ended.
+      soloBar: 8, impossible: true,
+      lights: ['#5bc0ff', '#ff2a2a', '#ffffff'], pyro: 4,
+      notes: [[69,1],[71,1],[72,2],[74,1],[72,1],[71,2],
+              [69,1],[67,1],[69,2],[64,2],[69,2],
+              [72,1],[74,1],[76,2],[74,1],[72,1],[71,2],
+              [69,1],[71,1],[72,2],[69,4]],
+      // what happens once the solo starts, which is a different instrument
+      solo: [[81,.25],[84,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],[76,.25],
+             [79,.25],[83,.25],[86,.25],[90,.25],[88,.25],[86,.25],[83,.25],[79,.25],
+             [81,.25],[88,.25],[93,.25],[88,.25],[86,.25],[84,.25],[81,.25],[79,.25],
+             [76,.25],[79,.25],[83,.25],[88,.25],[91,.25],[88,.25],[84,.25],[81,.25]],
+      tutorial: 'HOLD THE LONG ONES. THEN HOLD ON.' },
   ],
 };
 
@@ -4852,8 +4873,12 @@ function songFromTune(key, opts = {}) {
 function expandChords(chords, bars) { const out = []; for (let b = 0; b < bars; b++) out.push(chords[b % chords.length]); return out; }
 function songFromMovement(mv) {
   const beat = 60 / mv.bpm; const totalBeats = mv.notes.reduce((a, n) => a + n[1], 0);
-  const bars = mv.impossible ? 8 : Math.max(4, Math.ceil(totalBeats / 4));
+  // A movement with a solo in it runs past the tune: the song proper, then the
+  // bars where it comes apart.
+  const songBars = Math.max(4, Math.ceil(totalBeats / 4));
+  const bars = mv.soloBar ? songBars + 8 : songBars;
   return { name: mv.title, composer: 'BUZZ', genre: 'rock', bpm: mv.bpm, beat, bars, root: mv.key_, chords: expandChords(mv.chords, bars), melody: mv.notes,
+    songBars, soloBar: mv.soloBar ? songBars : 0, solo: mv.solo || null,
     leadIn: 4 * beat, length: 4 * beat + bars * 4 * beat + 1.6, style: mv.style };
 }
 // ---- Chart from a melody. Lanes follow the melodic contour so the chart IS the tune.
@@ -5179,6 +5204,69 @@ const MAP_DETAILS = [
   // the two towers, marked on the map the way landmarks are
   { kind: 'tower', x: 610, y: 470, text: 'TOKYO TOWER' }, { kind: 'tower', x: 965, y: 215, text: 'SKYTREE' },
 ];
+// ---- Blossom, mascots, awnings and parked cars. A city map with nothing on
+// it but roads is a diagram; this is the layer that makes it a place. All of
+// it is seeded, so the map is the same map every run.
+(function () {
+  const rng = makeRng(3131);
+  const push = (o) => MAP_DETAILS.push(o);
+  // sakura follows the avenues, the way it does along every Tokyo canal
+  for (const st of STREETS) {
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 26; d < len - 12; d += st.big ? 64 : 44) {
+        if (rng.chance(st.big ? 0.62 : 0.42)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'sakura', x: ax + (bx - ax) * k + nx * 15 * side, y: ay + (by - ay) * k + ny * 15 * side, r: rng.range(0.85, 1.3) });
+      }
+    }
+  }
+  // and fills the parks, mixed in with the green
+  for (const d of DISTRICTS) {
+    if (!d.park) continue;
+    const xs = d.poly.map(p2 => p2[0]), ys = d.poly.map(p2 => p2[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    for (let i = 0; i < 16; i++) push({ kind: 'sakura', x: rng.range(x0 + 10, x1 - 10), y: rng.range(y0 + 10, y1 - 10), r: rng.range(0.9, 1.4) });
+    for (let i = 0; i < 5; i++) push({ kind: 'flowers', x: rng.range(x0 + 10, x1 - 10), y: rng.range(y0 + 10, y1 - 10), c: rng.int(0, 3) });
+  }
+  // a mascot standing outside somewhere in every district, waving at nobody
+  const MK = ['cat', 'bird', 'bean', 'fish', 'bear'];
+  for (const d of DISTRICTS) {
+    if (d.park) continue;
+    push({ kind: 'mascot', x: d.x + rng.range(-46, 46), y: d.y + rng.range(18, 40), m: rng.pick(MK), c: rng.int(0, 5) });
+  }
+  // awnings: a strip of shopfront colour along the smaller streets
+  for (const st of STREETS) {
+    if (st.big) continue;
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const ang = Math.atan2(by - ay, bx - ax);
+      for (let d = 18; d < len - 10; d += 22) {
+        if (rng.chance(0.45)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'awning', x: ax + (bx - ax) * k + nx * 11 * side, y: ay + (by - ay) * k + ny * 11 * side, a: ang, c: rng.int(0, 5) });
+      }
+    }
+  }
+  // parked cars nosed up to the kerb, for colour and for scale
+  for (const st of STREETS) {
+    for (let i = 0; i < st.pts.length - 1; i++) {
+      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const ang = Math.atan2(by - ay, bx - ax);
+      for (let d = 34; d < len - 20; d += 58) {
+        if (rng.chance(0.68)) continue;
+        const k = d / len, side = rng.sign();
+        push({ kind: 'parked', x: ax + (bx - ax) * k + nx * 7 * side, y: ay + (by - ay) * k + ny * 7 * side, a: ang, c: rng.int(0, 6) });
+      }
+    }
+  }
+})();
 function nodeById(id) { return NODES.find(n => n.id === id); }
 function buildGraph() {
   const map = {}; for (const n of NODES) map[n.id] = Object.assign({}, n, { links: [] });
@@ -7400,6 +7488,15 @@ function buildVenue(venue, seed, dayT) {
       else mx.drawImage(propCanvas('trash'), px2, 200, 18, 24);
       drawShadow(mx, px2 + 14, 224, 34, 0.14);
     }
+    // street trees at the kerb, because every Tokyo shopping street has them
+    // and in spring they are all in blossom
+    for (let tx2 = r.int(60, 160); tx2 < W + 220; tx2 += r.int(170, 250)) {
+      const tc = treeCanvas(r.chance(0.72) ? 'sakura' : 'round', 0);
+      rect(mx, tx2 + 25, 196, 7, 28, '#5a3a20'); rect(mx, tx2 + 25, 196, 2, 28, '#7a5a34');
+      mx.drawImage(tc, tx2, 142, 58, 76);
+      rect(mx, tx2 + 20, 220, 18, 4, '#6a6254');       // the square of earth it stands in
+      drawShadow(mx, tx2 + 28, 226, 40, 0.16);
+    }
     if (venue.narrow) { // a low alley: bunting of small lanterns overhead
       for (let lx = 0; lx < W + 240; lx += 34) { rect(mx, lx, 92, 34, 1, '#3a3040'); mx.drawImage(propCanvas('lantern2', Math.floor(lx / 34) % 3), lx + 10, 92, 12, 18); }
     }
@@ -7432,7 +7529,7 @@ function buildVenue(venue, seed, dayT) {
     mx.strokeStyle = '#c2b694'; mx.lineWidth = 26; mx.globalAlpha = 0.35; mx.stroke(); mx.globalAlpha = 1; mx.lineWidth = 1;
     // ---- a back row of full trees with trunks and a front row of shrubs
     for (let x = -20; x < W + 280; x += 88) {
-      const kind = r.pick(['round', 'round', 'light', 'palm', 'cypress']);
+      const kind = r.pick(['round', 'sakura', 'sakura', 'light', 'palm', 'cypress']);
       const tc = treeCanvas(kind, 0), tx = x + r.int(-14, 14), ty = 104 + r.int(-8, 8);
       rect(mx, tx + 24, ty + 54, 7, 26, '#6a4a2a'); rect(mx, tx + 24, ty + 54, 2, 26, '#8a6a44');
       mx.drawImage(tc, tx, ty, 56, 74);
@@ -7519,10 +7616,22 @@ function drawVenue(ctx, V, L, t, wind, venue) {
   }
   // props behind band row
   for (const p of V.props) {
-    if (p.kind === 'tree') { const c = treeCanvas('round', wind.frame(p.x)); ctx.drawImage(c, p.x - 28, midBottom - 74, 56, 78); continue; }
+    if (p.kind === 'tree') { const c = treeCanvas(((p.x * 7) % 3) ? 'sakura' : 'round', wind.frame(p.x)); ctx.drawImage(c, p.x - 28, midBottom - 74, 56, 78); continue; }
     const c = propCanvas(p.kind, p.v), sc = 1.45; ctx.drawImage(c, p.x, midBottom + 6 - c.height * sc, c.width * sc, c.height * sc);
     if (c.height * sc > 20) drawShadow(ctx, p.x + c.width * sc / 2, midBottom + 7, c.width * sc * 1.1, 0.18);
     if (p.kind === 'lamp' && V.skyT > 0.55) lightPool(ctx, p.x + 9, midBottom - 52, 78, '#ffe680', 0.16);
+  }
+  // ---- blossom on the wind, outdoors only, drifting down the frame
+  if (venue.kind === 'street' || venue.kind === 'park' || venue.kind === 'pier' || venue.kind === 'bridge') {
+    for (let i = 0; i < 26; i++) {
+      const seed = i * 97, span = bottom - top + 60;
+      const py2 = top - 30 + ((t * (16 + (seed % 13)) + seed * 37) % span);
+      const px2 = ((seed * 61) % W) + Math.sin(t * (0.6 + (seed % 5) * 0.2) + seed) * 22 - (py2 - top) * 0.25;
+      if (py2 < top || py2 > bottom) continue;
+      ctx.globalAlpha = 0.7;
+      rect(ctx, ((px2 % W) + W) % W, py2, 2 + (seed % 2), 2, i % 3 ? '#ffc6dd' : '#ffe4ef');
+      ctx.globalAlpha = 1;
+    }
   }
   // ---- cinematic pass: haze on the horizon, a colour grade, a soft vignette
   ctx.globalAlpha = 0.16; vgrad(ctx, 0, midBottom - 46, W, 52, 'rgba(0,0,0,0)', V.skyT > 0.6 ? '#2a2a4a' : '#e8dcc0'); ctx.globalAlpha = 1;
@@ -8019,9 +8128,38 @@ function drawMysteryStreet(ctx, t, seed, opts = {}) {
   for (let sx = 0; sx < W; sx += 36) rect(ctx, sx, 376, 2, 54, 'rgba(0,0,0,0.11)');
   rect(ctx, 0, 428, W, 6, '#d8d2c4'); rect(ctx, 0, 434, W, H - 434, '#3c3c46');
   for (let sx = 0; sx < W; sx += 50) rect(ctx, sx, 486, 28, 3, '#d8c860');
-  // street furniture
+  // street furniture, and the trees the whole street is planted with
+  for (const tx2 of [128, 392, 648, 900]) {
+    const tc = treeCanvas(((tx2 / 8) % 3) ? 'sakura' : 'round', 0);
+    rect(ctx, tx2 + 26, 332, 8, 42, '#5a3a20'); rect(ctx, tx2 + 26, 332, 3, 42, '#7a5a34');
+    ctx.drawImage(tc, tx2 - 6, 262, 72, 94);
+    rect(ctx, tx2 + 20, 370, 22, 5, '#6a6254');
+    drawShadow(ctx, tx2 + 30, 377, 46, 0.16);
+  }
+  // and a few people further down it, so the street is not deserted
+  for (let i = 0; i < 6; i++) {
+    const seed2 = i * 67 + seed, bx = ((seed2 * 137) % (W - 60)) + 30;
+    const by = 392 + (seed2 % 3) * 7, walk = Math.sin(t * 1.2 + i) * 26;
+    ctx.globalAlpha = 0.85;
+    ellipsePx(ctx, bx + walk, by + 1, 5, 2, 'rgba(0,0,0,0.2)');
+    const col = ['#4a5a8a', '#8a4a5a', '#3a6a5a', '#7a6a3a', '#5a3a6a', '#2f4a68'][i % 6];
+    const bob = Math.sin(t * 6 + i * 2) > 0 ? 1 : 0;
+    rect(ctx, bx + walk - 3, by - 14 - bob, 7, 10, col);
+    rect(ctx, bx + walk - 3, by - 19 - bob, 7, 5, '#f0d0b0');
+    rect(ctx, bx + walk - 3, by - 21 - bob, 7, 3, '#2e2636');
+    ctx.globalAlpha = 1;
+  }
   ctx.drawImage(propCanvas(night ? 'lamp' : 'lampOff'), 38, 306, 17, 67);
   ctx.drawImage(propCanvas('vending'), 862, 318, 42, 56);
+  // blossom drifting down the frame
+  for (let i = 0; i < 20; i++) {
+    const s2 = i * 91;
+    const py2 = ((t * (18 + (s2 % 11)) + s2 * 29) % (H + 60)) - 30;
+    const px2 = ((s2 * 53) % W) + Math.sin(t * (0.5 + (s2 % 4) * 0.2) + s2) * 20;
+    ctx.globalAlpha = 0.7;
+    rect(ctx, ((px2 % W) + W) % W, py2, 2 + (s2 % 2), 2, i % 3 ? '#ffc6dd' : '#ffe4ef');
+    ctx.globalAlpha = 1;
+  }
   if (night) { ctx.globalAlpha = 0.16; circle(ctx, 46, 336, 60, '#ffe680'); ctx.globalAlpha = 1; }
   if (wet) {
     // the road turns into a mirror, which is most of what rain looks like
@@ -9076,7 +9214,7 @@ class TitleScene {
   constructor() {
     this.t = 0; this.page = 'main'; this.boot = 1;
     const items = [
-      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new SelectScene(), 'curtain', { dur: 0.55 }); } },
+      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new DroneScene(() => new SelectScene()), 'fade', { dur: 0.55 }); } },
       { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => r.nightPending ? new NightScene() : new CityScene(), 'iris'); } } },
       { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
       { label: Game.muted ? 'SOUND OFF' : 'SOUND ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = Game.muted ? 'SOUND OFF' : 'SOUND ON'; } },
@@ -9087,16 +9225,52 @@ class TitleScene {
     this.band = ROSTER.concat([{ key: 'duke', instrument: 'sax' }, { key: 'fitz', instrument: 'trumpet' }, { key: 'cici', instrument: 'violin' }, { key: 'roly', instrument: 'tambourine' }, { key: 'elder', instrument: null }, { key: 'glow', instrument: null }, { key: 'pinch', instrument: null }, { key: 'scout', instrument: null }, { key: 'smoke', instrument: null }, { key: 'dot', instrument: 'tambourine' }])
       .map((c, i) => ({ spec: HERO_PRESETS[c.key], x: 60 + i * 118, inst: c.instrument, o: r.range(0, 6) }));
     this.fx = new Particles(); this.motes = new Motes(34, 9);
+    this.shells = []; this.nextShell = 0.4;
+  }
+  // A firework: a shell goes up, hangs, and opens. Two or three in the air at
+  // once over the bay, because a title screen should look like an occasion.
+  launch() {
+    const r = Math.random;
+    this.shells.push({
+      x: 90 + r() * (W - 180), y: H - 60, vy: -(210 + r() * 90), t: 0,
+      burst: 0.9 + r() * 0.5, col: ['#ffd24a', '#ff5a9a', '#8ad8ff', '#6be585', '#c58bff', '#ff8a4a'][Math.floor(r() * 6)],
+      kind: r() < 0.3 ? 'willow' : 'peony', done: false,
+    });
+    Audio.ui('pop');
   }
   update(dt) {
     this.t += dt; this.boot = Math.max(0, this.boot - dt * 0.7); this.fx.update(dt, Game.wind.px); this.motes.update(dt, this.t);
     if (Math.random() < dt * 2.4) this.fx.add({ x: Game.wind.v > 0 ? -6 : W + 6, y: 90 + Math.random() * 220, vx: Game.wind.v * 42 + (Game.wind.v > 0 ? 16 : -16), vy: 10, life: 14, kind: 'leaf', gravity: 3 });
+    this.nextShell -= dt;
+    if (this.nextShell <= 0 && this.shells.filter(s2 => !s2.done).length < 3) { this.launch(); this.nextShell = 0.7 + Math.random() * 1.6; }
+    for (const sh of this.shells) {
+      if (sh.done) continue;
+      sh.t += dt; sh.y += sh.vy * dt; sh.vy += 150 * dt;
+      // a trail of sparks on the way up
+      if (Math.random() < dt * 40) this.fx.add({ x: sh.x + (Math.random() - 0.5) * 3, y: sh.y, vx: (Math.random() - 0.5) * 16, vy: 12, life: 0.4, color: '#ffd9a0', kind: 'spark', size: 1, gravity: 30 });
+      if (sh.t >= sh.burst) {
+        sh.done = true; Audio.ui('pyro'); Game.shake.hit(1.6, 0.14);
+        const n = sh.kind === 'willow' ? 46 : 62;
+        for (let i = 0; i < n; i++) {
+          const a2 = (i / n) * Math.PI * 2 + Math.random() * 0.2, sp = sh.kind === 'willow' ? 60 + Math.random() * 40 : 110 + Math.random() * 70;
+          this.fx.add({ x: sh.x, y: sh.y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, life: sh.kind === 'willow' ? 1.6 : 1.0,
+            color: i % 5 === 0 ? '#fff8e0' : sh.col, kind: 'star', size: 2, gravity: sh.kind === 'willow' ? 90 : 46 });
+        }
+        // and a flash of the whole sky
+        this.flashT = 0.22; this.flashCol = sh.col;
+      }
+    }
+    this.shells = this.shells.filter(sh => !sh.done || sh.t < sh.burst + 2);
+    this.flashT = Math.max(0, (this.flashT || 0) - dt);
   }
   key(code) { if (this.page === 'help') { if (['Escape', 'Enter', 'Space'].includes(code)) { this.page = 'main'; Audio.ui('back'); } return; } this.menu.key(code); }
   click(x, y) { if (this.page === 'help') { this.page = 'main'; return; } this.menu.click(x, y); }
   hover(x, y) { this.menu.hover(x, y); }
   draw(ctx) {
     drawNightCity(ctx, this.t);
+    // the shells on their way up, and the sky lighting when one opens
+    if (this.flashT > 0) { ctx.globalAlpha = this.flashT * 0.5; rect(ctx, 0, 0, W, 300, this.flashCol); ctx.globalAlpha = 1; }
+    for (const sh of this.shells) if (!sh.done) { rect(ctx, sh.x - 1, sh.y - 2, 2, 5, '#fff2c0'); rect(ctx, sh.x - 1, sh.y - 4, 2, 2, sh.col); }
     for (const b of this.band) { const x = ((b.x + this.t * 26) % (W + 110)) - 55; const sq = 1 + Math.sin(this.t * 12 + b.o) * 0.04; drawShadow(ctx, x, 452, 26); drawBugAt(ctx, b.spec, x, 452 + Math.round(Math.sin(this.t * 6 + b.o) * 2), { pose: Math.floor(this.t * 6 + b.o) % 2 ? 'walk1' : 'walk2', instrument: b.inst !== 'drums' && b.inst !== 'piano' ? b.inst : null, squash: sq }); }
     this.fx.draw(ctx);
     this.motes.draw(ctx, this.t, '#ffe6a0');
@@ -9360,6 +9534,267 @@ class SelectScene {
   }
 }
 
+// ===== js/scenes/drone.js =====
+// ---------- The shot that opens the game ----------
+// A drone above Tokyo at night, the dome lit up below, coming down and in
+// while somebody tells you what you are looking at. Then it goes through the
+// roof and you are inside.
+'use strict';
+class DroneScene {
+  constructor(next) {
+    this.t = 0; this.next = next || (() => new SelectScene());
+    this.left = false;
+    this.rng = makeRng(4242);
+    // the city under the drone: a field of blocks with lit windows
+    this.blocks = [];
+    for (let i = 0; i < 190; i++) this.blocks.push({
+      x: this.rng.range(-1.2, 1.2), z: this.rng.range(0.12, 1), w: this.rng.range(0.02, 0.07),
+      h: this.rng.range(0.05, 0.3), lit: this.rng.range(0.1, 0.5), hue: this.rng.int(0, 3),
+    });
+    this.cars = []; for (let i = 0; i < 26; i++) this.cars.push({ x: this.rng.range(-1.2, 1.2), z: this.rng.range(0.2, 1), s: this.rng.range(0.05, 0.18), c: this.rng.chance(0.5) ? '#ffe6a0' : '#ff8a7a' });
+    // what the narrator says, and when
+    this.lines = [
+      [0.4, 'TOKYO. ELEVEN AT NIGHT.'],
+      [3.2, 'FIFTY-FIVE THOUSAND OF THEM IN THERE.'],
+      [6.2, 'ALL OF THEM HERE FOR ONE BAND.'],
+      [9.4, 'THIS IS THE LAST GOOD NIGHT.'],
+    ];
+    this.dur = 13.2;
+  }
+  skip() { if (this.left) return; this.left = true; Game.go(this.next, 'fade', { dur: 0.7 }); }
+  update(dt) {
+    this.t += dt;
+    if (this.t > this.dur) this.skip();
+  }
+  key(code) { if (['Enter', 'Space', 'Escape', 'KeyZ'].includes(code)) this.skip(); }
+  click() { this.skip(); }
+  draw(ctx) {
+    const t = this.t, k = clamp(t / this.dur, 0, 1);
+    // the descent: high and wide, then low and tight on the dome
+    const alt = 1 - easeInOut(clamp(t / 10.5, 0, 1));          // 1 high, 0 low
+    const zoom = lerp(0.62, 3.4, easeInOut(clamp(t / 10.5, 0, 1)));
+    // night sky and a horizon that rises as you come down
+    const horizon = lerp(60, 250, 1 - alt);
+    vgrad(ctx, 0, 0, W, horizon, '#0a0a1e', '#241a3e');
+    for (let i = 0; i < 90; i++) { const sx = (i * 173) % W, sy = (i * 61) % Math.max(1, horizon - 6); if (Math.sin(t * 2 + i) > 0.2) px(ctx, sx, sy, i % 4 ? '#8a86b0' : '#fff'); }
+    // the city floor, in a cheap perspective: further blocks smaller and higher
+    vgrad(ctx, 0, horizon, W, H - horizon, '#171232', '#0b0818');
+    const cx = W / 2, vy = horizon;
+    const proj = (o) => { const d = o.z * (0.35 + alt * 0.9); const sc = zoom / (d + 0.22); return { x: cx + o.x * sc * 300, y: vy + (1 / (d + 0.22)) * 46 * zoom, sc }; };
+    const drawn = this.blocks.map(b => ({ b, p: proj(b) })).sort((a, b2) => a.p.sc - b2.p.sc);
+    for (const { b, p } of drawn) {
+      const w = Math.max(2, b.w * p.sc * 300), h = Math.max(3, b.h * p.sc * 380);
+      if (p.y < horizon - 4 || p.y > H + 200 || p.x < -200 || p.x > W + 200) continue;
+      const base = ['#2a2440', '#241f38', '#2e2748', '#201c30'][b.hue];
+      rect(ctx, p.x - w / 2, p.y - h, w, h, base);
+      rect(ctx, p.x - w / 2, p.y - h, w, Math.max(1, h * 0.06), lighten(base, 0.2));
+      // lit windows, denser on the nearer towers
+      // sparse, so the towers read as towers instead of one lit wall
+      const cols = Math.max(1, Math.floor(w / 6)), rows = Math.max(1, Math.floor(h / 8));
+      for (let r2 = 0; r2 < rows; r2++) for (let c2 = 0; c2 < cols; c2++) {
+        if (((r2 * 7 + c2 * 13 + b.hue * 3) % 9) > b.lit * 9) continue;
+        rect(ctx, p.x - w / 2 + 2 + c2 * 6, p.y - h + 3 + r2 * 8, 2, 3, (r2 + c2) % 7 ? '#ffe6a0' : '#8ad8ff');
+      }
+      // a dark side, so each block has a silhouette
+      ctx.globalAlpha = 0.45; rect(ctx, p.x + w / 2 - Math.max(1, w * 0.22), p.y - h, Math.max(1, w * 0.22), h, '#0d0a18'); ctx.globalAlpha = 1;
+    }
+    // traffic, threads of light along the grid
+    for (const c of this.cars) {
+      const p = proj(c); const along = ((t * c.s + c.x) % 2) - 1;
+      const px2 = cx + along * p.sc * 300;
+      if (p.y < horizon || p.y > H) continue;
+      rect(ctx, px2, p.y - 2, Math.max(1, Math.round(p.sc * 3)), 1, c.c);
+    }
+    // ---- the dome, growing the whole way in
+    const dscale = zoom * 0.9, dy = vy + (1 / (0.34 + alt * 0.9 + 0.22)) * 46 * zoom - 10;
+    const dw = 96 * dscale, dh = 44 * dscale;
+    // the ring of floodlights round it
+    ctx.globalAlpha = 0.16 + 0.06 * Math.sin(t * 3);
+    ellipsePx(ctx, cx, dy, dw * 1.5, dh * 1.5, '#8ad8ff'); ctx.globalAlpha = 1;
+    ellipsePx(ctx, cx, dy + dh * 0.1, dw, dh * 1.05, '#1a1a2e');
+    ellipsePx(ctx, cx, dy, dw, dh, '#cfd6e8');
+    ellipsePx(ctx, cx, dy - dh * 0.1, dw * 0.94, dh * 0.86, '#e8eef8');
+    // the panelled roof
+    for (let i = -5; i <= 5; i++) { ctx.globalAlpha = 0.25; line(ctx, cx + i * dw / 6, dy - dh * 0.1, cx + i * dw / 9, dy + dh * 0.5, '#9aa4bc'); ctx.globalAlpha = 1; }
+    for (let i = 1; i < 3; i++) { ctx.globalAlpha = 0.2; ellipseRingPx(ctx, cx, dy - dh * 0.1, dw * (1 - i * 0.3), dh * (0.86 - i * 0.26), '#9aa4bc'); ctx.globalAlpha = 1; }
+    // the skirt and the lit concourse under it
+    rect(ctx, cx - dw, dy + dh * 0.5, dw * 2, Math.max(2, dh * 0.5), '#2a2a3e');
+    for (let i = 0; i < 26; i++) rect(ctx, cx - dw + i * (dw * 2 / 26), dy + dh * 0.62, Math.max(1, dw / 26), Math.max(1, dh * 0.2), i % 2 ? '#ffd24a' : '#ffb340');
+    // searchlights sweeping off the roof
+    for (let i = 0; i < 3; i++) {
+      const a = t * 0.55 + i * 2.1, len = 240 * dscale;
+      ctx.globalAlpha = 0.11;
+      ctx.fillStyle = ['#8ad8ff', '#ffd24a', '#ff8ad8'][i];
+      ctx.beginPath(); ctx.moveTo(cx, dy);
+      ctx.lineTo(cx + Math.cos(a) * len, dy - Math.abs(Math.sin(a)) * len - 40);
+      ctx.lineTo(cx + Math.cos(a + 0.12) * len, dy - Math.abs(Math.sin(a + 0.12)) * len - 40);
+      ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    }
+    // a blimp, because there is always one
+    const bx = ((t * 26) % (W + 200)) - 100;
+    if (alt > 0.3) { ctx.globalAlpha = alt; ellipsePx(ctx, bx, 64, 22, 8, '#3a3450'); ellipsePx(ctx, bx, 62, 21, 7, '#59527a'); rect(ctx, bx - 6, 70, 12, 4, '#2a2438');
+      drawText(ctx, 'MONARCH', bx, 59, '#ffd24a', { align: 'center', font: 'small' }); ctx.globalAlpha = 1; }
+    // ---- the finish: through the roof
+    if (t > 11) { ctx.globalAlpha = clamp((t - 11) / 1.6, 0, 1); rect(ctx, 0, 0, W, H, '#f6f2ff'); ctx.globalAlpha = 1; }
+    // ---- the frame it is all shot in
+    letterbox(ctx, 58, 1);
+    vignette(ctx, 0.5);
+    // a drone HUD, because that is what sells the shot
+    ctx.globalAlpha = 0.5;
+    for (const [dx, dy2] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const hx = W / 2 + dx * 150, hy = H / 2 + dy2 * 84;
+      rect(ctx, hx - dx * 14, hy, 14, 2, '#8ad8ff'); rect(ctx, hx, hy - dy2 * 12, 2, 12, '#8ad8ff');
+    }
+    drawText(ctx, 'ALT ' + Math.round(20 + alt * 380) + 'M', 22, 70, '#8ad8ff', { font: 'small' });
+    drawText(ctx, 'REC', W - 46, 70, Math.sin(t * 4) > 0 ? '#ff5a5a' : '#6a2a2a', { font: 'small' });
+    ctx.globalAlpha = 1;
+    // ---- the narrator. Not called `line`: that is the global that draws one,
+    // and a local of the same name puts it in the dead zone for the whole
+    // function, which took out every stroke above it.
+    let say = null;
+    for (const [at, txt] of this.lines) if (t >= at && t < at + 3.0) say = [at, txt];
+    if (say) {
+      const lt = t - say[0], fade = clamp(lt / 0.4, 0, 1) * clamp((3.0 - lt) / 0.5, 0, 1);
+      const chars = Math.floor(lt * 34);
+      ctx.globalAlpha = fade;
+      drawText(ctx, say[1].slice(0, chars), W / 2, H - 92, '#f2ecff', { align: 'center', scale: 3, outline: '#12101c' });
+      ctx.globalAlpha = 1;
+    }
+    drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', W - 16, H - 34, '#5a5478', { align: 'right', font: 'small' });
+  }
+}
+
+// ===== js/scenes/crossing.js =====
+// ---------- The crossing ----------
+// Four of them, in a line, over the Shibuya scramble. It is the shot every
+// band takes, and Tokyo has the most famous crossing on earth to take it on.
+'use strict';
+class CrossingScene {
+  constructor(next) {
+    this.t = 0; this.next = next || (() => new CityScene(true)); this.left = false;
+    this.rng = makeRng(8181);
+    // the other three hundred people crossing at the same time
+    this.walkers = [];
+    for (let i = 0; i < 46; i++) this.walkers.push({
+      spec: randomBugSpec(makeRng(7000 + i)),
+      x: this.rng.range(-120, W + 120), y: this.rng.chance(0.78) ? this.rng.range(262, 352) : this.rng.range(486, 520),
+      vx: this.rng.chance(0.5) ? this.rng.range(24, 54) : -this.rng.range(24, 54),
+      o: this.rng.range(0, 6), sc: this.rng.range(0.9, 1.3),
+    });
+    this.dur = 11.5;
+  }
+  skip() { if (this.left) return; this.left = true; Game.run && Game.run.save(); Game.go(this.next, 'fade', { dur: 0.7 }); }
+  update(dt) {
+    this.t += dt;
+    for (const w of this.walkers) { w.x += w.vx * dt; if (w.x < -140) w.x = W + 130; if (w.x > W + 140) w.x = -130; }
+    if (this.t > this.dur) this.skip();
+  }
+  key(code) { if (['Enter', 'Space', 'Escape', 'KeyZ'].includes(code)) this.skip(); }
+  click() { this.skip(); }
+  draw(ctx) {
+    const t = this.t, r = Game.run;
+    // the walk: they come in from the left and cross the whole frame
+    const k = clamp((t - 1.2) / 8.4, 0, 1);
+    const baseX = lerp(-140, W + 150, k);
+    // ---- the far side of the crossing: towers, screens, neon
+    const [c1, c2] = skyColors(0.86); vgrad(ctx, 0, 0, W, 300, c1, c2);
+    ctx.drawImage(skylineCanvas(23, W, 120, { color: '#241f3a', lit: '#ffe6a0', tall: true, density: 0.3 }), 0, 90);
+    // the buildings facing the crossing, with their big screens
+    const faces = [[0, 210], [214, 180], [400, 250], [656, 190], [852, 160]];
+    faces.forEach(([fx, fw], i) => {
+      const fh = 230 - (i % 2) * 34, fy = 196 - fh;
+      rect(ctx, fx, fy, fw, fh + 80, '#1d1930'); rect(ctx, fx, fy, fw, 4, '#3a3352');
+      // a screen on the front of it, playing something
+      const sw = fw - 28, sh = Math.round(fh * 0.5), sx = fx + 14, sy = fy + 20;
+      rect(ctx, sx, sy, sw, sh, '#0c0a18'); frame(ctx, sx, sy, sw, sh, '#453e66');
+      const hue = ['#ff5a9a', '#8ad8ff', '#ffd24a', '#6be585', '#c58bff'][i];
+      ctx.globalAlpha = 0.85;
+      for (let b2 = 0; b2 < 5; b2++) { const bh = ((Math.sin(t * 2 + b2 + i) + 1) / 2) * sh * 0.8;
+        rect(ctx, sx + 6 + b2 * ((sw - 12) / 5), sy + sh - 6 - bh, Math.max(2, (sw - 12) / 5 - 4), bh, hue); }
+      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.12; rect(ctx, sx, sy, sw, sh, hue); ctx.globalAlpha = 1;
+      // vertical signage down the side
+      for (let s2 = 0; s2 < 4; s2++) { const gy = fy + sh + 30 + s2 * 26;
+        rect(ctx, fx + 6, gy, 18, 22, ['#c8302a', '#e0b040', '#2a5ab8', '#3f9a52'][(i + s2) % 4]);
+        rect(ctx, fx + 8, gy + 2, 14, 18, '#12101c'); }
+      // windows
+      for (let wy = fy + sh + 26; wy < fy + fh + 70; wy += 12) for (let wx = fx + 34; wx < fx + fw - 10; wx += 10)
+        if ((wx + wy) % 3) rect(ctx, wx, wy, 6, 7, ((wx * 7 + wy) % 5) ? '#2a2440' : '#ffe6a0');
+    });
+    // ---- the crossing itself
+    rect(ctx, 0, 196, W, 40, '#2a2a34');                      // the far kerb
+    rect(ctx, 0, 232, W, 4, '#d8d2c4');
+    rect(ctx, 0, 236, W, H - 236, '#33333e');                 // the road
+    // the painted stripes, in both directions, because it is a scramble
+    for (let x = -40; x < W + 40; x += 46) { ctx.globalAlpha = 0.92; rect(ctx, x, 244, 28, H - 250, '#e8e6dc'); ctx.globalAlpha = 1; }
+    // and the diagonal one straight across the middle, which is the bit that
+    // makes a scramble a scramble
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 240, W, H - 240); ctx.clip();
+    ctx.translate(W / 2, 396); ctx.rotate(-0.62);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = '#e8e6dc';
+    for (let i = -9; i < 9; i++) ctx.fillRect(i * 52 - 13, -74, 26, 148);
+    ctx.globalAlpha = 1; ctx.restore();
+    ctx.globalAlpha = 0.18; rect(ctx, 0, 236, W, H - 236, '#1a1a26'); ctx.globalAlpha = 1;
+    // stopped traffic either side, headlights on
+    for (const [cx2, flip] of [[-30, false], [W - 60, true]]) {
+      ctx.drawImage(propCanvas('taxi'), cx2, 250, 96, 44);
+      ctx.globalAlpha = 0.3; ellipsePx(ctx, cx2 + (flip ? 8 : 88), 276, 30, 10, '#ffe6a0'); ctx.globalAlpha = 1;
+    }
+    // everybody else, held back behind the band so the shot still reads
+    for (const w of this.walkers) {
+      if (w.y > 460) continue;
+      ctx.globalAlpha = 0.72;
+      drawShadow(ctx, w.x, w.y, 20 * w.sc, 0.18);
+      drawBugAt(ctx, w.spec, w.x, w.y + Math.round(Math.sin(t * 6 + w.o) * 2), {
+        pose: Math.floor(t * 6 + w.o) % 2 ? 'walk1' : 'walk2', scale: 1.0 * w.sc, flip: w.vx < 0 });
+      ctx.globalAlpha = 1;
+    }
+    // a couple of phone flashes going off in the crowd, because it is them
+    for (let i = 0; i < 3; i++) {
+      const ft = (t * 0.7 + i * 0.41) % 1;
+      if (ft > 0.08) continue;
+      const fx2 = 120 + ((i * 331) % (W - 240)), fy2 = 280 + (i * 37) % 60;
+      ctx.globalAlpha = 1 - ft / 0.08;
+      circle(ctx, fx2, fy2, 7, '#fffbe8'); ctx.globalAlpha = 1;
+    }
+    // ---- the band, in a line, in step
+    const members = (r && r.members.length ? r.members : ROSTER.map(x => ({ spec: HERO_PRESETS[x.key], instrument: x.instrument })));
+    members.slice(0, 5).forEach((m, i) => {
+      const x = baseX - i * 96, y = 432 + (i % 2) * 3;
+      if (x < -90 || x > W + 90) return;
+      // the lamps over the crossing throw a long shadow back down the road
+      ctx.globalAlpha = 0.2; ctx.fillStyle = '#0a0a12';
+      ctx.beginPath(); ctx.moveTo(x - 14, y); ctx.lineTo(x + 14, y);
+      ctx.lineTo(x - 34, y + 62); ctx.lineTo(x - 62, y + 62); ctx.fill(); ctx.globalAlpha = 1;
+      drawShadow(ctx, x, y, 40, 0.38);
+      drawBugAt(ctx, m.spec, x, y + Math.round(Math.sin(t * 6 + i * 1.7) * 2), {
+        pose: Math.floor(t * 6 + i * 1.7) % 2 ? 'walk1' : 'walk2',
+        instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.95 });
+    });
+    // the near kerb, dark across the bottom, so the frame has a foreground
+    rect(ctx, 0, H - 26, W, 26, '#1b1b26');
+    rect(ctx, 0, H - 26, W, 3, '#d8d2c4');
+    // ---- the frame
+    letterbox(ctx, 54, 1);
+    vignette(ctx, 0.42);
+    grade(ctx, 0, 0, W, H, '#4a2a8a', 0.08);
+    // the title, printed over it the way a sleeve is
+    const tk = clamp((t - 2.2) / 0.8, 0, 1);
+    if (tk > 0) {
+      const fade = tk * clamp((this.dur - 1 - t) * 1.4, 0, 1);
+      // a black band under it: the buildings behind are far too busy to print
+      // a title straight over
+      const tw = textWidth('BUG BUSKER ORCHESTRA', { scale: 4 }) + 64;
+      ctx.globalAlpha = fade * 0.82; rect(ctx, W / 2 - tw / 2, 58, tw, 72, '#0a0812'); ctx.globalAlpha = fade;
+      rect(ctx, W / 2 - tw / 2, 58, tw, 2, '#e03a4a'); rect(ctx, W / 2 - tw / 2, 128, tw, 2, '#e03a4a');
+      drawText(ctx, 'BUG BUSKER ORCHESTRA', W / 2, 72, '#f6f2e6', { align: 'center', scale: 4, outline: '#12101c' });
+      drawText(ctx, 'SHIBUYA CROSSING, 11:40PM', W / 2, 108, '#e0a0a8', { align: 'center', scale: 2, outline: '#12101c' });
+      ctx.globalAlpha = 1;
+    }
+    drawText(ctx, Game.touch ? 'TAP TO SKIP' : 'ENTER TO SKIP', W - 16, H - 30, '#6a6488', { align: 'right', font: 'small' });
+  }
+}
+
 // ===== js/scenes/story.js =====
 // ---------- The cinematic: arena concert, the fall, backstage, the flight ----------
 'use strict';
@@ -9436,7 +9871,12 @@ class ConcertScene {
       this.backing.update(); this.rhythm.update(dt);
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
       if (this.rhythm.events.perfects && Math.random() < 0.3) this.pyro(1);
-      if (this.mv.impossible) { this.strobe = Math.floor(this.t * 14) % 2; if (this.rhythm.counts.miss >= 10 || this.rhythm.finished) { this.meltdown(); return; } }
+      // The song is survivable; the solo is not. Nothing goes wrong until the
+      // moment it starts, and then it goes wrong very fast.
+      const inSolo = this.soloAt != null && this.rhythm.now >= this.soloAt;
+      if (inSolo && !this.soloSeen) { this.soloSeen = true; this.soloT = 0; Audio.ui('pyro'); Game.shake.hit(9, 0.6); this.pyro(4); }
+      if (inSolo) { this.soloT = (this.soloT || 0) + dt; this.strobe = Math.floor(this.t * 14) % 2; if (this.rhythm.counts.miss >= 12 || this.rhythm.finished) { this.meltdown(); return; } }
+      else if (this.mv.impossible && this.rhythm.finished) { this.meltdown(); return; }
       else if (this.rhythm.finished) this.finishMovement();
     }
     else if (this.phase === 'fail') {
@@ -9471,15 +9911,28 @@ class ConcertScene {
     // chrome five-piece, the works. The whole point is that you had it all.
     const gear = gearInstrument(this.you.instrument, 5);
     const sections = [{ instrument: this.you.instrument, instr: gear, startBar: 0, endBar: song.bars }];
-    const diff = mv.impossible ? 7 : mv.difficulty;
+    // The last movement is an ordinary song until the solo starts, so it is
+    // charted in two halves: the tune at its own difficulty, then the part
+    // nobody has ever landed.
+    const diff = mv.difficulty;
     // The stadium kit plays a part, not a loop, and it is pitched harder than
     // anything on the street. You cannot lose this night either way — it is a
     // memory, and it ends how it ends.
     const kitHere = gear.view === 'kit';
     const notes = chartFromMelody(song, sections, kitHere ? Math.max(diff, 4) + (mv.impossible ? 2 : 1) : diff, this.rng,
       { starRate: 0.12, bombMult: mv.key === 'solo' ? 1.5 : 0.6, showcase: kitHere });
-    if (mv.impossible) { const extra = []; for (let bar = 1; bar < song.bars; bar++) for (let s = 0; s < 16; s++) extra.push({ t: song.leadIn + bar * 4 * song.beat + s * song.beat / 4, lane: this.rng.int(0, 3), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12) }); notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; }); }
-    const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: mv.impossible ? 0.75 : 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
+    if (song.soloBar) {
+      // everything from the solo bar on is a wall of sixteenths
+      const cut = song.leadIn + song.soloBar * 4 * song.beat;
+      for (let i = notes.length - 1; i >= 0; i--) if (notes[i].t >= cut) notes.splice(i, 1);
+      const L = gear.lanes || 4, extra = [];
+      for (let bar = song.soloBar; bar < song.bars; bar++)
+        for (let st = 0; st < 16; st++)
+          extra.push({ t: song.leadIn + bar * 4 * song.beat + st * song.beat / 4, lane: this.rng.int(0, L - 1), dur: 0, type: 'tap', midi: song.root + 24 + this.rng.int(0, 12), solo: true });
+      notes.push(...extra); notes.sort((a, b) => a.t - b.t); notes.forEach((n, i) => { n.id = i; n.judged = false; n.hit = false; });
+      this.soloAt = cut;
+    }
+    const mods = collectMods(null, { difficulty: diff, fx: { shake: Game.shake }, windowMult: 1.25, voiceOverride: sections[0].instrument === 'guitar' ? 'eguitar' : null });
     // An instrument you play by hand is played by hand here too, on a stage
     // this size. The last movement is meant to be unplayable either way.
     this.earMode = gear.game === 'ear';
@@ -9690,7 +10143,77 @@ class ConcertScene {
     if (!dead) bloom(ctx, 0, top, W, h, 0.085, 1);
     ctx.restore();
     if (this.phase === 'play' && this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.1; rect(ctx, 0, top, W, h, '#fff'); ctx.globalAlpha = 1; }
+    if (this.phase === 'play' || this.phase === 'hello' || this.phase === 'fail') this.drawCrowdCam(ctx, { top, bottom });
     if (this.phase === 'rise') { ctx.globalAlpha = 1 - rise; rect(ctx, 0, top, W, h, '#000'); ctx.globalAlpha = 1; }
+  }
+  // ---- the house broadcast. Every real show has a camera crew and a screen
+  // over the stage; this is that feed, cutting between the floor and each
+  // player on a four-shot rotation, with the tally light on.
+  camShot() { return Math.floor(this.t / 3.4) % 4; }
+  drawCrowdCam(ctx, S) {
+    // the unit is sized to the stage it hangs over: on the split layout the
+    // stage is a strip, and a full-size feed would bury the band in it
+    let pw = Math.min(248, Math.round(W * 0.27));
+    let ph = Math.min(Math.round(pw * 0.56), Math.round((S.bottom - S.top) * 0.42));
+    pw = Math.round(ph / 0.56);
+    if (pw < 120) return;
+    const px = W - pw - 14, py = Math.max(S.top + 10, 14);
+    if (py + ph > S.bottom - 8) return;
+    const shot = this.camShot(), since = this.t % 3.4;
+    const cut = since < 0.14;                       // one frame of cut noise
+    const beat = this.rhythm ? this.rhythm.beatPulse > 0.8 : false;
+    const dead = this.phase === 'fail';
+    ctx.save();
+    // the body of the unit, then the picture inside it
+    rect(ctx, px - 3, py - 3, pw + 6, ph + 6, '#0a0812');
+    frame(ctx, px - 3, py - 3, pw + 6, ph + 6, '#3a3352');
+    ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+    rect(ctx, px, py, pw, ph, '#0d0a18');
+    const shake = cut ? 0 : Math.sin(this.t * 9 + shot) * 1.4;
+    ctx.save(); ctx.translate(0, shake);
+    if (shot === 0) {
+      // the floor, tight: a slow pan along the front rows
+      const cTop = S.bottom - Math.round((S.bottom - S.top) * 0.22);
+      const z = 2.8, panX = W / 2 + Math.sin(this.t * 0.18) * (W * 0.34);
+      ctx.save();
+      ctx.translate(px + pw / 2, py + ph * 0.62); ctx.scale(z, z);
+      ctx.translate(-panX, -(cTop + (S.bottom - cTop) * 0.5));
+      drawArenaCrowd(ctx, this.crowd, this.t, cTop, S.bottom, dead ? 'angry' : 'happy', 1.9);
+      ctx.restore();
+    } else {
+      // a player, framed chest-up against the wash off the rig
+      const who = shot === 1 ? (this.mates.find(m => m.instrument === 'drums') || this.mates[0])
+                : shot === 2 ? this.singer : this.you;
+      const col = this.stageLights[shot % 2];
+      hgrad(ctx, px, py, pw, ph, '#1b1430', '#0d0a18');
+      ctx.globalAlpha = 0.16 + (beat ? 0.14 : 0); rect(ctx, px, py, pw, ph, col); ctx.globalAlpha = 1;
+      // a few blown-out lamps behind the head
+      for (let i = 0; i < 5; i++) {
+        const lx = px + 18 + i * (pw - 36) / 4, ly = py + 14 + Math.sin(this.t * 2 + i) * 2;
+        ctx.globalAlpha = 0.5; circle(ctx, lx, ly, beat ? 4 : 3, i % 2 ? '#fff0c0' : col); ctx.globalAlpha = 1;
+      }
+      const inst = who.instrument === 'drums' || who.instrument === 'piano' ? null : who.instrument;
+      drawBugAt(ctx, who.spec, px + pw / 2, py + ph + 24, { pose: dead ? 'sad' : (beat ? 'play' : 'play2'),
+        instrument: inst, scale: 3.4, expr: dead ? 'sad' : null, rate: 2.6, bounce: dead ? 0.3 : 1.3 });
+      if (who.instrument === 'piano' && !dead) ctx.drawImage(propCanvas('micstand'), px + pw / 2 - 46, py + ph - 52, 12, 46);
+      // the name strip broadcast puts under a face
+      rect(ctx, px, py + ph - 20, pw, 20, 'rgba(10,8,18,0.72)');
+      rect(ctx, px, py + ph - 20, 4, 20, '#e03a4a');
+      drawText(ctx, (who.name || 'YOU').toUpperCase(), px + 10, py + ph - 14, '#f6efe2', { scale: 2 });
+    }
+    ctx.restore();
+    // scanlines and a cut flash, so it reads as a screen and not a window
+    ctx.globalAlpha = 0.16; for (let y = py; y < py + ph; y += 3) rect(ctx, px, y, pw, 1, '#000'); ctx.globalAlpha = 1;
+    if (cut) { ctx.globalAlpha = 0.35; rect(ctx, px, py, pw, ph, '#cfd8ff'); ctx.globalAlpha = 1; }
+    ctx.restore();
+    // tally light, shot number and a running timecode
+    const on = Math.floor(this.t * 2) % 2 === 0;
+    circle(ctx, px + 12, py + 12, 4, on ? '#ff3a3a' : '#5a1a1a');
+    drawText(ctx, 'LIVE', px + 22, py + 7, on ? '#ff6a6a' : '#7a4a4a', { scale: 2 });
+    drawText(ctx, 'CAM ' + (shot + 1), px + pw - 8, py + 7, '#9a92b8', { align: 'right', scale: 2 });
+    const secs = Math.floor(this.t);
+    const tc = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0');
+    drawText(ctx, tc, px + pw - 8, py + ph - 14, '#9a92b8', { align: 'right', scale: 2 });
   }
   // a wide cinematic plate across the lower third
   cinePlate(ctx, y, h) {
@@ -9973,9 +10496,9 @@ class FlightScene {
       if (Game.touch) { const k = this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, false); } }
       if (this.rhythm.finished) { this.backing.stop(); this.phase = 'land'; this.phaseT = 0; const res = this.rhythm.results(); Game.run.money += Math.round(res.acc * 10); Game.run.practiceAcc = res.acc; }
     }
-    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CityScene(true), 'iris', { dur: 0.6 }); }
+    else if (this.phase === 'land' && this.phaseT > 3.6 && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
   }
-  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CityScene(true), 'iris', { dur: 0.6 }); } } }
+  key(code) { if (this.phase === 'play') { this.rhythm.keyDown(code); return; } if (['Enter', 'Space'].includes(code)) { if (this.phase === 'board') { this.phase = 'intro'; this.phaseT = 0; } else if (this.phase === 'intro') this.startPlay(); else if (this.phase === 'land' && !this.left) { this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); } } }
   keyUp(code) { if (this.phase === 'play') this.rhythm.keyUp(code); }
   padAt(x, y) { return this.pads ? this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) : null; }
   pointerDown(x, y, id) { if (this.phase === 'play') { const p = this.padAt(x, y); if (p) { this.padPointers.set(id, p.code); this.rhythm.keyDown(p.code); } return; } this.key('Enter'); }
@@ -10275,6 +10798,44 @@ function buildSF() {
     }
     x.drawImage(cityTile(k, v, mask), tx * TILE, ty * TILE);
   }
+  // ---- the outskirts. Everything outside the named districts was bare
+  // cream, which read as nothing at all, so the quiet blocks get low houses
+  // with coloured roofs, gardens and blossom, the way the real ones do.
+  {
+    const rr = makeRng(5150);
+    const ROOFS = ['#c8564a', '#4a7fc0', '#3f8f6a', '#c8a03a', '#8a6ad0', '#c87a4a', '#5a8fa8'];
+    for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+      if (TM.kind[ty * GW + tx] !== T_LAND) continue;
+      const bx = tx * TILE, by = ty * TILE;
+      const roll = rr();
+      if (roll < 0.42) {
+        // a house: a footprint, a pitched roof over it, a doorway and a window
+        const hw = rr.int(9, 14), hh = rr.int(8, 12);
+        const hx = bx + rr.int(2, TILE - hw - 2), hy = by + rr.int(3, TILE - hh - 3);
+        const roof = ROOFS[rr.int(0, ROOFS.length - 1)];
+        rect(x, hx + 1, hy + 2, hw, hh, 'rgba(0,0,0,0.12)');
+        rect(x, hx, hy, hw, hh, '#efe8d8');
+        rect(x, hx, hy, hw, Math.ceil(hh * 0.55), roof);
+        rect(x, hx, hy, hw, 1, lighten(roof, 0.25));
+        rect(x, hx, hy + Math.ceil(hh * 0.55), hw, 1, darken(roof, 0.3));
+        rect(x, hx + 2, hy + hh - 4, 3, 4, '#8a6a4a');
+        rect(x, hx + hw - 5, hy + hh - 4, 3, 3, '#a8d0e8');
+        if (rr.chance(0.35)) { ellipsePx(x, hx + hw + 4, hy + hh - 2, 3.5, 3, '#5aa055'); rect(x, hx + hw + 4, hy + hh - 1, 1, 2, '#6a4a30'); }
+      } else if (roll < 0.56) {
+        ellipsePx(x, bx + 12, by + 13, 7, 5.6, '#d9829f');
+        ellipsePx(x, bx + 12, by + 11, 7, 5.6, '#f2a7c2');
+        ellipsePx(x, bx + 10, by + 9, 3.6, 3, '#ffd0e2');
+      } else if (roll < 0.66) {
+        rect(x, bx + 4, by + 5, TILE - 9, TILE - 11, MAP_C.park);
+        for (let i = 0; i < 5; i++) rect(x, bx + 6 + (i * 5) % (TILE - 12), by + 7 + (i * 7) % (TILE - 15), 2, 2, MAP_C.parkDk);
+      } else if (roll < 0.70) {
+        // a little car on a driveway, for colour
+        const cc = ROOFS[rr.int(0, ROOFS.length - 1)];
+        rect(x, bx + 7, by + 10, 11, 6, darken(cc, 0.35)); rect(x, bx + 7, by + 10, 11, 5, cc);
+        rect(x, bx + 10, by + 11, 5, 3, '#a8d0e8');
+      }
+    }
+  }
   // ---- landmarks that are bigger than one tile
   x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
   x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
@@ -10326,6 +10887,42 @@ function buildSF() {
       }
       continue;
     }
+    if (d.kind === 'sakura') {
+      // blossom from above: a pink canopy, a paler crown and a few loose
+      // petals on the ground under it
+      const r = d.r || 1;
+      ellipsePx(x, d.x, d.y + 2, 7 * r, 5.6 * r, '#d9829f');
+      ellipsePx(x, d.x, d.y, 7 * r, 5.6 * r, '#f2a7c2');
+      ellipsePx(x, d.x - 2 * r, d.y - 2 * r, 4 * r, 3.2 * r, '#ffd0e2');
+      ellipsePx(x, d.x + 3 * r, d.y + 1 * r, 2.4 * r, 2 * r, '#ffe4ef');
+      for (let i = 0; i < 3; i++) rect(x, d.x + (i * 5 % 9) - 5, d.y + 6 + (i % 2) * 2, 1, 1, '#ffc6dd');
+      continue;
+    }
+    if (d.kind === 'flowers') {
+      const cols = [['#e8506a', '#ffb0c0'], ['#e8a020', '#ffd88a'], ['#6a5ad0', '#b8a8f0'], ['#e0e0e0', '#ffffff']][d.c % 4];
+      ellipsePx(x, d.x, d.y, 6, 4, '#7fb85f');
+      for (let i = 0; i < 7; i++) { const a = i * 0.9, fx = d.x + Math.cos(a) * 4, fy = d.y + Math.sin(a) * 2.6; rect(x, fx, fy, 2, 2, cols[i % 2]); }
+      continue;
+    }
+    if (d.kind === 'awning') {
+      const cols = ['#e0523c', '#3f7fd0', '#e09030', '#2fa36b', '#9b59d0', '#d9a520'][d.c % 6];
+      x.save(); x.translate(d.x, d.y); x.rotate(d.a || 0);
+      rect(x, -6, -4, 12, 8, darken(cols, 0.3));
+      rect(x, -6, -4, 12, 6, cols);
+      for (let i = -6; i < 6; i += 4) rect(x, i, -4, 2, 6, lighten(cols, 0.25));
+      rect(x, -6, 2, 12, 1, '#fff6e8');
+      x.restore(); continue;
+    }
+    if (d.kind === 'parked') {
+      const cols = ['#e8e4dc', '#2f4a68', '#c8402c', '#e8c040', '#3f8f6a', '#8a4fd0', '#ffffff'][d.c % 7];
+      x.save(); x.translate(d.x, d.y); x.rotate(d.a || 0);
+      rect(x, -7, -3, 14, 7, darken(cols, 0.35));
+      rect(x, -7, -3, 14, 6, cols);
+      rect(x, -3, -2, 6, 4, '#8fc0e4');
+      rect(x, 6, -2, 2, 2, '#ffe9a8');
+      x.restore(); continue;
+    }
+    if (d.kind === 'mascot') { drawMascotSmall(x, d.x, d.y, d.m, d.c, 0.62); continue; }
     if (d.kind === 'tower') {
       const c2 = landmarkCanvas(d.text === 'SKYTREE' ? 'skytree' : 'tokyotower');
       const h2 = 30, w2 = Math.round(c2.width * h2 / c2.height);
@@ -10336,6 +10933,50 @@ function buildSF() {
   }
   _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
+}
+// Every district in this city has something round with a face on it standing
+// outside a shop, so the map has them too: a little chibi mascot, waving.
+function drawMapMascot(ctx, x, y, kind, ci = 0) {
+  const body = ['#f2a7c2', '#8fd8f0', '#ffd24a', '#a8e08a', '#f0a070', '#c8b0f0'][ci % 6];
+  const dk = darken(body, 0.3), hi = lighten(body, 0.3);
+  ellipsePx(ctx, x, y + 9, 8, 3, 'rgba(0,0,0,0.2)');
+  // legs and the little feet
+  rect(ctx, x - 5, y + 4, 4, 5, dk); rect(ctx, x + 1, y + 4, 4, 5, dk);
+  // the body, which on a mascot is nearly all of it
+  ellipsePx(ctx, x, y - 3, 10, 10, dk);
+  ellipsePx(ctx, x, y - 4, 9, 9, body);
+  ellipsePx(ctx, x - 3, y - 8, 4, 3, hi);
+  // whatever it is supposed to be
+  if (kind === 'cat') { for (const s2 of [-1, 1]) { rect(ctx, x + s2 * 6 - 1, y - 15, 3, 5, body); rect(ctx, x + s2 * 6, y - 14, 1, 3, '#e8708f'); } }
+  else if (kind === 'bird') { rect(ctx, x - 1, y - 4, 3, 3, '#e8a020'); rect(ctx, x - 9, y - 6, 3, 6, hi); rect(ctx, x + 7, y - 6, 3, 6, hi); }
+  else if (kind === 'bean') { rect(ctx, x - 1, y - 16, 2, 5, '#5a8a3a'); rect(ctx, x + 1, y - 17, 5, 3, '#6aa04a'); }
+  else if (kind === 'fish') { rect(ctx, x - 13, y - 7, 4, 8, dk); rect(ctx, x - 12, y - 6, 3, 6, body); }
+  else { for (const s2 of [-1, 1]) { ellipsePx(ctx, x + s2 * 7, y - 11, 3.5, 3.5, body); ellipsePx(ctx, x + s2 * 7, y - 11, 2, 2, '#e8708f'); } }
+  // the face: two dots, a blush and a permanent smile
+  rect(ctx, x - 4, y - 6, 2, 2, '#241a2e'); rect(ctx, x + 3, y - 6, 2, 2, '#241a2e');
+  rect(ctx, x - 7, y - 3, 3, 2, '#ff9ab0'); rect(ctx, x + 5, y - 3, 3, 2, '#ff9ab0');
+  rect(ctx, x - 2, y - 2, 4, 1, '#241a2e'); rect(ctx, x - 3, y - 3, 1, 1, '#241a2e'); rect(ctx, x + 2, y - 3, 1, 1, '#241a2e');
+  // one arm up, permanently mid-wave
+  rect(ctx, x + 8, y - 9, 4, 3, body); rect(ctx, x + 11, y - 12, 3, 4, body);
+}
+// The mascot at full size is a big cartoon; on the map it needs to be the
+// size of a person. Drawn once into a sprite, then blitted down with
+// smoothing off so it stays pixel art instead of turning to mush.
+const _mascotCache = {};
+function mascotCanvas(kind, ci) {
+  const key = kind + ci;
+  if (_mascotCache[key]) return _mascotCache[key];
+  const c = makeCanvas(40, 36), g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  drawMapMascot(g, 18, 24, kind, ci);
+  _mascotCache[key] = c;
+  return c;
+}
+function drawMascotSmall(ctx, x, y, kind, ci, sc) {
+  const c = mascotCanvas(kind, ci), w = Math.round(c.width * sc), h = Math.round(c.height * sc);
+  const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(c, Math.round(x - 18 * sc), Math.round(y - 24 * sc), w, h);
+  ctx.imageSmoothingEnabled = sm;
 }
 const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
@@ -10382,7 +11023,20 @@ class CityScene {
     const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 16; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
-    this.people = []; for (let i = 0; i < 40; i++) { const e = rr.pick(EDGES); this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.03), col: rr.pick(NPC_PALETTES) }); }
+    // the pavements: office workers, school kids, somebody in a mascot suit,
+    // a dog on a lead, a courier going too fast. Every one of them bobs.
+    this.people = [];
+    for (let i = 0; i < 96; i++) {
+      const e = rr.pick(EDGES);
+      const roll = rr();
+      const kind = roll < 0.06 ? 'mascot' : roll < 0.14 ? 'dog' : roll < 0.22 ? 'kid' : 'walker';
+      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.032) * (kind === 'dog' ? 1.5 : 1),
+        col: rr.pick(NPC_PALETTES), hair: rr.pick(['#3a3040', '#241a2e', '#6a4a30', '#8a2a4a', '#c8a03a']),
+        kind, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(0.3) });
+    }
+    // blossom on the wind, right across the viewport
+    this.petals = [];
+    for (let i = 0; i < 70; i++) this.petals.push({ x: rr.range(0, W), y: rr.range(26, H), sp: rr.range(14, 34), sw: rr.range(0.6, 1.6), ph: rr.range(0, 6.3), s: rr.int(2, 3) });
     this.fx = new Particles(); this.sel = 0;
     this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
@@ -10408,6 +11062,12 @@ class CityScene {
     this.cam.x = lerp(this.cam.x, this.target.x, Math.min(1, dt * 4)); this.cam.y = lerp(this.cam.y, this.target.y, Math.min(1, dt * 4));
     for (const c of this.cars) { c.k += c.sp * dt; if (c.k > 1) { c.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; c.a = e[0]; c.b = e[1]; } }
     for (const p of this.people) { p.k += p.sp * dt; if (p.k > 1) { p.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; } }
+    // petals cross the viewport regardless of where the camera is, because
+    // the wind does not care which street you are looking at
+    for (const pt of this.petals) {
+      pt.x -= pt.sp * dt * 0.7; pt.y += pt.sp * dt;
+      if (pt.y > H || pt.x < -6) { pt.x = Math.random() * (W + 120); pt.y = 20 - Math.random() * 60; }
+    }
     this.fx.update(dt, Game.wind.px);
     const W_ = WEATHERS[r.weather] || WEATHERS.clear;
     if (r.weather === 'rain' && Math.random() < dt * 40) this.fx.add({ x: Math.random() * W, y: -4, vx: -20, vy: 260, life: 1.4, color: '#9ec8ee', kind: 'px', size: 1, gravity: 0 });
@@ -10560,7 +11220,27 @@ class CityScene {
     for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx - cam.x, y: wy - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 9, 2, MAP_C.waterDk); }
     // cars + people on roads
     for (const c of this.cars) { const p = this.edgePos(c.a, c.b, c.k), s = { x: p.x - cam.x, y: p.y - cam.y + 26 }; if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue; const na = this.G[c.a], nb = this.G[c.b]; const dir = (nb.x - na.x) >= 0 ? 1 : -1; ctx.drawImage(carCanvas(c.seed, dir), Math.round(s.x - 11), Math.round(s.y - 5), 22, 10); }
-    for (const p2 of this.people) { const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: p.x - cam.x, y: p.y - cam.y + 26 }; if (s.x < 0 || s.x > W || s.y < 20 || s.y > H) continue; rect(ctx, s.x, s.y - 5, 3, 5, p2.col); rect(ctx, s.x, s.y - 7, 3, 2, '#3a3040'); }
+    for (const p2 of this.people) {
+      const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: Math.round(p.x - cam.x), y: Math.round(p.y - cam.y + 26) };
+      if (s.x < -8 || s.x > W + 8 || s.y < 20 || s.y > H) continue;
+      const bob = Math.sin(this.t * 7 + p2.ph) > 0 ? 1 : 0;
+      const y2 = s.y - bob;
+      ellipsePx(ctx, s.x + 1, s.y + 1, 3, 1.4, 'rgba(0,0,0,0.18)');
+      if (p2.kind === 'mascot') { drawMascotSmall(ctx, s.x, y2, ['cat', 'bird', 'bean', 'fish', 'bear'][p2.mc % 5], p2.mc, 0.5); continue; }
+      if (p2.kind === 'dog') {
+        rect(ctx, s.x - 3, y2 - 4, 6, 3, p2.hair); rect(ctx, s.x + 3, y2 - 5, 2, 2, p2.hair);
+        rect(ctx, s.x - 3, y2 - 1, 1, 2, p2.hair); rect(ctx, s.x + 1, y2 - 1, 1, 2, p2.hair);
+        continue;
+      }
+      const hh = p2.kind === 'kid' ? 4 : 6;
+      rect(ctx, s.x - 1, y2 - hh, 4, hh, p2.col);                 // body
+      rect(ctx, s.x - 1, y2 - hh, 4, 2, lighten(p2.col, 0.2));    // collar
+      rect(ctx, s.x - 1, y2 - hh - 3, 4, 3, '#f0d0b0');           // head
+      rect(ctx, s.x - 1, y2 - hh - 4, 4, 2, p2.hair);             // hair
+      if (bob) rect(ctx, s.x + 3, y2 - hh + 1, 1, 2, p2.col);     // the arm swinging
+      if (p2.bag) rect(ctx, s.x + 3, y2 - hh + 2, 2, 3, '#c8402c');
+      if (p2.kind === 'kid') rect(ctx, s.x - 2, y2 - hh - 5, 6, 1, '#e8c040');
+    }
     // ---- the route you drew, as a continuous ribbon with chevrons
     if (this.path.length) {
       const pts = [this.tileScreen(this.tile)].concat(this.path.map(t => this.tileScreen(t)));
@@ -10641,6 +11321,17 @@ class CityScene {
     grade(ctx, 0, 26, W, H - 60, lift > 0.5 ? '#ffd9a0' : '#5f7ea8', lift > 0.5 ? (lift - 0.5) * 0.24 : (0.5 - lift) * 0.42);
     if (lift < 0.45) { ctx.globalAlpha = (0.45 - lift) * 0.5; ctx.fillStyle = '#8e93a6'; ctx.fillRect(0, 26, W, H - 60); ctx.globalAlpha = 1; }
     vignetteRect(ctx, 0, 26, W, H - 60, 0.3 + (1 - lift) * 0.2, lift > 0.5 ? '#1a2416' : '#141a26');
+    // blossom over the top of everything, heavier on a petal-fall day
+    const petalN = r.weather === 'sakura' ? this.petals.length : Math.floor(this.petals.length * 0.45);
+    for (let i = 0; i < petalN; i++) {
+      const pt = this.petals[i];
+      const px2 = Math.round(pt.x + Math.sin(this.t * pt.sw + pt.ph) * 9), py2 = Math.round(pt.y);
+      if (py2 < 26 || py2 > H - 34) continue;
+      ctx.globalAlpha = 0.75;
+      rect(ctx, px2, py2, pt.s, pt.s, i % 3 ? '#ffc6dd' : '#ffe4ef');
+      rect(ctx, px2 + 1, py2 + pt.s, 1, 1, '#f2a7c2');
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
     this.drawHud(ctx);
     if (this.arriveT > 0) {

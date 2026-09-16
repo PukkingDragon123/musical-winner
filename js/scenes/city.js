@@ -120,6 +120,44 @@ function buildSF() {
     }
     x.drawImage(cityTile(k, v, mask), tx * TILE, ty * TILE);
   }
+  // ---- the outskirts. Everything outside the named districts was bare
+  // cream, which read as nothing at all, so the quiet blocks get low houses
+  // with coloured roofs, gardens and blossom, the way the real ones do.
+  {
+    const rr = makeRng(5150);
+    const ROOFS = ['#c8564a', '#4a7fc0', '#3f8f6a', '#c8a03a', '#8a6ad0', '#c87a4a', '#5a8fa8'];
+    for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+      if (TM.kind[ty * GW + tx] !== T_LAND) continue;
+      const bx = tx * TILE, by = ty * TILE;
+      const roll = rr();
+      if (roll < 0.42) {
+        // a house: a footprint, a pitched roof over it, a doorway and a window
+        const hw = rr.int(9, 14), hh = rr.int(8, 12);
+        const hx = bx + rr.int(2, TILE - hw - 2), hy = by + rr.int(3, TILE - hh - 3);
+        const roof = ROOFS[rr.int(0, ROOFS.length - 1)];
+        rect(x, hx + 1, hy + 2, hw, hh, 'rgba(0,0,0,0.12)');
+        rect(x, hx, hy, hw, hh, '#efe8d8');
+        rect(x, hx, hy, hw, Math.ceil(hh * 0.55), roof);
+        rect(x, hx, hy, hw, 1, lighten(roof, 0.25));
+        rect(x, hx, hy + Math.ceil(hh * 0.55), hw, 1, darken(roof, 0.3));
+        rect(x, hx + 2, hy + hh - 4, 3, 4, '#8a6a4a');
+        rect(x, hx + hw - 5, hy + hh - 4, 3, 3, '#a8d0e8');
+        if (rr.chance(0.35)) { ellipsePx(x, hx + hw + 4, hy + hh - 2, 3.5, 3, '#5aa055'); rect(x, hx + hw + 4, hy + hh - 1, 1, 2, '#6a4a30'); }
+      } else if (roll < 0.56) {
+        ellipsePx(x, bx + 12, by + 13, 7, 5.6, '#d9829f');
+        ellipsePx(x, bx + 12, by + 11, 7, 5.6, '#f2a7c2');
+        ellipsePx(x, bx + 10, by + 9, 3.6, 3, '#ffd0e2');
+      } else if (roll < 0.66) {
+        rect(x, bx + 4, by + 5, TILE - 9, TILE - 11, MAP_C.park);
+        for (let i = 0; i < 5; i++) rect(x, bx + 6 + (i * 5) % (TILE - 12), by + 7 + (i * 7) % (TILE - 15), 2, 2, MAP_C.parkDk);
+      } else if (roll < 0.70) {
+        // a little car on a driveway, for colour
+        const cc = ROOFS[rr.int(0, ROOFS.length - 1)];
+        rect(x, bx + 7, by + 10, 11, 6, darken(cc, 0.35)); rect(x, bx + 7, by + 10, 11, 5, cc);
+        rect(x, bx + 10, by + 11, 5, 3, '#a8d0e8');
+      }
+    }
+  }
   // ---- landmarks that are bigger than one tile
   x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
   x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
@@ -171,6 +209,42 @@ function buildSF() {
       }
       continue;
     }
+    if (d.kind === 'sakura') {
+      // blossom from above: a pink canopy, a paler crown and a few loose
+      // petals on the ground under it
+      const r = d.r || 1;
+      ellipsePx(x, d.x, d.y + 2, 7 * r, 5.6 * r, '#d9829f');
+      ellipsePx(x, d.x, d.y, 7 * r, 5.6 * r, '#f2a7c2');
+      ellipsePx(x, d.x - 2 * r, d.y - 2 * r, 4 * r, 3.2 * r, '#ffd0e2');
+      ellipsePx(x, d.x + 3 * r, d.y + 1 * r, 2.4 * r, 2 * r, '#ffe4ef');
+      for (let i = 0; i < 3; i++) rect(x, d.x + (i * 5 % 9) - 5, d.y + 6 + (i % 2) * 2, 1, 1, '#ffc6dd');
+      continue;
+    }
+    if (d.kind === 'flowers') {
+      const cols = [['#e8506a', '#ffb0c0'], ['#e8a020', '#ffd88a'], ['#6a5ad0', '#b8a8f0'], ['#e0e0e0', '#ffffff']][d.c % 4];
+      ellipsePx(x, d.x, d.y, 6, 4, '#7fb85f');
+      for (let i = 0; i < 7; i++) { const a = i * 0.9, fx = d.x + Math.cos(a) * 4, fy = d.y + Math.sin(a) * 2.6; rect(x, fx, fy, 2, 2, cols[i % 2]); }
+      continue;
+    }
+    if (d.kind === 'awning') {
+      const cols = ['#e0523c', '#3f7fd0', '#e09030', '#2fa36b', '#9b59d0', '#d9a520'][d.c % 6];
+      x.save(); x.translate(d.x, d.y); x.rotate(d.a || 0);
+      rect(x, -6, -4, 12, 8, darken(cols, 0.3));
+      rect(x, -6, -4, 12, 6, cols);
+      for (let i = -6; i < 6; i += 4) rect(x, i, -4, 2, 6, lighten(cols, 0.25));
+      rect(x, -6, 2, 12, 1, '#fff6e8');
+      x.restore(); continue;
+    }
+    if (d.kind === 'parked') {
+      const cols = ['#e8e4dc', '#2f4a68', '#c8402c', '#e8c040', '#3f8f6a', '#8a4fd0', '#ffffff'][d.c % 7];
+      x.save(); x.translate(d.x, d.y); x.rotate(d.a || 0);
+      rect(x, -7, -3, 14, 7, darken(cols, 0.35));
+      rect(x, -7, -3, 14, 6, cols);
+      rect(x, -3, -2, 6, 4, '#8fc0e4');
+      rect(x, 6, -2, 2, 2, '#ffe9a8');
+      x.restore(); continue;
+    }
+    if (d.kind === 'mascot') { drawMascotSmall(x, d.x, d.y, d.m, d.c, 0.62); continue; }
     if (d.kind === 'tower') {
       const c2 = landmarkCanvas(d.text === 'SKYTREE' ? 'skytree' : 'tokyotower');
       const h2 = 30, w2 = Math.round(c2.width * h2 / c2.height);
@@ -181,6 +255,50 @@ function buildSF() {
   }
   _sfCache = { canvas: c, graph: buildGraph(), tiles: TM };
   return _sfCache;
+}
+// Every district in this city has something round with a face on it standing
+// outside a shop, so the map has them too: a little chibi mascot, waving.
+function drawMapMascot(ctx, x, y, kind, ci = 0) {
+  const body = ['#f2a7c2', '#8fd8f0', '#ffd24a', '#a8e08a', '#f0a070', '#c8b0f0'][ci % 6];
+  const dk = darken(body, 0.3), hi = lighten(body, 0.3);
+  ellipsePx(ctx, x, y + 9, 8, 3, 'rgba(0,0,0,0.2)');
+  // legs and the little feet
+  rect(ctx, x - 5, y + 4, 4, 5, dk); rect(ctx, x + 1, y + 4, 4, 5, dk);
+  // the body, which on a mascot is nearly all of it
+  ellipsePx(ctx, x, y - 3, 10, 10, dk);
+  ellipsePx(ctx, x, y - 4, 9, 9, body);
+  ellipsePx(ctx, x - 3, y - 8, 4, 3, hi);
+  // whatever it is supposed to be
+  if (kind === 'cat') { for (const s2 of [-1, 1]) { rect(ctx, x + s2 * 6 - 1, y - 15, 3, 5, body); rect(ctx, x + s2 * 6, y - 14, 1, 3, '#e8708f'); } }
+  else if (kind === 'bird') { rect(ctx, x - 1, y - 4, 3, 3, '#e8a020'); rect(ctx, x - 9, y - 6, 3, 6, hi); rect(ctx, x + 7, y - 6, 3, 6, hi); }
+  else if (kind === 'bean') { rect(ctx, x - 1, y - 16, 2, 5, '#5a8a3a'); rect(ctx, x + 1, y - 17, 5, 3, '#6aa04a'); }
+  else if (kind === 'fish') { rect(ctx, x - 13, y - 7, 4, 8, dk); rect(ctx, x - 12, y - 6, 3, 6, body); }
+  else { for (const s2 of [-1, 1]) { ellipsePx(ctx, x + s2 * 7, y - 11, 3.5, 3.5, body); ellipsePx(ctx, x + s2 * 7, y - 11, 2, 2, '#e8708f'); } }
+  // the face: two dots, a blush and a permanent smile
+  rect(ctx, x - 4, y - 6, 2, 2, '#241a2e'); rect(ctx, x + 3, y - 6, 2, 2, '#241a2e');
+  rect(ctx, x - 7, y - 3, 3, 2, '#ff9ab0'); rect(ctx, x + 5, y - 3, 3, 2, '#ff9ab0');
+  rect(ctx, x - 2, y - 2, 4, 1, '#241a2e'); rect(ctx, x - 3, y - 3, 1, 1, '#241a2e'); rect(ctx, x + 2, y - 3, 1, 1, '#241a2e');
+  // one arm up, permanently mid-wave
+  rect(ctx, x + 8, y - 9, 4, 3, body); rect(ctx, x + 11, y - 12, 3, 4, body);
+}
+// The mascot at full size is a big cartoon; on the map it needs to be the
+// size of a person. Drawn once into a sprite, then blitted down with
+// smoothing off so it stays pixel art instead of turning to mush.
+const _mascotCache = {};
+function mascotCanvas(kind, ci) {
+  const key = kind + ci;
+  if (_mascotCache[key]) return _mascotCache[key];
+  const c = makeCanvas(40, 36), g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  drawMapMascot(g, 18, 24, kind, ci);
+  _mascotCache[key] = c;
+  return c;
+}
+function drawMascotSmall(ctx, x, y, kind, ci, sc) {
+  const c = mascotCanvas(kind, ci), w = Math.round(c.width * sc), h = Math.round(c.height * sc);
+  const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(c, Math.round(x - 18 * sc), Math.round(y - 24 * sc), w, h);
+  ctx.imageSmoothingEnabled = sm;
 }
 const PIN_COLOR = { venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
@@ -227,7 +345,20 @@ class CityScene {
     const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 16; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
-    this.people = []; for (let i = 0; i < 40; i++) { const e = rr.pick(EDGES); this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.03), col: rr.pick(NPC_PALETTES) }); }
+    // the pavements: office workers, school kids, somebody in a mascot suit,
+    // a dog on a lead, a courier going too fast. Every one of them bobs.
+    this.people = [];
+    for (let i = 0; i < 96; i++) {
+      const e = rr.pick(EDGES);
+      const roll = rr();
+      const kind = roll < 0.06 ? 'mascot' : roll < 0.14 ? 'dog' : roll < 0.22 ? 'kid' : 'walker';
+      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.032) * (kind === 'dog' ? 1.5 : 1),
+        col: rr.pick(NPC_PALETTES), hair: rr.pick(['#3a3040', '#241a2e', '#6a4a30', '#8a2a4a', '#c8a03a']),
+        kind, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(0.3) });
+    }
+    // blossom on the wind, right across the viewport
+    this.petals = [];
+    for (let i = 0; i < 70; i++) this.petals.push({ x: rr.range(0, W), y: rr.range(26, H), sp: rr.range(14, 34), sw: rr.range(0.6, 1.6), ph: rr.range(0, 6.3), s: rr.int(2, 3) });
     this.fx = new Particles(); this.sel = 0;
     this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
@@ -253,6 +384,12 @@ class CityScene {
     this.cam.x = lerp(this.cam.x, this.target.x, Math.min(1, dt * 4)); this.cam.y = lerp(this.cam.y, this.target.y, Math.min(1, dt * 4));
     for (const c of this.cars) { c.k += c.sp * dt; if (c.k > 1) { c.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; c.a = e[0]; c.b = e[1]; } }
     for (const p of this.people) { p.k += p.sp * dt; if (p.k > 1) { p.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; } }
+    // petals cross the viewport regardless of where the camera is, because
+    // the wind does not care which street you are looking at
+    for (const pt of this.petals) {
+      pt.x -= pt.sp * dt * 0.7; pt.y += pt.sp * dt;
+      if (pt.y > H || pt.x < -6) { pt.x = Math.random() * (W + 120); pt.y = 20 - Math.random() * 60; }
+    }
     this.fx.update(dt, Game.wind.px);
     const W_ = WEATHERS[r.weather] || WEATHERS.clear;
     if (r.weather === 'rain' && Math.random() < dt * 40) this.fx.add({ x: Math.random() * W, y: -4, vx: -20, vy: 260, life: 1.4, color: '#9ec8ee', kind: 'px', size: 1, gravity: 0 });
@@ -405,7 +542,27 @@ class CityScene {
     for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx - cam.x, y: wy - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 9, 2, MAP_C.waterDk); }
     // cars + people on roads
     for (const c of this.cars) { const p = this.edgePos(c.a, c.b, c.k), s = { x: p.x - cam.x, y: p.y - cam.y + 26 }; if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue; const na = this.G[c.a], nb = this.G[c.b]; const dir = (nb.x - na.x) >= 0 ? 1 : -1; ctx.drawImage(carCanvas(c.seed, dir), Math.round(s.x - 11), Math.round(s.y - 5), 22, 10); }
-    for (const p2 of this.people) { const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: p.x - cam.x, y: p.y - cam.y + 26 }; if (s.x < 0 || s.x > W || s.y < 20 || s.y > H) continue; rect(ctx, s.x, s.y - 5, 3, 5, p2.col); rect(ctx, s.x, s.y - 7, 3, 2, '#3a3040'); }
+    for (const p2 of this.people) {
+      const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: Math.round(p.x - cam.x), y: Math.round(p.y - cam.y + 26) };
+      if (s.x < -8 || s.x > W + 8 || s.y < 20 || s.y > H) continue;
+      const bob = Math.sin(this.t * 7 + p2.ph) > 0 ? 1 : 0;
+      const y2 = s.y - bob;
+      ellipsePx(ctx, s.x + 1, s.y + 1, 3, 1.4, 'rgba(0,0,0,0.18)');
+      if (p2.kind === 'mascot') { drawMascotSmall(ctx, s.x, y2, ['cat', 'bird', 'bean', 'fish', 'bear'][p2.mc % 5], p2.mc, 0.5); continue; }
+      if (p2.kind === 'dog') {
+        rect(ctx, s.x - 3, y2 - 4, 6, 3, p2.hair); rect(ctx, s.x + 3, y2 - 5, 2, 2, p2.hair);
+        rect(ctx, s.x - 3, y2 - 1, 1, 2, p2.hair); rect(ctx, s.x + 1, y2 - 1, 1, 2, p2.hair);
+        continue;
+      }
+      const hh = p2.kind === 'kid' ? 4 : 6;
+      rect(ctx, s.x - 1, y2 - hh, 4, hh, p2.col);                 // body
+      rect(ctx, s.x - 1, y2 - hh, 4, 2, lighten(p2.col, 0.2));    // collar
+      rect(ctx, s.x - 1, y2 - hh - 3, 4, 3, '#f0d0b0');           // head
+      rect(ctx, s.x - 1, y2 - hh - 4, 4, 2, p2.hair);             // hair
+      if (bob) rect(ctx, s.x + 3, y2 - hh + 1, 1, 2, p2.col);     // the arm swinging
+      if (p2.bag) rect(ctx, s.x + 3, y2 - hh + 2, 2, 3, '#c8402c');
+      if (p2.kind === 'kid') rect(ctx, s.x - 2, y2 - hh - 5, 6, 1, '#e8c040');
+    }
     // ---- the route you drew, as a continuous ribbon with chevrons
     if (this.path.length) {
       const pts = [this.tileScreen(this.tile)].concat(this.path.map(t => this.tileScreen(t)));
@@ -486,6 +643,17 @@ class CityScene {
     grade(ctx, 0, 26, W, H - 60, lift > 0.5 ? '#ffd9a0' : '#5f7ea8', lift > 0.5 ? (lift - 0.5) * 0.24 : (0.5 - lift) * 0.42);
     if (lift < 0.45) { ctx.globalAlpha = (0.45 - lift) * 0.5; ctx.fillStyle = '#8e93a6'; ctx.fillRect(0, 26, W, H - 60); ctx.globalAlpha = 1; }
     vignetteRect(ctx, 0, 26, W, H - 60, 0.3 + (1 - lift) * 0.2, lift > 0.5 ? '#1a2416' : '#141a26');
+    // blossom over the top of everything, heavier on a petal-fall day
+    const petalN = r.weather === 'sakura' ? this.petals.length : Math.floor(this.petals.length * 0.45);
+    for (let i = 0; i < petalN; i++) {
+      const pt = this.petals[i];
+      const px2 = Math.round(pt.x + Math.sin(this.t * pt.sw + pt.ph) * 9), py2 = Math.round(pt.y);
+      if (py2 < 26 || py2 > H - 34) continue;
+      ctx.globalAlpha = 0.75;
+      rect(ctx, px2, py2, pt.s, pt.s, i % 3 ? '#ffc6dd' : '#ffe4ef');
+      rect(ctx, px2 + 1, py2 + pt.s, 1, 1, '#f2a7c2');
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
     this.drawHud(ctx);
     if (this.arriveT > 0) {

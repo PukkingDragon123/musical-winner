@@ -31,6 +31,15 @@ function buildVenue(venue, seed, dayT) {
       else mx.drawImage(propCanvas('trash'), px2, 200, 18, 24);
       drawShadow(mx, px2 + 14, 224, 34, 0.14);
     }
+    // street trees at the kerb, because every Tokyo shopping street has them
+    // and in spring they are all in blossom
+    for (let tx2 = r.int(60, 160); tx2 < W + 220; tx2 += r.int(170, 250)) {
+      const tc = treeCanvas(r.chance(0.72) ? 'sakura' : 'round', 0);
+      rect(mx, tx2 + 25, 196, 7, 28, '#5a3a20'); rect(mx, tx2 + 25, 196, 2, 28, '#7a5a34');
+      mx.drawImage(tc, tx2, 142, 58, 76);
+      rect(mx, tx2 + 20, 220, 18, 4, '#6a6254');       // the square of earth it stands in
+      drawShadow(mx, tx2 + 28, 226, 40, 0.16);
+    }
     if (venue.narrow) { // a low alley: bunting of small lanterns overhead
       for (let lx = 0; lx < W + 240; lx += 34) { rect(mx, lx, 92, 34, 1, '#3a3040'); mx.drawImage(propCanvas('lantern2', Math.floor(lx / 34) % 3), lx + 10, 92, 12, 18); }
     }
@@ -63,7 +72,7 @@ function buildVenue(venue, seed, dayT) {
     mx.strokeStyle = '#c2b694'; mx.lineWidth = 26; mx.globalAlpha = 0.35; mx.stroke(); mx.globalAlpha = 1; mx.lineWidth = 1;
     // ---- a back row of full trees with trunks and a front row of shrubs
     for (let x = -20; x < W + 280; x += 88) {
-      const kind = r.pick(['round', 'round', 'light', 'palm', 'cypress']);
+      const kind = r.pick(['round', 'sakura', 'sakura', 'light', 'palm', 'cypress']);
       const tc = treeCanvas(kind, 0), tx = x + r.int(-14, 14), ty = 104 + r.int(-8, 8);
       rect(mx, tx + 24, ty + 54, 7, 26, '#6a4a2a'); rect(mx, tx + 24, ty + 54, 2, 26, '#8a6a44');
       mx.drawImage(tc, tx, ty, 56, 74);
@@ -150,10 +159,22 @@ function drawVenue(ctx, V, L, t, wind, venue) {
   }
   // props behind band row
   for (const p of V.props) {
-    if (p.kind === 'tree') { const c = treeCanvas('round', wind.frame(p.x)); ctx.drawImage(c, p.x - 28, midBottom - 74, 56, 78); continue; }
+    if (p.kind === 'tree') { const c = treeCanvas(((p.x * 7) % 3) ? 'sakura' : 'round', wind.frame(p.x)); ctx.drawImage(c, p.x - 28, midBottom - 74, 56, 78); continue; }
     const c = propCanvas(p.kind, p.v), sc = 1.45; ctx.drawImage(c, p.x, midBottom + 6 - c.height * sc, c.width * sc, c.height * sc);
     if (c.height * sc > 20) drawShadow(ctx, p.x + c.width * sc / 2, midBottom + 7, c.width * sc * 1.1, 0.18);
     if (p.kind === 'lamp' && V.skyT > 0.55) lightPool(ctx, p.x + 9, midBottom - 52, 78, '#ffe680', 0.16);
+  }
+  // ---- blossom on the wind, outdoors only, drifting down the frame
+  if (venue.kind === 'street' || venue.kind === 'park' || venue.kind === 'pier' || venue.kind === 'bridge') {
+    for (let i = 0; i < 26; i++) {
+      const seed = i * 97, span = bottom - top + 60;
+      const py2 = top - 30 + ((t * (16 + (seed % 13)) + seed * 37) % span);
+      const px2 = ((seed * 61) % W) + Math.sin(t * (0.6 + (seed % 5) * 0.2) + seed) * 22 - (py2 - top) * 0.25;
+      if (py2 < top || py2 > bottom) continue;
+      ctx.globalAlpha = 0.7;
+      rect(ctx, ((px2 % W) + W) % W, py2, 2 + (seed % 2), 2, i % 3 ? '#ffc6dd' : '#ffe4ef');
+      ctx.globalAlpha = 1;
+    }
   }
   // ---- cinematic pass: haze on the horizon, a colour grade, a soft vignette
   ctx.globalAlpha = 0.16; vgrad(ctx, 0, midBottom - 46, W, 52, 'rgba(0,0,0,0)', V.skyT > 0.6 ? '#2a2a4a' : '#e8dcc0'); ctx.globalAlpha = 1;

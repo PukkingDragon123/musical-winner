@@ -185,9 +185,15 @@ function treeCanvas(variant, frame) {
     } else {
       P.mLine(trunk, 19, 55, 20 + sway, 30, 4); P.fill(trunk, '#6a4a2a', { outline: OL }); P.paint(trunk, (x, y) => x === 19 ? '#8a6a3a' : null);
       const m = P.mask(); P.mEllipse(m, 20 + sway * 2, 20, 16, 13); P.mEllipse(m, 12 + sway, 26, 9, 8); P.mEllipse(m, 29 + sway * 2, 25, 9, 8); P.mEllipse(m, 20 + sway * 2, 10, 9, 7);
-      const cols = [['#3f8a3f', '#6ab04a', '#2a6a2a'], ['#5a9a3a', '#8ac850', '#3a6a2a'], ['#c8703a', '#e8a050', '#8a4a2a']][variant === 'autumn' ? 2 : variant === 'light' ? 1 : 0];
+      const cols = [['#3f8a3f', '#6ab04a', '#2a6a2a'], ['#5a9a3a', '#8ac850', '#3a6a2a'], ['#c8703a', '#e8a050', '#8a4a2a'],
+                    ['#f2a7c2', '#ffe4ef', '#d9829f']][variant === 'autumn' ? 2 : variant === 'sakura' ? 3 : variant === 'light' ? 1 : 0];
       P.fill(m, cols[0], { outline: OL, hi: cols[1], lo: cols[2] });
       P.paint(m, (x, y) => ((x * 5 + y * 3 + sway) % 9 === 0) ? cols[1] : ((x * 3 + y * 7) % 11 === 0) ? cols[2] : null);
+      // blossom is not a solid mass: a few holes, and petals coming off it
+      if (variant === 'sakura') {
+        P.paint(m, (x, y) => ((x * 7 + y * 11) % 17 === 0) ? '#ffffff' : ((x * 13 + y * 5) % 23 === 0) ? '#ffd0e2' : null);
+        for (const [dx, dy] of [[4, 34], [33, 33], [10, 38], [28, 40]]) { const pm = P.mask(); P.mRect(pm, dx, dy, 1, 1); P.fill(pm, '#ffc6dd'); }
+      }
     }
     return P.toCanvas();
   });
