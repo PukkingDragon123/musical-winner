@@ -204,8 +204,6 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
   const d = clamp(difficulty, 1, 7);
   // Nothing happens off the count until you have played a few nights, and
   // nothing asks for two limbs at once until you own a kit that could do it.
-  const offChance = [0, 0, 0, 0.05, 0.12, 0.24, 0.34, 0.44][d];     // eighths between the beats
-  const topChance = [0, 0, 0, 0, 0.07, 0.14, 0.22, 0.3][d];         // a piece on top of a beat
   const starRate = opts.starRate != null ? opts.starRate : 0.08;
   const bars = sec.endBar - sec.startBar;
   // A stadium is not a street corner. On the big stage the groove stops being
@@ -214,56 +212,73 @@ function kitGroove(song, sec, difficulty, rng, instr, opts = {}) {
   // every phrase ends on a real fill. Four shapes, cycled, so eight bars never
   // sound like the eight before them.
   const show = !!opts.showcase;
-  const SHAPES = [
-    { kick: [0, 2.5], ghost: [1.75, 3.75], push: false },
-    { kick: [0, 1.5, 2.5], ghost: [0.75, 3.25], push: true },
-    { kick: [0, 2, 3.5], ghost: [1.25, 2.75, 3.25], push: false },
-    { kick: [0, 0.75, 2.5, 3], ghost: [1.75], push: true },
-  ];
+  // ---- What the song is actually doing.
+  // The groove used to be invented out of the bar count alone, which is why it
+  // landed next to the tune instead of on it. The kit now traces the melody's
+  // own rhythm — the notes you can hear — with a backbeat underneath so it
+  // still plays like a drum part and not a transcription.
+  const onsets = [];
+  { let bt = 0; for (const nn of (song.melody || [])) { if (nn[0] > 0) onsets.push({ b: bt, dur: nn[1], midi: nn[0] }); bt += nn[1]; } }
+  const lastOn = onsets.length ? onsets[onsets.length - 1] : null;
+  const melBars = Math.max(1, Math.ceil((lastOn ? lastOn.b + lastOn.dur : 4) / 4));
+  const ps = onsets.map(o => o.midi);
+  const loP = ps.length ? Math.min(...ps) : 60, hiP = ps.length ? Math.max(...ps) : 72;
+  const spanP = Math.max(1, hiP - loP);
+  // how much of the tune the chart keeps, and how fine it is allowed to get
+  const keep = show ? 0.95 : [0.2, 0.28, 0.42, 0.56, 0.7, 0.84, 0.95, 1][d];
+  const maxPerBar = show ? 10 : [4, 5, 6, 7, 9, 11, 13, 14][d];
+  const quant = (show || d >= 5) ? 0.25 : 0.5;
+  const q = (x) => Math.round(x / quant) * quant;
+  // low notes go on the low drum, high notes on the high one, so what you play
+  // moves around the kit the same way the tune moves
+  const laneFor = (midi) => {
+    if (n <= 2) return (midi - loP) / spanP > 0.5 ? back : low;
+    const k = (midi - loP) / spanP;
+    return k > 0.72 ? top : k > 0.4 ? mid : low;
+  };
   for (let bar = 0; bar < bars; bar++) {
     const barT = song.leadIn + (sec.startBar + bar) * 4 * beat;
     const isPhraseEnd = (show ? bar % 4 === 3 : d >= 5 && bar % 4 === 3);
-    if (show) {
-      const sh = SHAPES[Math.floor(bar / 2) % SHAPES.length];
-      // the backbeat, which never moves: it is what everybody else is following
-      for (const b2 of [1, 3]) out.push({ t: barT + b2 * beat, lane: back, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
-      // the kick pattern, which does
-      for (const k of sh.kick) out.push({ t: barT + k * beat, lane: low, dur: 0, type: 'tap', midi: song.root });
-      // ghost notes on the mid piece, the bits that make it sound played
-      if (n >= 4) for (const g of sh.ghost) if (rng.chance(0.75)) out.push({ t: barT + g * beat, lane: mid, dur: 0, type: 'tap', midi: song.root });
-      // the cymbal: one on the downbeat of every phrase, and a push into the next
-      if (n >= 4 && bar % 4 === 0) out.push({ t: barT, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true, star: true });
-      if (n >= 4 && sh.push && rng.chance(0.6)) out.push({ t: barT + 3.5 * beat, lane: top, dur: 0, type: 'tap', midi: song.root });
-      if (isPhraseEnd) {
-        // a proper fill: sixteenths walking down the kit across the last beat
-        const order = byPitch.slice().reverse();
-        const steps = d >= 5 ? 4 : 3;
-        for (let i = 0; i < steps; i++)
-          out.push({ t: barT + 3 * beat + i * beat / steps, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
-      }
-      continue;
+    const slots = new Map();                 // beat-position -> note, one per position
+    const put = (pos, lane, extra) => {
+      const key = q(pos).toFixed(2) + ':' + lane;
+      if (slots.has(key)) return;
+      slots.set(key, Object.assign({ t: barT + q(pos) * beat, lane, dur: 0, type: 'tap', midi: song.root }, extra || {}));
+    };
+    // ---- the backbone. Whatever the tune is doing, one and three are the
+    // floor and two and four are the backbeat: that is the part everybody
+    // else in the band is listening to.
+    put(0, low);
+    put(1, back, { star: rng.chance(starRate) });
+    put(3, back, { star: rng.chance(starRate) });
+    if (show || d >= 4) put(2, low);
+    // ---- and then the song itself, laid over the top of it
+    const mb = melBars ? (sec.startBar + bar) % melBars : 0;
+    const inBar = onsets.filter(o => Math.floor(o.b / 4) === mb);
+    // longest notes first: if the bar is too busy to play, the ones that
+    // survive are the ones you would actually hear
+    const ranked = inBar.slice().sort((a, b2) => b2.dur - a.dur);
+    let budget = maxPerBar - slots.size;
+    for (const o of ranked) {
+      if (budget <= 0) break;
+      const pos = o.b - mb * 4;
+      if (pos < 0 || pos >= 4) continue;
+      const onCount = Math.abs(q(pos) - Math.round(pos)) < 0.001;
+      if (!onCount && !rng.chance(keep)) continue;
+      const lane = laneFor(o.midi);
+      const before = slots.size;
+      // a note the tune holds gets a cymbal on it; everything else a drum
+      if (o.dur >= 2 && n >= 4) put(pos, top, { chord: true, star: true });
+      else put(pos, lane);
+      if (slots.size > before) budget--;
     }
-    for (let b = 0; b < 4; b++) {
-      const t = barT + b * beat;
-      // the backbone: low piece on one and three, backbeat on two and four
-      const lane = (b === 1 || b === 3) ? back : low;
-      out.push({ t, lane, dur: 0, type: 'tap', midi: song.root, star: rng.chance(starRate) });
-      // a crash or hat riding the downbeat, once there is a kit to do it on
-      if (n >= 4 && d >= 4 && ((bar === 0 && b === 0) || rng.chance(topChance)) && top !== lane)
-        out.push({ t, lane: top, dur: 0, type: 'tap', midi: song.root, chord: true });
-      // an eighth between this beat and the next
-      if (rng.chance(offChance)) {
-        const offLane = d >= 5 && rng.chance(0.4) ? mid : low;
-        out.push({ t: t + beat * 0.5, lane: offLane, dur: 0, type: 'tap', midi: song.root });
-      }
-    }
-    // a fill across the last bar of a phrase, walking down the kit
-    // a fill across the last bar of a phrase, walking down the kit. It stays
-    // inside the bar, so it never lands on top of the next downbeat.
-    if (isPhraseEnd && n >= 3 && rng.chance(0.4)) {
+    for (const v of slots.values()) out.push(v);
+    // ---- the fill at the end of a phrase, walking down the kit
+    if (isPhraseEnd && n >= 3 && (show || rng.chance(0.4))) {
       const order = byPitch.slice().reverse();
-      for (let i = 0; i < 2; i++)
-        out.push({ t: barT + 3 * beat + i * beat * 0.5, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
+      const steps = show ? (d >= 5 ? 4 : 3) : 2;
+      for (let i = 0; i < steps; i++)
+        out.push({ t: barT + 3 * beat + i * beat / steps, lane: order[i % order.length], dur: 0, type: 'tap', midi: song.root });
     }
   }
   // two things asked for at the same instant on the same drum is not playable

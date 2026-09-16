@@ -1,65 +1,125 @@
 // ---------- Tokyo: a living map, travelled on a train pass ----------
 'use strict';
-const MAP_C = { land: '#f3efe4', landHi: '#faf7ee', park: '#c9e6b0', parkDk: '#b2d795', water: '#a6d0ee', waterDk: '#8fc0e4',
-  road: '#ffffff', roadBig: '#ffe9a8', roadEdge: '#ddd7c8', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#5d6a5d', inkSoft: '#8a927f', hill: '#eae3d0' };
+const MAP_C = { land: '#efe6cc', landHi: '#f8f1dc', park: '#a8d878', parkDk: '#7fb85f', water: '#8fd0f0', waterDk: '#66b6e2',
+  road: '#fdfaf0', roadBig: '#ffdf94', roadEdge: '#bdb193', bldg: '#e4dfd2', bldgEdge: '#d0c9b8', ink: '#4e5f52', inkSoft: '#7b8b72', hill: '#eae3d0' };
+// the roofs of the city, which is most of what you see from up here
+const ROOF_COLS = ['#e8836b', '#e0a24a', '#7fb8d8', '#8fc98a', '#d88fb0', '#b9a0e0', '#f0dca8', '#c8d2da', '#a8b8d8', '#9ecfc0', '#6f8f6a', '#6fa8c8', '#dcc8a0', '#c86f6f'];
 let _sfCache = null;
+// How close the map sits to your eye. The whole city at 1:1 was a diagram you
+// squinted at; half again as big is a place.
+const MAP_Z = 1.5;
+const MAP_VW = () => MAPW * MAP_Z, MAP_VH = () => MAPH * MAP_Z;
 // ---------- Tile sprites ----------
 // One 24x24 pixel tile per kind, cut so the whole city is drawn from squares.
+// Everything here is drawn as a little object with a top and a side, not as a
+// flat footprint: that is the whole difference between a diagram and a map you
+// want to look at.
 function cityTile(kind, variant, mask) {
   return cached('ctile|' + kind + '|' + variant + '|' + mask, () => {
     const P = new Pix(TILE, TILE), rng = makeRng(kind * 97 + variant * 31 + mask * 7 + 11);
     const flood = (c) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) P.set(x, y, c); };
     const speck = (c, n) => { for (let i = 0; i < n; i++) P.set(rng.int(0, TILE - 1), rng.int(0, TILE - 1), c); };
+    const box = (x0, y0, w, h, c) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, c); };
     switch (kind) {
       case T_WATER: {
         flood(MAP_C.water);
-        for (let y = 2; y < TILE; y += 6) for (let x = (y * 5) % 10; x < TILE; x += 10) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); P.set(x + 2, y, MAP_C.waterDk); }
-        speck('#b6dcf4', 4);
+        // bands of deeper water, then the little dashes that read as chop
+        for (let y = 0; y < TILE; y++) if (((y + variant) % 8) < 3) for (let x = 0; x < TILE; x++) P.set(x, y, '#7cc6ea');
+        for (let y = 2; y < TILE; y += 6) for (let x = (y * 5) % 10; x < TILE; x += 10) box(x, y, 3, 1, MAP_C.waterDk);
+        for (let i = 0; i < 5; i++) box(rng.int(1, TILE - 4), rng.int(1, TILE - 2), 2, 1, '#c8ecfc');
         break;
       }
       case T_SHORE: {
         flood(MAP_C.water);
-        for (let y = 3; y < TILE; y += 7) for (let x = (y * 3) % 9; x < TILE; x += 9) { P.set(x, y, MAP_C.waterDk); P.set(x + 1, y, MAP_C.waterDk); }
-        // a pale surf edge on whichever sides face land
-        if (mask & 1) for (let x = 0; x < TILE; x++) { P.set(x, 0, '#d7ecf8'); P.set(x, 1, '#c2e2f4'); }
-        if (mask & 2) for (let y = 0; y < TILE; y++) { P.set(TILE - 1, y, '#d7ecf8'); P.set(TILE - 2, y, '#c2e2f4'); }
-        if (mask & 4) for (let x = 0; x < TILE; x++) { P.set(x, TILE - 1, '#d7ecf8'); P.set(x, TILE - 2, '#c2e2f4'); }
-        if (mask & 8) for (let y = 0; y < TILE; y++) { P.set(0, y, '#d7ecf8'); P.set(1, y, '#c2e2f4'); }
+        for (let y = 3; y < TILE; y += 7) for (let x = (y * 3) % 9; x < TILE; x += 9) box(x, y, 2, 1, MAP_C.waterDk);
+        // sand, then surf, on whichever sides face land
+        const edgeSand = '#efe0b8', surf = '#e4f6ff', foam = '#ffffff';
+        if (mask & 1) { box(0, 0, TILE, 2, edgeSand); box(0, 2, TILE, 1, surf); for (let x = (variant % 4); x < TILE; x += 5) P.set(x, 2, foam); }
+        if (mask & 2) { box(TILE - 2, 0, 2, TILE, edgeSand); box(TILE - 3, 0, 1, TILE, surf); for (let y = (variant % 4); y < TILE; y += 5) P.set(TILE - 3, y, foam); }
+        if (mask & 4) { box(0, TILE - 2, TILE, 2, edgeSand); box(0, TILE - 3, TILE, 1, surf); for (let x = (variant % 4); x < TILE; x += 5) P.set(x, TILE - 3, foam); }
+        if (mask & 8) { box(0, 0, 2, TILE, edgeSand); box(2, 0, 1, TILE, surf); for (let y = (variant % 4); y < TILE; y += 5) P.set(2, y, foam); }
         break;
       }
       case T_PARK: {
         flood(MAP_C.park);
-        speck(MAP_C.parkDk, 26); speck('#dcf0c6', 10);
-        if (variant % 3 === 0) { const m = P.mask(); P.mEllipse(m, 11, 11, 7, 7); P.fill(m, MAP_C.parkDk, { outline: '#6f9a5a', shade: false }); P.paint(m, (x, y) => (x + y) % 5 === 0 ? '#a8d68e' : null); P.set(11, 19, '#7a5a34'); P.set(12, 19, '#7a5a34'); }
-        else if (variant % 3 === 1) { for (let i = 0; i < 5; i++) { const bx = rng.int(2, 19), by = rng.int(2, 19); P.set(bx, by, rng.pick(['#e8563f', '#f2cf4a', '#e07ab0'])); } }
+        // mown stripes, so the grass has a direction
+        for (let y = 0; y < TILE; y++) if (((y + variant * 3) % 8) < 4) for (let x = 0; x < TILE; x++) P.set(x, y, '#b4e084');
+        speck(MAP_C.parkDk, 16); speck('#cfeea0', 10);
+        const v = variant % 4;
+        if (v === 0) {
+          // a proper tree: trunk, canopy in three tones, and a shadow under it
+          const cx = 11 + rng.int(-2, 2), cy = 10 + rng.int(-2, 2);
+          box(cx, cy + 7, 2, 5, '#7a5a34');
+          const m = P.mask(); P.mEllipse(m, cx + 1, cy + 1, 7, 6); P.mEllipse(m, cx - 3, cy + 4, 4, 4); P.mEllipse(m, cx + 5, cy + 4, 4, 4);
+          P.fill(m, '#4f9a4a', { outline: '#2f6b3a', shade: false });
+          P.paint(m, (x, y) => ((x * 5 + y * 3) % 7 === 0) ? '#6fc25a' : ((x * 3 + y * 7) % 11 === 0) ? '#3a7a3a' : null);
+          P.paint(m, (x, y) => (x < cx && y < cy + 2) ? '#7fd06a' : null);
+        } else if (v === 1) {
+          // a flower bed
+          const bx = rng.int(4, 12), by = rng.int(4, 12);
+          box(bx - 1, by - 1, 10, 8, '#8fc46a');
+          for (let i = 0; i < 9; i++) P.set(bx + (i * 3) % 8, by + ((i * 5) % 6), rng.pick(['#e8506a', '#f2cf4a', '#e07ab0', '#ffffff']));
+        } else if (v === 2) {
+          // a pond with a reed edge
+          const m = P.mask(); P.mEllipse(m, 12, 12, 8, 6);
+          P.fill(m, MAP_C.water, { outline: '#7fb85f', shade: false });
+          P.paint(m, (x, y) => (x + y) % 7 === 0 ? '#c8ecfc' : null);
+        } else {
+          // a gravel path cutting across the grass
+          for (let i = 0; i < TILE; i++) { const py = Math.round(10 + Math.sin(i * 0.35 + variant) * 4); box(i, py, 1, 5, '#e2d5ae'); box(i, py + 5, 1, 1, '#c9bb93'); }
+        }
         break;
       }
       case T_PLAZA: {
-        flood(MAP_C.land);
-        for (let y = 0; y < TILE; y += 8) for (let x = 0; x < TILE; x++) P.set(x, y, '#e6e0cf');
-        for (let x = 0; x < TILE; x += 8) for (let y = 0; y < TILE; y++) P.set(x, y, '#e6e0cf');
-        speck('#eae4d4', 8);
+        flood('#efe6cf');
+        // paving, laid in courses, with a warm and a cool stone mixed in
+        for (let y = 0; y < TILE; y += 6) for (let x = ((y / 6) % 2) * 6; x < TILE; x += 12) {
+          box(x, y, 11, 5, ((x + y) % 4) ? '#f3ebd6' : '#e7ddc4');
+        }
+        for (let y = 5; y < TILE; y += 6) box(0, y, TILE, 1, '#dbd0b4');
+        if (variant % 3 === 0) { const m = P.mask(); P.mEllipse(m, 12, 12, 5, 5); P.fill(m, '#8fc98a', { outline: '#6f9a5a', shade: false }); P.set(12, 12, '#4f9a4a'); }
         break;
       }
       case T_LAND: {
-        flood(MAP_C.land); speck(MAP_C.landHi, 8); speck('#e8e2d2', 6);
+        flood(MAP_C.land);
+        speck(MAP_C.landHi, 10); speck('#ece3c8', 8);
+        for (let i = 0; i < 3; i++) { const gx = rng.int(1, TILE - 3), gy = rng.int(1, TILE - 2); P.set(gx, gy, '#cfd8a8'); P.set(gx + 1, gy - 1, '#cfd8a8'); }
         break;
       }
       case T_BLDG: {
         flood(MAP_C.land);
         const dense = variant >= 8, v = variant % 6;
-        const w = dense ? 20 : 16 + (v % 3) * 2, h = dense ? 20 : 15 + (v % 2) * 4;
+        const w = dense ? 20 : 15 + (v % 3) * 2, h = dense ? 20 : 14 + (v % 2) * 4;
         const x0 = Math.floor((TILE - w) / 2), y0 = Math.floor((TILE - h) / 2);
-        const roof = ['#e4dfd2', '#d8cfc0', '#e9e0c8', '#cfd2cc', '#ece4cf', '#d4cdbe', '#e0d4c4', '#dbd8cd'][(variant * 3 + v) % 8];
-        const m = P.mask(); P.mRect(m, x0, y0, w, h); P.fill(m, roof, { outline: '#c0b8a4', shade: false });
-        P.paint(m, (x, y) => y === y0 ? '#f2eee2' : y === y0 + h - 1 ? '#c8c0ac' : x === x0 + w - 1 ? '#cec6b2' : null);
-        // roof furniture so the blocks are not flat
-        if (v % 3 === 0) { const t2 = P.mask(); P.mRect(t2, x0 + 3, y0 + 3, 5, 4); P.fill(t2, '#c4bca8', { shade: false }); }
-        if (v % 4 === 1) { const t2 = P.mask(); P.mRect(t2, x0 + w - 8, y0 + h - 7, 6, 5); P.fill(t2, '#cfc7b3', { shade: false }); }
-        if (dense && v % 2 === 0) for (let i = 0; i < 3; i++) P.set(x0 + 4 + i * 5, y0 + h - 3, '#b8b0a0');
-        // drop shadow to the south-east
-        for (let x = x0 + 2; x < x0 + w + 2 && x < TILE; x++) P.set(x, Math.min(TILE - 1, y0 + h), '#d8d2c2');
-        for (let y = y0 + 2; y < y0 + h + 2 && y < TILE; y++) P.set(Math.min(TILE - 1, x0 + w), y, '#d8d2c2');
+        const roof = ROOF_COLS[(variant * 5 + v * 3) % ROOF_COLS.length];
+        const wall = darken(roof, 0.3), wallLo = darken(roof, 0.45), hi = lighten(roof, 0.22);
+        const wallH = dense ? 6 : 5;                   // how much of the side you can see
+        // ---- the shadow it throws to the south-east
+        box(x0 + 3, y0 + 3, w, h, '#e3dac0');
+        // ---- the south wall, with its windows lit
+        box(x0, y0 + h - wallH, w, wallH, wall);
+        box(x0, y0 + h - wallH, w, 1, lighten(wall, 0.18));
+        box(x0, y0 + h - 1, w, 1, wallLo);
+        for (let wx = x0 + 2; wx < x0 + w - 2; wx += 4) {
+          const on = rng.chance(0.55);
+          box(wx, y0 + h - wallH + 2, 2, wallH - 4, on ? '#ffe6a0' : '#55506a');
+        }
+        // ---- the roof
+        box(x0, y0, w, h - wallH, roof);
+        box(x0, y0, w, 1, hi);
+        box(x0, y0, 1, h - wallH, hi);
+        box(x0 + w - 1, y0, 1, h - wallH, darken(roof, 0.16));
+        // the parapet all the way round, which is what makes it read as a roof
+        for (let x = x0; x < x0 + w; x++) { P.set(x, y0, hi); P.set(x, y0 + h - wallH - 1, darken(roof, 0.2)); }
+        // ---- what is up there
+        if (v % 6 === 0) { box(x0 + 3, y0 + 3, 6, 5, darken(roof, 0.2)); box(x0 + 3, y0 + 3, 6, 1, hi); }         // plant room
+        else if (v % 6 === 1) { const m = P.mask(); P.mEllipse(m, x0 + w - 6, y0 + 5, 3, 3); P.fill(m, '#b8b0a0', { outline: '#8a8272', shade: false }); box(x0 + w - 7, y0 + 8, 4, 2, '#8a8272'); }  // water tank
+        else if (v % 6 === 2) { for (let i = 0; i < 3; i++) box(x0 + 3 + i * 5, y0 + 3, 4, 6, '#3f4a6a'); }        // solar panels
+        else if (v % 6 === 3) { box(x0 + 2, y0 + 2, w - 4, 3, '#f6f2e8'); for (let i = 0; i < 3; i++) P.set(x0 + 4 + i * 4, y0 + 3, '#c8402c'); }  // a sign on the roof
+        else if (v % 6 === 4) { const m = P.mask(); P.mEllipse(m, x0 + w / 2, y0 + (h - wallH) / 2, 5, 4); P.fill(m, lighten(roof, 0.1), { outline: darken(roof, 0.25), shade: false }); P.set(x0 + w / 2, y0 + (h - wallH) / 2, '#f6f2e8'); }  // helipad
+        else { for (let i = 0; i < 4; i++) P.set(x0 + 3 + i * 4, y0 + h - wallH - 3, darken(roof, 0.18)); }
+        // an aerial, on about a third of them
+        if (rng.chance(0.3)) { box(x0 + w - 4, y0 - 3, 1, 4, '#8a8272'); P.set(x0 + w - 5, y0 - 3, '#e8503a'); }
         break;
       }
       case T_ROAD: case T_BIGROAD: {
@@ -67,8 +127,8 @@ function cityTile(kind, variant, mask) {
         flood(MAP_C.land);
         const road = big ? MAP_C.roadBig : MAP_C.road, edge = MAP_C.roadEdge;
         const halfW = big ? 9 : 7, c = TILE / 2;
-        const band = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, road); };
-        const casing = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < TILE && y < TILE) P.set(x, y, edge); };
+        const band = (x0, y0, w, h) => box(x0, y0, w, h, road);
+        const casing = (x0, y0, w, h) => box(x0, y0, w, h, edge);
         const n = mask & 1, e = mask & 2, so = mask & 4, we = mask & 8;
         // casing first, then the carriageway
         if (n) casing(c - halfW - 1, 0, halfW * 2 + 2, c + halfW + 1);
@@ -83,13 +143,20 @@ function cityTile(kind, variant, mask) {
         if (!mask) band(c - halfW, c - halfW, halfW * 2, halfW * 2);
         // centre line only on straight runs
         const straightV = n && so && !e && !we, straightH = we && e && !n && !so;
-        if (big && straightV) for (let y = 2; y < TILE; y += 8) { P.set(c - 1, y, '#f0cf7a'); P.set(c - 1, y + 1, '#f0cf7a'); P.set(c - 1, y + 2, '#f0cf7a'); }
-        if (big && straightH) for (let x = 2; x < TILE; x += 8) { P.set(x, c - 1, '#f0cf7a'); P.set(x + 1, c - 1, '#f0cf7a'); P.set(x + 2, c - 1, '#f0cf7a'); }
-        if (!big && straightV) for (let y = 3; y < TILE; y += 9) P.set(c - 1, y, '#e6e0d0');
-        if (!big && straightH) for (let x = 3; x < TILE; x += 9) P.set(x, c - 1, '#e6e0d0');
+        if (big && straightV) for (let y = 2; y < TILE; y += 8) box(c - 1, y, 2, 3, '#f0b840');
+        if (big && straightH) for (let x = 2; x < TILE; x += 8) box(x, c - 1, 3, 2, '#f0b840');
+        if (!big && straightV) for (let y = 3; y < TILE; y += 9) box(c - 1, y, 1, 3, '#ddd6c2');
+        if (!big && straightH) for (let x = 3; x < TILE; x += 9) box(x, c - 1, 3, 1, '#ddd6c2');
         // crossing stripes at junctions
         const arms = (n ? 1 : 0) + (e ? 1 : 0) + (so ? 1 : 0) + (we ? 1 : 0);
-        if (arms >= 3) { for (let i = -halfW + 2; i < halfW - 1; i += 3) { if (n) { P.set(c + i, 2, '#e8e2d0'); P.set(c + i, 3, '#e8e2d0'); } if (so) { P.set(c + i, TILE - 3, '#e8e2d0'); P.set(c + i, TILE - 4, '#e8e2d0'); } } }
+        if (arms >= 3) {
+          for (let i = -halfW + 2; i < halfW - 1; i += 3) {
+            if (n) box(c + i, 1, 2, 3, '#e8e2d0');
+            if (so) box(c + i, TILE - 4, 2, 3, '#e8e2d0');
+            if (we) box(1, c + i, 3, 2, '#e8e2d0');
+            if (e) box(TILE - 4, c + i, 3, 2, '#e8e2d0');
+          }
+        }
         break;
       }
     }
@@ -344,7 +411,7 @@ class CityScene {
     this.cam = { x: 0, y: 0 };
     const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
-    for (let i = 0; i < 16; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
+    for (let i = 0; i < 34; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
     // the pavements: office workers, school kids, somebody in a mascot suit,
     // a dog on a lead, a courier going too fast. Every one of them bobs.
     this.people = [];
@@ -372,7 +439,7 @@ class CityScene {
     this.refresh();
     this.buttons = [];
   }
-  centerOn(p, snap) { const tx = clamp(p.x - W / 2, 0, MAPW - W), ty = clamp(p.y - (H - 60) / 2 - 26, 0, MAPH - (H - 60)); if (snap) { this.cam.x = tx; this.cam.y = ty; } this.target = { x: tx, y: ty }; }
+  centerOn(p, snap) { const tx = clamp(p.x * MAP_Z - W / 2, 0, MAP_VW() - W), ty = clamp(p.y * MAP_Z - (H - 60) / 2 - 26, 0, MAP_VH() - (H - 60)); if (snap) { this.cam.x = tx; this.cam.y = ty; } this.target = { x: tx, y: ty }; }
   get here() { return this.G[Game.run.pos]; }
   refresh() { this.reach = NODES.filter(n => this.canEnter(n)); this.sel = 0; this.centerOn(this.pos); }
   nodeAtTile(tx, ty) { return NODES.find(n => n.tx === tx && n.ty === ty && this.canEnter(n)); }
@@ -420,7 +487,7 @@ class CityScene {
       r.today.tiles = (r.today.tiles || 0) + 1;
       const gh = checkGoals(r); if (gh) this.goalDone(gh);
       this.walking = null; this.stepT = (this.stepT || 0) + 1;
-      if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x - this.cam.x, this.pos.y - this.cam.y + 26 + 6, 3, '#cfc6ae');
+      if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x * MAP_Z - this.cam.x, this.pos.y * MAP_Z - this.cam.y + 26 + 6, 3, '#cfc6ae');
       const n = this.nodeAtTile(t.tx, t.ty);
       if (n) { this.path.length = 0; r.pos = n.id; this.arrive(n); return; }
       if (r.stamina <= 0) { this.path.length = 0; this.flash('OUT OF STAMINA'); }
@@ -498,9 +565,9 @@ class CityScene {
     else if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); }
   }
   nearestNode() { let best = null, bd = 1e9; for (const n of this.reach) { const d = Math.hypot(n.tx - this.tile.tx, n.ty - this.tile.ty); if (d < bd) { bd = d; best = n; } } return bd < 14 ? best : null; }
-  screen(n) { return { x: n.x - this.cam.x, y: n.y - this.cam.y + 26 }; }
-  tileAt(sx, sy) { return { tx: Math.floor((sx + this.cam.x) / TILE), ty: Math.floor((sy - 26 + this.cam.y) / TILE) }; }
-  tileScreen(t) { return { x: (t.tx + 0.5) * TILE - this.cam.x, y: (t.ty + 0.5) * TILE - this.cam.y + 26 }; }
+  screen(n) { return { x: n.x * MAP_Z - this.cam.x, y: n.y * MAP_Z - this.cam.y + 26 }; }
+  tileAt(sx, sy) { return { tx: Math.floor((sx + this.cam.x) / MAP_Z / TILE), ty: Math.floor((sy - 26 + this.cam.y) / MAP_Z / TILE) }; }
+  tileScreen(t) { return { x: (t.tx + 0.5) * TILE * MAP_Z - this.cam.x, y: (t.ty + 0.5) * TILE * MAP_Z - this.cam.y + 26 }; }
   tap(x, y) {
     for (const b of this.buttons) if (b.hit(x, y)) { Audio.ui('select'); b.onTap(); return; }
     let best = null, bd = 1e9;
@@ -523,7 +590,7 @@ class CityScene {
     const dx = x - this.drag.x, dy = y - this.drag.y;
     this.drag.moved = Math.max(this.drag.moved, Math.hypot(dx, dy));
     if (this.drag.draw) { const t = this.tileAt(x, y); this.extendPath(t.tx, t.ty); return; }
-    if (this.drag.moved > 5) { this.cam.x = clamp(this.drag.cx - dx, 0, MAPW - W); this.cam.y = clamp(this.drag.cy - dy, 0, MAPH - (H - 60)); this.target = { x: this.cam.x, y: this.cam.y }; }
+    if (this.drag.moved > 5) { this.cam.x = clamp(this.drag.cx - dx, 0, MAP_VW() - W); this.cam.y = clamp(this.drag.cy - dy, 0, MAP_VH() - (H - 60)); this.target = { x: this.cam.x, y: this.cam.y }; }
   }
   pointerUp(x, y, id) {
     if (!this.drag || this.drag.id !== id) return;
@@ -537,13 +604,14 @@ class CityScene {
     const r = Game.run, cam = this.cam;
     rect(ctx, 0, 0, W, H, MAP_C.land);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 26, W, H - 60); ctx.clip();
-    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + 26);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + 26, Math.round(MAP_VW()), Math.round(MAP_VH()));
     // water shimmer
-    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx - cam.x, y: wy - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 9, 2, MAP_C.waterDk); }
+    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx * MAP_Z - cam.x, y: wy * MAP_Z - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 13, 3, MAP_C.waterDk); }
     // cars + people on roads
-    for (const c of this.cars) { const p = this.edgePos(c.a, c.b, c.k), s = { x: p.x - cam.x, y: p.y - cam.y + 26 }; if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue; const na = this.G[c.a], nb = this.G[c.b]; const dir = (nb.x - na.x) >= 0 ? 1 : -1; ctx.drawImage(carCanvas(c.seed, dir), Math.round(s.x - 11), Math.round(s.y - 5), 22, 10); }
+    for (const c of this.cars) { const p = this.edgePos(c.a, c.b, c.k), s = { x: p.x * MAP_Z - cam.x, y: p.y * MAP_Z - cam.y + 26 }; if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue; const na = this.G[c.a], nb = this.G[c.b]; const dir = (nb.x - na.x) >= 0 ? 1 : -1; ctx.drawImage(carCanvas(c.seed, dir), Math.round(s.x - 16), Math.round(s.y - 7), 33, 15); }
     for (const p2 of this.people) {
-      const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: Math.round(p.x - cam.x), y: Math.round(p.y - cam.y + 26) };
+      const p = this.edgePos(p2.a, p2.b, p2.k), s = { x: Math.round(p.x * MAP_Z - cam.x), y: Math.round(p.y * MAP_Z - cam.y + 26) };
       if (s.x < -8 || s.x > W + 8 || s.y < 20 || s.y > H) continue;
       const bob = Math.sin(this.t * 7 + p2.ph) > 0 ? 1 : 0;
       const y2 = s.y - bob;
@@ -616,7 +684,7 @@ class CityScene {
       }
     }
     // ---- the band, walking the streets on foot
-    const ps = { x: this.pos.x - cam.x, y: this.pos.y - cam.y + 26 };
+    const ps = { x: this.pos.x * MAP_Z - cam.x, y: this.pos.y * MAP_Z - cam.y + 26 };
     const moving = !!this.walking, phase = this.t * 7;
     const dirX = this.facing;
     r.members.slice(1, 4).forEach((m, i) => {
