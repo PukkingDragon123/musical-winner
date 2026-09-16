@@ -665,7 +665,7 @@ class GigScene {
       // The pad strip only exists where there are pads. A kit is tapped on the
       // drums themselves, so padY is zero there — and painting the strip anyway
       // laid a black sheet over the whole phone screen.
-      if (Game.touch && L.padH > 0 && this.pads.length) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
       this.pauseBtn.draw(ctx);
       if (this.paused) { rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.78)'); uiRibbon(ctx, W / 2, 170, 'PAUSED', { scale: 4 }); for (const b of this.pauseButtons) b.draw(ctx); }
       return;

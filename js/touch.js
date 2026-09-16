@@ -32,6 +32,16 @@ function buildPads(instr, area, qte) {
   }
   return pads;
 }
+// The strip the pads live on. There is exactly one of these now: the same four
+// lines were copied into three scenes, each painting a full-width black band
+// from padY to the bottom of the screen, and where an instrument has no pads
+// padY is zero — so the band covered everything and the screen went black. I
+// fixed one copy and shipped the other two twice.
+function drawPadStrip(ctx, L, pads, downCodes) {
+  if (!Game.touch || !L || !(L.padH > 0) || !pads || !pads.length) return;
+  rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814');
+  drawPads(ctx, pads, downCodes);
+}
 function drawPads(ctx, pads, downCodes) {
   for (const p of pads) {
     const on = downCodes.has(p.code);

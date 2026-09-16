@@ -7258,6 +7258,16 @@ function buildPads(instr, area, qte) {
   }
   return pads;
 }
+// The strip the pads live on. There is exactly one of these now: the same four
+// lines were copied into three scenes, each painting a full-width black band
+// from padY to the bottom of the screen, and where an instrument has no pads
+// padY is zero — so the band covered everything and the screen went black. I
+// fixed one copy and shipped the other two twice.
+function drawPadStrip(ctx, L, pads, downCodes) {
+  if (!Game.touch || !L || !(L.padH > 0) || !pads || !pads.length) return;
+  rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814');
+  drawPads(ctx, pads, downCodes);
+}
 function drawPads(ctx, pads, downCodes) {
   for (const p of pads) {
     const on = downCodes.has(p.code);
@@ -9137,7 +9147,7 @@ class ConcertScene {
     rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, Math.round(W * p), 4, '#ffd24a');
     rect(ctx, 0, barY, Math.round(W * p), 1, '#fff2b0');
     drawText(ctx, this.mv.title, 10, barY + 8, '#ffd24a', { outline: '#1a1410' });
-    if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+    drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
     if (this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.08; rect(ctx, 0, 0, W, H, '#fff'); ctx.globalAlpha = 1; }
   }
 }
@@ -9477,7 +9487,7 @@ class FlightScene {
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads });
       drawText(ctx, this.song.name.toUpperCase() + '   ' + this.song.composer.toUpperCase(), 10, L.rhythmY + 8, '#ffd24a', { outline: '#1a1410' });
-      if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
       return;
     }
     if (this.phase === 'land') {
@@ -11066,7 +11076,7 @@ class GigScene {
       // The pad strip only exists where there are pads. A kit is tapped on the
       // drums themselves, so padY is zero there — and painting the strip anyway
       // laid a black sheet over the whole phone screen.
-      if (Game.touch && L.padH > 0 && this.pads.length) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
       this.pauseBtn.draw(ctx);
       if (this.paused) { rect(ctx, 0, 0, W, H, 'rgba(0,0,0,0.78)'); uiRibbon(ctx, W / 2, 170, 'PAUSED', { scale: 4 }); for (const b of this.pauseButtons) b.draw(ctx); }
       return;

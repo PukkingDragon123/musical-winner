@@ -399,7 +399,7 @@ class ConcertScene {
     rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, Math.round(W * p), 4, '#ffd24a');
     rect(ctx, 0, barY, Math.round(W * p), 1, '#fff2b0');
     drawText(ctx, this.mv.title, 10, barY + 8, '#ffd24a', { outline: '#1a1410' });
-    if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+    drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
     if (this.mv.impossible && this.strobe) { ctx.globalAlpha = 0.08; rect(ctx, 0, 0, W, H, '#fff'); ctx.globalAlpha = 1; }
   }
 }
@@ -739,7 +739,7 @@ class FlightScene {
     if (this.phase === 'play') {
       this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads });
       drawText(ctx, this.song.name.toUpperCase() + '   ' + this.song.composer.toUpperCase(), 10, L.rhythmY + 8, '#ffd24a', { outline: '#1a1410' });
-      if (Game.touch) { rect(ctx, 0, L.padY - 3, W, H - L.padY + 3, '#0a0814'); drawPads(ctx, this.pads, this.rhythm.keysDown); }
+      drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
       return;
     }
     if (this.phase === 'land') {

@@ -23,6 +23,16 @@ The last solo cannot be landed. The crowd boos and throws tomatoes, cans and a b
 Backstage is a dressing room with a bulb-lit mirror, a costume rack, gold records and one
 open door. They put you on a plane. You practise once at 30,000 feet.
 
+## Testing
+
+`node test/notblank.js` walks every scene the game can reach, on a mouse and on a touch screen,
+plus every playable instrument in both the gig and the opening concert, and reads the canvas back
+to check something is actually on it. Seventy-six frames. It exists because the same bug shipped
+twice: a full-width black band drawn from `padY` to the bottom of the screen, where an instrument
+with no pads has a `padY` of zero, so the band covered everything. The scoring tests passed both
+times, because a black screen judges notes perfectly well. There is one `drawPadStrip` now instead
+of three copies of those four lines.
+
 ## On a phone
 
 Turn it sideways. In portrait the canvas rotates itself so the game is always landscape, and it
