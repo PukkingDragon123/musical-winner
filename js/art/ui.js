@@ -67,7 +67,11 @@ function uiButton(ctx, x, y, w, h, label, state = 'normal', opts = {}) {
   rect(ctx, x + 2, y + h - 3, w - 4, 1, lo); rect(ctx, x + w - 2, y + 2 + oy, 1, h - 6, lo);
   if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.fillRect(x + 1, y + 1 + oy, w - 2, h - 3 - oy); }
   const tc = dis ? '#dcdccc' : (opts.text || '#fff8e8');
-  const sc = opts.scale || 1;
+  // The label is drawn as large as the button will hold. Without a scale it
+  // grows to fill; with one it still shrinks rather than spilling out of the
+  // box, which is what used to happen to the longer labels.
+  let sc = opts.scale || 4;
+  while (sc > 1 && textWidth(label, { scale: sc }) > w - 12) sc--;
   drawText(ctx, label, x + w / 2, y + Math.floor((h - 2 - 7 * sc) / 2) + oy, tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
   if (opts.icon) ctx.drawImage(opts.icon, x + 6, y + Math.floor((h - opts.icon.height) / 2) + oy);
 }

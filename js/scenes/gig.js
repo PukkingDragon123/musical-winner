@@ -321,20 +321,13 @@ class GigScene {
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
     const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
     // A kit is played by hitting the drums themselves, mouse or finger alike.
-    const drum = this.drumAt(x, y);
-    if (drum) { this.rhythm.keyDown(this.rhythm.instrument.keys[drum.i]); this.dragDrum.set(id, drum.i); return; }
+    // A kit is struck wherever you touch, and the stage uses the same code.
+    if (kitPointerDown(this, x, y, id)) return;
     // ...and a kit takes a strike anywhere in the scene. Hunting a small
     // sprite with a mouse inside one beat was the whole difficulty, so a tap
     // in open air lands on the drum the chart wants and scores in full. With
     // nothing due it still sounds the nearest drum, so you can noodle.
-    if (this.rhythm.instrument.view === 'kit') {
-      const lane = this.rhythm.dueLane(), near = this.nearestDrum(x, y);
-      const i = lane != null ? lane : (near ? near.i : null);
-      // A strike is over the instant it happens. Nothing is remembered about
-      // the finger that made it, so a pointerup the browser never delivers
-      // cannot strand anything.
-      if (i != null) { this.rhythm.keyDown(this.rhythm.instrument.keys[i]); this.dragDrum.set(id, near ? near.i : -1); return; }
-    }
+
     // Keys and necks are played on the instrument: the note under your finger
     // is the note that sounds, exactly as it would be in the room.
     if (earPointerDown(this, x, y, id)) return;
@@ -342,14 +335,7 @@ class GigScene {
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
-    // Dragging across a kit is a fill: every new drum the finger crosses is
-    // struck once. Only a change of drum fires, so resting a finger on one
-    // does nothing.
-    if (this.rhythm && this.rhythm.instrument.view === 'kit' && this.dragDrum.has(id)) {
-      const d = this.drumAt(x, y);
-      if (d && d.i !== this.dragDrum.get(id)) { this.dragDrum.set(id, d.i); this.rhythm.keyDown(this.rhythm.instrument.keys[d.i]); }
-      return;
-    }
+    if (kitPointerMove(this, x, y, id)) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
     if (earPointerMove(this, x, y, id)) return;
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
@@ -358,7 +344,7 @@ class GigScene {
     if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
   pointerUp(x, y, id) {
-    this.dragDrum.delete(id);
+    kitPointerUp(this, id);
     const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
     earPointerUp(this, id);
   }

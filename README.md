@@ -33,7 +33,10 @@ direction and left about a third of a phone screen sitting black. It steps in si
 The kit is drawn at double size across the whole bottom of the screen, which on a phone is the
 whole point: a thumb cannot miss it. Menu rows have a floor of 28px on a touch screen and their
 hit boxes no longer overlap their neighbours, because a near miss used to pick the row next door,
-and at a ? encounter that costs you something real.
+and at a ? encounter that costs you something real. Every button has a height floor — taller again
+on touch — and grows about its own centre so a layout that placed it carefully stays true, and
+every label is drawn as large as its button will hold rather than at whatever scale was hard-coded
+into the call. Dialogue is set at double size for the same reason.
 
 ## The city
 
@@ -54,10 +57,19 @@ Dome unlocks on the last day. It is drawn like a map somebody actually printed: 
 the Yamanote loop, painted crossings at the scrambles, torii at the shrines, bridges where a road
 meets water, clumps of trees inside the parks, and both towers marked where they really stand.
 
+**Every encounter opens as a scene.** Letterbox bars slide in, a portrait of whoever is talking
+slides up, and the line types itself out over the moving vignette — the coals still glowing, the
+tail still flicking — before you are handed any choices at all. The choices are the end of a
+conversation, not the whole of it. Walking into a shop plays one too: the owner looks up from a
+magazine, says her piece, and goes back to reading it.
+
 **Sixteen question marks, and none of them says what it is.** Each one is a scene with somebody in
 it who wants something, and each one can go badly. A moth leans over a yatai cart and holds out
 three dumplings on a stick for two dollars, steam off the grill and the lantern swinging. An
-enormous cat is asleep on your amp and its tail moves once, slowly. A salaryman with his tie at
+enormous cat is asleep on your amp and its tail moves once, slowly. Three of them have you by the
+sleeve outside a wall of photo booths. An entire office department, four hours into a hanami party,
+has spotted your cases. A hard case with stickers from eleven countries sits alone on a bench and
+somebody is sprinting towards it. A salaryman with his tie at
 half mast requests a song and is not specific about which. A wasp in a very good suit has been
 filming you and hands you a card. The rain arrives sideways. Some are a straight choice; some hand
 you something to actually play — stop a needle on the green, or listen to a phrase and give it
@@ -151,6 +163,13 @@ are on is a shot working against you. On a phone this is the whole point, becaus
 a target a thumb cannot miss. A struck drum answers properly: a sub under the shell you feel
 rather than hear, a tick of stick on skin, the room slapping back a few milliseconds later, a flat
 wave of light running out across the head, sparks, dust off the mat and a shove to the camera.
+
+**The stage had no drum input at all.** The opening concert draws its own scene and handled its own
+taps, and nothing in it knew what a drum kit was — so a drummer's biggest night could only be
+played on a keyboard, which is exactly the one thing a phone does not have. Both scenes now call
+the same four functions for striking a kit, so they cannot drift apart again, and a drummer gets
+the open stadium layout with the five-piece across the bottom instead of one squeezed into a
+250px band.
 
 **Nothing on a kit is ever held.** A drum is a strike, not a key. It used to be gated on the same
 held-key set as everything else, which meant a single pointerup the browser never delivered — a

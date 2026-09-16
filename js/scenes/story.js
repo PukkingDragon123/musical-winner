@@ -34,7 +34,11 @@ class ConcertScene {
     // along the bottom edge; a chart still splits the screen the old way.
     const you = Game.run ? Game.run.members[0] : null;
     this.earLayout = you && (INSTRUMENTS[you.instrument] || {}).game === 'ear';
-    if (this.earLayout) {
+    // A kit gets the open stage too: it is played on the drums themselves, so
+    // it needs no pads and no split screen, and a five-piece squeezed into a
+    // 250px band with the band crammed above it looked like neither.
+    this.kitLayout = you && (INSTRUMENTS[you.instrument] || {}).view === 'kit';
+    if (this.earLayout || this.kitLayout) {
       this.L = { open: true, rhythmY: 16, rhythmH: H - 16, stageTop: 20, stageBottom: t ? 404 : 430, padY: 0, padH: 0 };
       return;
     }
@@ -117,7 +121,7 @@ class ConcertScene {
     this.backing = new Backing(song, start - song.leadIn,
       () => this.earMode && this.rhythm.phase === 'call' ? { bass: true, chords: true } : ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }),
       this.earMode ? { loop: true, steps } : {});
-    this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map();
+    this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map(); this.dragDrum = new Map();
     this.pyro(mv.pyro);
   }
   pyro(n) { for (let k = 0; k < n; k++) { const x = k % 2 ? 76 : W - 76; for (let i = 0; i < 14; i++) this.fx.add({ x: x + (Math.random() - 0.5) * 8, y: this.L.stageBottom - 26, vx: (Math.random() - 0.5) * 34, vy: -170 - Math.random() * 130, life: 0.7 + Math.random() * 0.4, kind: 'fire', size: 4, gravity: 130 }); } if (n) { Audio.ui('pyro'); Game.shake.hit(2, 0.15); this.pyroT = 0.3; } }
@@ -141,17 +145,22 @@ class ConcertScene {
     if (this.phase === 'done') { this.doneBtn.onTap(); return; }
     if (this.phase === 'play') {
       const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
+      // The stage had no drum input whatsoever, so a drummer's opening show
+      // could only be played on a keyboard. It uses the gig's code now.
+      if (kitPointerDown(this, x, y, id)) return;
       earPointerDown(this, x, y, id);
     }
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play') return;
+    if (kitPointerMove(this, x, y, id)) return;
     if (earPointerMove(this, x, y, id)) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
     const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return;
     this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
   pointerUp(x, y, id) {
+    kitPointerUp(this, id);
     if (earPointerUp(this, id)) return;
     const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
   }
@@ -258,7 +267,9 @@ class ConcertScene {
     const yx = W / 2 - 90, yy = floorY + 8;
     drawShadow(ctx, yx, yy, 46, 0.35);
     const youPose = bandPose(beat ? 'play' : 'play2');
-    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawBigKit(ctx, yx, yy - 20, beat); }
+    // The player's own kit is the playable one, drawn full size over the top
+    // of everything. Drawing the prop version here too put two kits on stage.
+    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); if (this.phase !== 'play') this.drawBigKit(ctx, yx, yy - 20, beat); }
     else if (this.you.instrument === 'piano') { ctx.drawImage(propCanvas('micstand'), yx - 52, yy - 76, 16, 62); drawBugAt(ctx, this.you.spec, yx, yy - 4, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawRig(ctx, yx, yy); }
     else drawBugAt(ctx, this.you.spec, yx, yy, { pose: youPose, instrument: this.you.instrument, scale: 2.1, expr: bandExpr, squash: beat && !dead ? 1.04 : 1, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 });
     ctx.drawImage(propCanvas('cab'), yx - 92, yy - 26, 30, 26);
@@ -381,7 +392,8 @@ class ConcertScene {
     }
 
     // ---- playing
-    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: !!L.open });
+    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: !!L.open,
+      kit: this.kitLayout ? { cx: W / 2, baseY: H - 150, width: W, zoom: 2 } : null });
     const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
     const barY = L.open ? 0 : L.rhythmY + L.rhythmH - 3;
     rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, Math.round(W * p), 4, '#ffd24a');

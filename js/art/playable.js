@@ -253,3 +253,57 @@ function earPointerUp(scene, id) {
   scene.earPointers.delete(id); scene.rhythm.release(m);
   return true;
 }
+
+// ---------- Striking a kit, wherever a kit is being played ----------
+// The gig and the opening concert both put a drum kit under your hands, and
+// for a while only one of them knew how to be hit: the stage had no drum
+// input at all, so a drummer's opening show could only be played on a
+// keyboard. Both scenes call these now, so they cannot drift apart again.
+function kitScene(scene) {
+  const R = scene.rhythm;
+  return R && R.instrument && R.instrument.view === 'kit' ? R : null;
+}
+// The drum under a point, hit radius honoured.
+function kitDrumAt(scene, x, y) {
+  const R = kitScene(scene); const spots = R && R.kitSpots; if (!spots) return null;
+  let best = null, bestD = Infinity;
+  for (const sp of spots) {
+    if (!kitHit(sp, x, y)) continue;
+    const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6;
+    if (d < bestD) { bestD = d; best = sp; }
+  }
+  return best;
+}
+// The nearest drum, hit radius or not: what a strike in open air sounds like
+// when the chart is asking for nothing.
+function kitNearest(scene, x, y) {
+  const R = kitScene(scene); const spots = R && R.kitSpots; if (!spots || !spots.length) return null;
+  let best = null, bestD = Infinity;
+  for (const sp of spots) { const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6; if (d < bestD) { bestD = d; best = sp; } }
+  return best;
+}
+// A strike is over the instant it happens. Nothing about the finger that made
+// it is remembered, so a pointerup the browser never delivers cannot strand
+// anything — which on a phone it does, constantly.
+function kitPointerDown(scene, x, y, id) {
+  const R = kitScene(scene); if (!R) return false;
+  const drum = kitDrumAt(scene, x, y);
+  if (drum) { R.keyDown(R.instrument.keys[drum.i]); scene.dragDrum && scene.dragDrum.set(id, drum.i); return true; }
+  // ...and anywhere else on the scene still counts: hunting a sprite with a
+  // finger inside one beat is a second, harder game nobody asked for.
+  const lane = R.dueLane(), near = kitNearest(scene, x, y);
+  const i = lane != null ? lane : (near ? near.i : null);
+  if (i == null) return false;
+  R.keyDown(R.instrument.keys[i]);
+  scene.dragDrum && scene.dragDrum.set(id, near ? near.i : -1);
+  return true;
+}
+// Dragging across a kit is a fill: every new drum the finger crosses is struck
+// once. Resting on one does nothing.
+function kitPointerMove(scene, x, y, id) {
+  const R = kitScene(scene); if (!R || !scene.dragDrum || !scene.dragDrum.has(id)) return false;
+  const d = kitDrumAt(scene, x, y);
+  if (d && d.i !== scene.dragDrum.get(id)) { scene.dragDrum.set(id, d.i); R.keyDown(R.instrument.keys[d.i]); }
+  return true;
+}
+function kitPointerUp(scene, id) { if (scene.dragDrum) scene.dragDrum.delete(id); }

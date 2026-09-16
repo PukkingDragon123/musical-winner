@@ -6,7 +6,78 @@
 'use strict';
 const MYSTERIES = [
   {
-    id: 'dango', scene: 'dango', title: 'THE DANGO CART',
+    id: 'purikura', scene: 'purikura', title: 'THE PHOTO BOOTH',
+    speaker: 'schoolgirl', speakerName: 'THREE OF THEM', tint: '#ff9fef',
+    beats: [
+      { text: 'A wall of photo booths in blinding pink, each one screaming a jingle at a different tempo.' },
+      { who: 'THREE OF THEM', text: '"You are the band! You ARE the band. Get in. All of you. GET IN."' },
+      { who: 'THREE OF THEM', text: 'One of them is already holding the curtain open. This does not appear to be a request.' },
+    ],
+    line: 'Three of them have you by the sleeve and the curtain is already open. The booth costs four dollars and holds, generously, two.',
+    choices: [
+      { label: 'All of you, in ($4)', req: s => s.money >= 4,
+        apply: (s, log) => { s.money -= 4; s.buffs.crowd = (s.buffs.crowd || 1) * 1.45; s.karma++; log('The strip comes out. It is unusable and perfect. They post it everywhere. (Much bigger crowd)'); } },
+      { label: 'Pose properly, for once', game: 'timing', gameLabel: 'HIT THE SHUTTER',
+        good: (s, log) => { s.buffs.crowd = (s.buffs.crowd || 1) * 1.6; s.buffs.mult = (s.buffs.mult || 0) + 1; log('Four frames, all of them good. That strip is going to follow you around. (+1 Mult, huge crowd)'); },
+        bad: (s, log) => { log('You blink in three of the four. The fourth is your ear.'); } },
+      { label: 'Politely extract yourself', apply: (s, log) => { s.karma--; log('You get free. They photograph you leaving, which is worse.'); } },
+    ],
+  },
+  {
+    id: 'kaiten', scene: 'kaiten', title: 'THE BELT',
+    speaker: null, tint: '#8ad8ff',
+    beats: [
+      { text: 'Plates go past at walking pace under little plastic domes. Colour is price. Nobody is watching the belt but you.' },
+      { text: 'Your stomach makes a noise loud enough that the bug two seats down looks over.' },
+    ],
+    line: 'Every plate is a different colour and every colour is a different price, and the whole thing moves at exactly the speed of temptation.',
+    choices: [
+      { label: 'Eat sensibly ($6)', req: s => s.money >= 6,
+        apply: (s, log) => { s.money -= 6; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 30)); log('Four plates, all blue. Everyone is fed and nobody is ruined. (+30 stamina each)'); } },
+      { label: 'Take whatever looks good', game: 'timing', gameLabel: 'GRAB IT OFF THE BELT',
+        good: (s, log) => { s.members.forEach(m => m.stamina = 100); s.money = Math.max(0, s.money - 3); log('You time it perfectly and take the gold plate as it passes. Three dollars. (Full stamina)'); },
+        bad: (s, log) => { s.money = Math.max(0, s.money - 14); log('The stack at the end of the meal is the colour of a bad decision. -$14.'); } },
+      { label: 'Just the tea, thanks', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 6)); log('Free tea, a hot towel, and the smell of everybody else eating. (+6 stamina each)'); } },
+    ],
+  },
+  {
+    id: 'hanami', scene: 'hanami', title: 'UNDER THE TREES',
+    speaker: 'salaryman', speakerName: 'THE BLUE SHEET', tint: '#ff9fef',
+    beats: [
+      { text: 'Twenty of them on a blue plastic sheet under the blossom, an entire office, four hours into it.' },
+      { who: 'THE BLUE SHEET', text: '"MUSICIANS!" somebody bellows, with the delight of a man who has found exactly what the afternoon was missing.' },
+      { who: 'THE BLUE SHEET', text: 'A space is being cleared on the sheet whether you agree to this or not.' },
+    ],
+    line: 'An entire office department, four hours into a hanami party, has spotted your cases and is now clearing a space on the sheet.',
+    choices: [
+      { label: 'Play the whole set for them', game: 'copy', gameLabel: 'THEY SING IT - PLAY IT BACK',
+        good: (s, log) => { const t = 26 + Math.floor(Math.random() * 20); s.money += t; s.buffs.mult = (s.buffs.mult || 0) + 1; log('They lose their minds. The section head empties his wallet: ' + fmtMoney(t) + '. (+1 Mult)'); },
+        bad: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 14)); log('Four hours of beer versus your arrangement. The beer wins. (-14 stamina each)'); } },
+      { label: 'Sit down and eat with them', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 26)); s.karma += 2; s.money += 6; log('Bento, beer, petals in everything. You leave fed and six dollars up. (+26 stamina each)'); } },
+      { label: 'Wave and keep walking', apply: (s, log) => log('You wave. Twenty of them wave back, for a very long time, as you go.') },
+    ],
+  },
+  {
+    id: 'lostcase', scene: 'lostcase', title: 'SOMEBODY LEFT THIS',
+    speaker: 'rival', speakerName: 'OUT OF BREATH', tint: '#6be585',
+    beats: [
+      { text: 'A hard case sits alone on a bench. Good latches. Stickers from eleven countries. Nobody anywhere near it.' },
+      { text: 'Then, from the far end of the street, somebody starts running. Badly. Waving.' },
+      { who: 'OUT OF BREATH', text: '"That is MINE, that is mine, do not — oh thank god. Thank god." He cannot finish a sentence.' },
+    ],
+    line: 'A case worth more than everything you own, and a bug sprinting down the street towards it with his coat half off.',
+    choices: [
+      { label: 'Hand it straight back', apply: (s, log) => { s.karma += 3; s.money += 22; s.buffs.mult = (s.buffs.mult || 0) + 1; log('He presses $22 on you and will not take no. He also knows a promoter. (+1 Mult)'); } },
+      { label: 'Open it first', apply: (s, log) => { s.karma -= 2; const k = s.randomCharm(); if (k && s.addCharm(k)) { Audio.ui('fanfare'); log('A ' + CHARMS[k].name + ' in the accessory pocket. He never knew. You will.'); } else log('Nothing in it but a horn and forty years of somebody else\'s life. You close it.'); } },
+      { label: 'Play something while he catches up', game: 'timing', gameLabel: 'MEET HIM ON THE BEAT',
+        good: (s, log) => { s.karma += 2; s.money += 15; s.buffs.crowd = (s.buffs.crowd || 1) * 1.3; log('He arrives into the last bar of it, laughing, and joins in. Half the street stops. (+$15, bigger crowd)'); },
+        bad: (s, log) => { log('You start in the wrong key and he arrives to the sound of it. He is gracious. It is worse.'); } },
+    ],
+  },
+  {
+    id: 'dango',
+    speaker: 'vendor', speakerName: 'THE OLD MOTH', tint: '#ffd24a',
+    beats: [{"text": "He turns three sticks on the coals without looking at them. The smell arrives before he does."}, {"who": "THE OLD MOTH", "text": "\"You have been playing out there two hours. I could hear the bucket from here.\""}, {"who": "THE OLD MOTH", "text": "\"Dango. Two dollars. Sweet, and it will keep you upright.\""}], scene: 'dango', title: 'THE DANGO CART',
     line: 'An old moth leans over a yatai cart and holds out three dumplings on a stick. Steam off the grill, a red lantern swinging. "Dango? Two dollars."',
     choices: [
       { label: 'Buy a stick ($2)', req: s => s.money >= 2,
@@ -20,7 +91,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'cat', scene: 'cat', title: 'OCCUPIED',
+    id: 'cat',
+    speaker: null, speakerName: null, tint: '#c58bff',
+    beats: [{"text": "Your amp has a cat on it. Not a small cat. It has arranged itself over the whole cabinet like a spilled rug."}, {"text": "Its tail moves once, slowly. Nothing else about it moves at all."}], scene: 'cat', title: 'OCCUPIED',
     line: 'A enormous tortoiseshell cat has fallen asleep on your amp. It is not a small cat. Its tail moves once, slowly, which is somehow a threat.',
     choices: [
       { label: 'Play around it', game: 'copy', gameLabel: 'KEEP IT QUIET - COPY THE PHRASE',
@@ -32,7 +105,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'salaryman', scene: 'salaryman', title: 'ONE MORE SONG',
+    id: 'salaryman',
+    speaker: 'salaryman', speakerName: 'A SALARYMAN', tint: '#ff9f68',
+    beats: [{"text": "He has been swaying in front of you for ten minutes. His tie is at half mast and his briefcase is open."}, {"who": "A SALARYMAN", "text": "\"You know the one. You KNOW the one. Everybody knows the one.\""}, {"who": "A SALARYMAN", "text": "He produces a fistful of coins and holds them out with enormous ceremony."}], scene: 'salaryman', title: 'ONE MORE SONG',
     line: 'A salaryman beetle, tie at half mast, has been swaying to you for ten minutes. He produces a fistful of coins and requests something. He is not specific.',
     choices: [
       { label: 'Play him something', game: 'timing', gameLabel: 'LAND IT ON THE BEAT',
@@ -43,7 +118,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'busker', scene: 'busker', title: 'THE OTHER END OF THE UNDERPASS',
+    id: 'busker',
+    speaker: 'rival', speakerName: 'THE OTHER BUSKER', tint: '#8ad8ff',
+    beats: [{"text": "Forty metres down the tunnel, another act has set up. Same key. Same tempo. Better amp."}, {"text": "He plays a phrase, holds the last note, and lets the tiles carry it all the way to you. He has not looked over once."}], scene: 'busker', title: 'THE OTHER END OF THE UNDERPASS',
     line: 'Another busker has set up forty metres away, in the same tunnel, in the same key. He is very good. He knows it. He has not looked at you once.',
     choices: [
       { label: 'Cut him', game: 'copy', gameLabel: 'PLAY IT BACK BETTER',
@@ -54,7 +131,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'gacha', scene: 'gacha', title: 'A WALL OF CAPSULES',
+    id: 'gacha',
+    speaker: null, speakerName: null, tint: '#ff9fef',
+    beats: [{"text": "Sixteen machines under a strip light that cannot decide whether it is on."}, {"text": "One of them is full of tiny brass instruments. You have a pocket of coins and no self-control whatsoever."}], scene: 'gacha', title: 'A WALL OF CAPSULES',
     line: 'Sixteen gachapon machines under a flickering strip light. One of them is full of tiny brass instruments. You have a pocket of coins and no self-control.',
     choices: [
       { label: 'One go ($3)', req: s => s.money >= 3,
@@ -65,7 +144,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'monk', scene: 'monk', title: 'THE ALMS BOWL',
+    id: 'monk',
+    speaker: 'monk', speakerName: 'THE MONK', tint: '#ffd9a0',
+    beats: [{"text": "He is standing so still at the foot of the steps that you walk past him once before you notice him."}, {"who": "THE MONK", "text": "He does not ask for anything. He rings the bell, once, and waits with the bowl."}], scene: 'monk', title: 'THE ALMS BOWL',
     line: 'A monk stands perfectly still at the foot of the temple steps with a bowl and a small bell. He has been there since before you arrived and will be there after.',
     choices: [
       { label: 'Give what you can ($5)', req: s => s.money >= 5,
@@ -77,7 +158,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'scout', scene: 'scout', title: 'A CARD WITH A LOGO ON IT',
+    id: 'scout',
+    speaker: 'scout', speakerName: 'A&R', tint: '#c58bff',
+    beats: [{"text": "She has been filming you on a phone for a minute and a half. She stops, and only then says hello."}, {"who": "A&R", "text": "\"Six months. We handle the bookings, the van, the recording, everything.\""}, {"who": "A&R", "text": "\"You would never have to carry anything ever again.\" She holds out a card."}], scene: 'scout', title: 'A CARD WITH A LOGO ON IT',
     line: 'A wasp in a very good suit has been filming you on a phone. She hands you a card. "Six months. We handle everything. You would not have to carry anything ever again."',
     choices: [
       { label: 'Sign it', apply: (s, log) => { s.money += 60; s.buffs.mult = (s.buffs.mult || 0) - 1; s.karma -= 2; log('$60 today. She takes the setlist, the name, and the right to both. (-1 Mult)'); } },
@@ -88,7 +171,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'rain', scene: 'rain', title: 'IT COMES DOWN ALL AT ONCE',
+    id: 'rain',
+    speaker: null, speakerName: null, tint: '#8ab0e0',
+    beats: [{"text": "The sky goes green. Then it arrives sideways, all at once, and thirty umbrellas open like a magic trick."}, {"text": "Your gear is not waterproof. Neither, it turns out, are you."}], scene: 'rain', title: 'IT COMES DOWN ALL AT ONCE',
     line: 'The sky goes green and then the rain arrives sideways. Thirty umbrellas open at once like a magic trick. Your gear is not waterproof and neither are you.',
     choices: [
       { label: 'Pack up fast', game: 'timing', gameLabel: 'GET THE LID ON IN TIME',
@@ -100,7 +185,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'crane', scene: 'crane', title: 'THE CLAW',
+    id: 'crane',
+    speaker: null, speakerName: null, tint: '#6be585',
+    beats: [{"text": "A crane machine lit like an altar, and one enormous plush frog wedged against the glass."}, {"text": "The claw has the grip strength of a damp tissue. You know this. You have always known this."}], scene: 'crane', title: 'THE CLAW',
     line: 'A crane machine, lit like an altar, with a single enormous plush frog wedged against the glass. The claw has the grip strength of a damp tissue. You know this.',
     choices: [
       { label: 'Have a go ($2)', req: s => s.money >= 2, game: 'timing', gameLabel: 'LINE THE CLAW UP',
@@ -112,7 +199,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'train', scene: 'train', title: 'THE LAST TRAIN',
+    id: 'train',
+    speaker: null, speakerName: null, tint: '#8ad8ff',
+    beats: [{"text": "00:42. The board says LAST. The platform is emptying and your cases are heavy."}, {"text": "There is exactly one more service tonight and a very long flight of stairs between you and it."}], scene: 'train', title: 'THE LAST TRAIN',
     line: 'The board says 00:42 and the platform is emptying. There is exactly one more service. Your cases are heavy and the stairs are long.',
     choices: [
       { label: 'Run for it', game: 'timing', gameLabel: 'THROUGH THE DOORS',
@@ -123,7 +212,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'vending', scene: 'vending', title: 'THE MACHINE THAT TAKES',
+    id: 'vending',
+    speaker: null, speakerName: null, tint: '#a8d8e8',
+    beats: [{"text": "A machine humming to itself in an otherwise empty side street. You put in two dollars."}, {"text": "Nothing comes out. The machine hums on, entirely unmoved by the transaction."}], scene: 'vending', title: 'THE MACHINE THAT TAKES',
     line: 'A vending machine hums in an otherwise empty side street. You put in two dollars. Nothing comes out. The machine hums on, unmoved.',
     choices: [
       { label: 'Hit it in the right place', game: 'timing', gameLabel: 'ON THE BEAT, ON THE SIDE',
@@ -135,7 +226,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'koban', scene: 'koban', title: 'THE POLICE BOX',
+    id: 'koban',
+    speaker: 'officer', speakerName: 'THE OFFICER', tint: '#8ab0e0',
+    beats: [{"text": "The light on the police box turns, and turns, and then the officer steps out with his hands behind his back."}, {"who": "THE OFFICER", "text": "\"That amp. Is it yours?\" He is not writing anything down. Yet."}], scene: 'koban', title: 'THE POLICE BOX',
     line: 'The officer at the koban has been watching the amp. He steps out with his hands behind his back, which is never the start of good news.',
     choices: [
       { label: 'Turn it down and apologise', apply: (s, log) => { s.karma++; s.buffs.crowd = (s.buffs.crowd || 1) * 0.85; log('He nods and goes back in. Quieter, smaller crowd, no trouble.'); } },

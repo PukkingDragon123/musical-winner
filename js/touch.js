@@ -1,7 +1,17 @@
 // ---------- Touch controls ----------
 'use strict';
 class Btn {
-  constructor(x, y, w, h, label, onTap, opts = {}) { Object.assign(this, { x, y, w, h, label, onTap, opts, held: false, flash: 0 }); }
+  // Buttons were sized for a mouse pointer on a desktop. Every one of them now
+  // has a floor, taller again on a touch screen, and grows about its own
+  // centre so a layout that placed it carefully stays where it was put. Small
+  // square icon buttons are left alone — they are not labels.
+  constructor(x, y, w, h, label, onTap, opts = {}) {
+    if (w >= 60 && !opts.tight) {
+      const minH = Game.touch ? 48 : 40;
+      if (h < minH) { y -= Math.round((minH - h) / 2); h = minH; }
+    }
+    Object.assign(this, { x, y, w, h, label, onTap, opts, held: false, flash: 0 });
+  }
   hit(px, py) { return px >= this.x && px < this.x + this.w && py >= this.y && py < this.y + this.h; }
   draw(ctx, state) { uiButton(ctx, this.x, this.y, this.w, this.h, this.label, state || (this.flash > 0 ? 'down' : 'normal'), this.opts); }
   update(dt) { this.flash = Math.max(0, this.flash - dt * 4); }

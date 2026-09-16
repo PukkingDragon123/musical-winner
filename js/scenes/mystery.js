@@ -45,6 +45,133 @@ function drawMysteryStreet(ctx, t, seed, opts = {}) {
 // ---- the vignettes. One distinctive thing and one character, each doing
 // something, rather than ten half-drawn backdrops.
 const MYSTERY_ART = {
+  purikura(ctx, t) {
+    // a wall of photo booths, each screaming a different jingle in pink
+    vgrad(ctx, 0, 0, W, H, '#3a1f40', '#1c0f22');
+    for (let i = 0; i < 5; i++) {
+      const bx = 60 + i * 190, lit = Math.sin(t * (3 + i * 0.7)) > -0.2;
+      rect(ctx, bx, 96, 168, 330, i % 2 ? '#e05a9a' : '#f07ab0');
+      rect(ctx, bx, 96, 168, 8, '#fff0f8');
+      rect(ctx, bx + 8, 112, 152, 96, '#2a1430');
+      ctx.globalAlpha = lit ? 0.85 : 0.35;
+      rect(ctx, bx + 12, 116, 144, 88, ['#ffd24a', '#8ad8ff', '#ff9fef', '#6be585', '#ffffff'][i]);
+      ctx.globalAlpha = 1;
+      // the curtain
+      for (let c = 0; c < 6; c++) { const sw = Math.sin(t * 2 + c + i) * 2; rect(ctx, bx + 10 + c * 25 + sw, 212, 22, 200, c % 2 ? '#8a2a5a' : '#a03a6a'); }
+      // bulbs round the frame
+      for (let bl = 0; bl < 7; bl++) { const on = (Math.floor(t * 6) + bl + i) % 3 === 0; ellipsePx(ctx, bx + 12 + bl * 24, 104, 4, 4, on ? '#fff8d0' : '#c08aa8'); }
+    }
+    rect(ctx, 0, 426, W, H - 426, '#2a1830'); rect(ctx, 0, 426, W, 3, '#4a2a48');
+    // three of them, bouncing, one holding the curtain
+    for (let i = 0; i < 3; i++) {
+      const gx = 560 + i * 74, bob = Math.round(Math.abs(Math.sin(t * 4 + i * 1.3)) * 7);
+      drawShadow(ctx, gx, 426, 26);
+      drawBugAt(ctx, MYSTERY_BUGS.schoolgirls[i], gx, 426 - bob, { pose: 'cheer', scale: 1.4, flip: i === 2 });
+    }
+    // the strip of photos, dangling
+    const sx = 300, sy = 150 + Math.sin(t * 1.5) * 4;
+    rect(ctx, sx - 2, sy - 6, 34, 150, '#f6f2e6'); frame(ctx, sx - 2, sy - 6, 34, 150, '#c8b8a0');
+    for (let f = 0; f < 4; f++) { rect(ctx, sx + 2, sy + f * 36, 26, 30, ['#ffd7e8', '#d7f0ff', '#fff0c8', '#e0ffd7'][f]); rect(ctx, sx + 6, sy + 6 + f * 36, 18, 18, '#8a6a7a'); }
+    drawParty(ctx, 110, 426, t);
+  },
+  kaiten(ctx, t) {
+    // a counter, a belt, and plates going past at walking pace
+    vgrad(ctx, 0, 0, W, H, '#241c1a', '#16100f');
+    rect(ctx, 0, 60, W, 120, '#3a2c24'); rect(ctx, 0, 60, W, 4, '#5e4a3a');
+    for (let i = 0; i < 8; i++) { rect(ctx, 30 + i * 120, 72, 92, 44, '#f4ecd8'); frame(ctx, 30 + i * 120, 72, 92, 44, '#8a6a48');
+      drawText(ctx, ['MAGURO', 'TAMAGO', 'EBI', 'SAKE', 'IKA', 'UNI', 'TORO', 'ANAGO'][i], 76 + i * 120, 88, '#8a3a2a', { align: 'center' }); }
+    // the kitchen slot, with somebody's hands in it
+    rect(ctx, 0, 180, W, 96, '#4a382c'); rect(ctx, 0, 180, W, 3, '#6e5844');
+    // the belt itself, moving
+    const beltY = 276;
+    rect(ctx, 0, beltY, W, 46, '#2a2430'); rect(ctx, 0, beltY, W, 3, '#4a4458');
+    for (let x = -((t * 46) % 26); x < W; x += 26) rect(ctx, x, beltY + 4, 14, 38, '#3a3446');
+    // plates under their domes
+    for (let i = 0; i < 9; i++) {
+      const px2 = ((i * 116 + t * 46) % (W + 116)) - 58;
+      const col = ['#4a7fd0', '#4a7fd0', '#d04a5a', '#4a7fd0', '#e0b040', '#4a7fd0', '#5aa050', '#4a7fd0', '#d04a5a'][i];
+      ellipsePx(ctx, px2, beltY + 30, 26, 9, darken(col, 0.3));
+      ellipsePx(ctx, px2, beltY + 28, 26, 8, col);
+      ellipsePx(ctx, px2, beltY + 27, 20, 6, lighten(col, 0.25));
+      // the food, and the plastic dome over it
+      ellipsePx(ctx, px2 - 5, beltY + 23, 7, 4, '#f0e4d0'); ellipsePx(ctx, px2 - 5, beltY + 21, 7, 3, '#e06a5a');
+      ellipsePx(ctx, px2 + 6, beltY + 23, 7, 4, '#f0e4d0'); ellipsePx(ctx, px2 + 6, beltY + 21, 7, 3, '#e8a050');
+      ctx.globalAlpha = 0.28; ellipsePx(ctx, px2, beltY + 18, 24, 14, '#cfe4ff'); ctx.globalAlpha = 1;
+      ellipsePx(ctx, px2, beltY + 6, 3, 2, '#e8f4ff');
+    }
+    // the counter you are sitting at
+    rect(ctx, 0, beltY + 46, W, 24, '#7a5434'); rect(ctx, 0, beltY + 46, W, 4, '#a8794e');
+    rect(ctx, 0, beltY + 70, W, H - beltY - 70, '#241c20');
+    // a tea tap and a stack of the day's plates
+    rect(ctx, 830, beltY + 22, 16, 26, '#8a8a98'); rect(ctx, 826, beltY + 16, 24, 8, '#a8a8b8');
+    for (let i = 0; i < 4; i++) ellipsePx(ctx, 130, beltY + 46 - i * 5, 24, 7, i % 2 ? '#4a7fd0' : '#d04a5a');
+    drawParty(ctx, 300, beltY + 68, t, 'idle');
+  },
+  hanami(ctx, t) {
+    // an afternoon under the blossom, four hours in
+    const [c1, c2] = skyColors(0.42); vgrad(ctx, 0, 0, W, H, c1, c2);
+    ctx.drawImage(skylineCanvas(19, W, 90, { color: '#9aa0b8', lit: '#fff', density: 0.04 }), 0, 190);
+    rect(ctx, 0, 268, W, H - 268, '#6aa855'); rect(ctx, 0, 268, W, 4, '#86c46a');
+    for (let i = 0; i < 120; i++) rect(ctx, (i * 73) % W, 276 + (i * 41) % 250, 3, 2, '#82bc62');
+    // the trees
+    for (let i = 0; i < 5; i++) {
+      const tx = 70 + i * 210, ty = 262;
+      rect(ctx, tx - 7, ty - 60, 14, 62, '#5a3a28'); rect(ctx, tx - 7, ty - 60, 5, 62, '#7a5238');
+      for (const [ox, oy, r] of [[0, -84, 42], [-34, -64, 30], [34, -66, 32], [-14, -104, 26], [18, -102, 24]]) {
+        ellipsePx(ctx, tx + ox, ty + oy + 2, r, r * 0.66, '#e88ab0');
+        ellipsePx(ctx, tx + ox, ty + oy, r, r * 0.66, '#f8b6d0');
+        ellipsePx(ctx, tx + ox - r * 0.3, ty + oy - r * 0.26, r * 0.4, r * 0.26, '#ffd6e6');
+      }
+    }
+    // petals coming down
+    for (let i = 0; i < 44; i++) {
+      const px2 = ((i * 151 + t * 22) % (W + 40)) - 20 + Math.sin(t * 1.4 + i) * 14;
+      const py = ((i * 97 + t * 44) % (H + 40)) - 20;
+      rect(ctx, px2, py, 3, 2, i % 3 ? '#f8b6d0' : '#ffd6e6');
+    }
+    // the blue sheet, and an entire office on it
+    const sy = 400;
+    ctx.globalAlpha = 0.25; rect(ctx, 356, sy + 4, 500, 90, '#0a2a5a'); ctx.globalAlpha = 1;
+    rect(ctx, 352, sy, 500, 88, '#2a5ab8'); rect(ctx, 352, sy, 500, 4, '#4a7ad8');
+    for (let i = 0; i < 9; i++) rect(ctx, 360 + i * 56, sy + 8, 40, 76, 'rgba(255,255,255,0.05)');
+    // shoes off at the edge, because of course
+    for (let i = 0; i < 6; i++) rect(ctx, 356 + i * 22, sy - 10, 16, 8, i % 2 ? '#2a2430' : '#5a3a2a');
+    // the party
+    for (let i = 0; i < 6; i++) {
+      const gx = 400 + i * 78, bob = Math.round(Math.sin(t * 2.4 + i * 0.8) * 3);
+      drawBugAt(ctx, MYSTERY_BUGS.office[i % MYSTERY_BUGS.office.length], gx, sy + 26 + bob, { pose: i % 3 ? 'cheer' : 'idle', scale: 1.25, flip: i % 2 === 1 });
+      if (i % 2) { rect(ctx, gx + 12, sy + 6 + bob, 7, 12, '#e8b040'); rect(ctx, gx + 12, sy + 6 + bob, 7, 3, '#fff0b0'); }
+    }
+    // somebody bellowing
+    for (let i = 0; i < 3; i++) { const k = ((t * 0.7 + i * 0.33) % 1); ctx.globalAlpha = (1 - k) * 0.8;
+      drawText(ctx, '♪', 560 + Math.sin(k * 6) * 16, sy - 20 - k * 60, '#fff0b0', { scale: 2, outline: '#4a2a10' }); ctx.globalAlpha = 1; }
+    drawParty(ctx, 110, 430, t);
+  },
+  lostcase(ctx, t) {
+    drawMysteryStreet(ctx, t, 31);
+    // the bench, and the case somebody left on it
+    const bx = 560, by = 430;
+    ctx.drawImage(propCanvas('bench'), bx - 46, by - 22, 92, 43);
+    const cx = bx + 6, cy = by - 34;
+    rect(ctx, cx - 54, cy - 2, 108, 34, '#1a1620');
+    rect(ctx, cx - 52, cy, 104, 30, '#2e2736'); rect(ctx, cx - 52, cy, 104, 3, '#4e4558');
+    rect(ctx, cx - 52, cy + 14, 104, 2, '#12101a');
+    for (const d of [-1, 1]) { rect(ctx, cx + d * 34 - 4, cy + 10, 9, 9, '#cfc4a8'); rect(ctx, cx + d * 34 - 3, cy + 11, 7, 3, '#f0e8d0'); }
+    rect(ctx, cx - 8, cy + 28, 17, 6, '#1a1620');
+    // stickers from eleven countries
+    const cols = ['#e0503c', '#e8b840', '#3f6fb0', '#6be585', '#c58bff', '#ff9fef'];
+    for (let i = 0; i < 9; i++) { const sx2 = cx - 44 + (i % 5) * 20, sy2 = cy + 3 + Math.floor(i / 5) * 12;
+      rect(ctx, sx2, sy2, 13, 8, cols[i % cols.length]); rect(ctx, sx2, sy2, 13, 2, lighten(cols[i % cols.length], 0.3)); }
+    // him, running, badly
+    const run = clamp((t % 4) / 4, 0, 1), rx = 940 - run * 300;
+    drawShadow(ctx, rx, by, 28);
+    drawBugAt(ctx, MYSTERY_BUGS.rival, rx, by - Math.abs(Math.sin(t * 9)) * 6, { pose: 'cheer', scale: 1.5, flip: true });
+    // his coat, half off, and the dust of him
+    for (let i = 0; i < 3; i++) { ctx.globalAlpha = 0.3 - i * 0.08; ellipsePx(ctx, rx + 22 + i * 13, by - 4, 7 - i, 3, '#cfc4b0'); ctx.globalAlpha = 1; }
+    for (let i = 0; i < 2; i++) { const k = ((t * 1.4 + i * 0.5) % 1); ctx.globalAlpha = (1 - k) * 0.85;
+      drawText(ctx, '!', rx - 16, by - 56 - k * 20, '#ff5a5a', { scale: 3, outline: '#2a1010' }); ctx.globalAlpha = 1; }
+    drawParty(ctx, 110, 430, t);
+  },
   dango(ctx, t) {
     drawMysteryStreet(ctx, t, 4, { night: true });
     const cx = 600, gy = 430;
@@ -313,6 +440,13 @@ const MYSTERY_BUGS = (() => {
     scout: mk(9105, { outfit: { jacket: '#2a2438', shirt: '#f0f0f4', trousers: '#2a2438', wristband: '#c58bff' } }),
     officer: mk(9106, { outfit: { jacket: '#1e2a58', shirt: '#dfe4f0', hat: 'cap', hatColor: '#16204a', trousers: '#1e2a58' } }),
     crowd: [mk(9110), mk(9111), mk(9112), mk(9113), mk(9114), mk(9115)],
+    schoolgirls: [mk(9120, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#ff9fef' } }),
+                  mk(9121, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#8ad8ff' } }),
+                  mk(9122, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#ffd24a' } })],
+    office: [mk(9130, { outfit: { jacket: '#2a2c38', shirt: '#f4f4ee', tie: '#8a2c2c' } }),
+             mk(9131, { outfit: { jacket: '#38323c', shirt: '#eef0f4', tie: '#2c4a8a' } }),
+             mk(9132, { outfit: { jacket: '#2c3830', shirt: '#f4f0e6', tie: '#7a6a2a' } }),
+             mk(9133, { outfit: { jacket: '#382c34', shirt: '#f0eef4', tie: '#4a2c6a' } })],
   };
 })();
 
@@ -326,6 +460,15 @@ class MysteryScene {
     this.m = r.rng.pick(pool); r.seenMysteries.push(this.m.id);
     this.node = node; this.t = 0; this.phase = 'reveal'; this.log = []; this.game = null;
     this.fx = new Particles();
+    // Every encounter opens as a scene: whoever is there says their piece
+    // before you are handed a menu. The choices are the end of a conversation,
+    // not the whole of it.
+    const sp = MYSTERY_BUGS[this.m.speaker] || null;
+    this.cut = new Cutscene((this.m.beats || []).map(bt => ({
+      name: bt.who || (this.m.speakerName || null), spec: bt.self ? (Game.run && Game.run.members[0] || {}).spec : sp,
+      text: bt.text, tint: bt.self ? '#6be585' : (this.m.tint || '#ffd24a'), flip: !bt.self, expr: bt.expr, pose: bt.pose,
+    })), { onEnd: () => { this.phase = 'choose'; } });
+    if (!this.cut.beats.length) this.cut = null;
     this.buildChoices();
   }
   buildChoices() {
@@ -361,7 +504,8 @@ class MysteryScene {
   }
   update(dt) {
     this.t += dt; this.fx.update(dt);
-    if (this.phase === 'reveal' && this.t > 0.5) this.phase = 'choose';
+    if (this.phase === 'reveal' && this.t > 0.5) this.phase = this.cut ? 'talk' : 'choose';
+    if (this.phase === 'talk' && this.cut) this.cut.update(dt);
     const g = this.game;
     if (this.phase === 'game' && g && !g.over) {
       if (g.kind === 'timing') {
@@ -406,6 +550,7 @@ class MysteryScene {
     this.endGame(hit);
   }
   key(code) {
+    if (this.phase === 'talk') { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.cut.advance(); return; }
     if (this.phase === 'game') {
       const g = this.game; if (!g || g.over) return;
       if (g.kind === 'timing') { if (['Space', 'Enter'].includes(code)) this.stopNeedle(); return; }
@@ -415,7 +560,7 @@ class MysteryScene {
     }
     this.menu.key(code);
   }
-  click(x, y) { if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
+  click(x, y) { if (this.phase === 'talk') { this.cut.advance(); return; } if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
   hover(x, y) { if (this.phase !== 'game') this.menu.hover(x, y); }
   draw(ctx) {
     const art = MYSTERY_ART[this.m.scene] || MYSTERY_ART.dango;
@@ -437,6 +582,7 @@ class MysteryScene {
       ctx.globalAlpha = 1;
       Game.drawHud(ctx); return;
     }
+    if (this.phase === 'talk') { this.cut.draw(ctx); return; }
     if (this.phase === 'game') { this.drawGame(ctx); this.fx.draw(ctx); Game.drawHud(ctx); return; }
     // the panel: who it is, what they want, what you can do about it
     const inner = uiPanel(ctx, 60, H - 196, W - 120, 176, { title: this.m.title });

@@ -149,6 +149,8 @@ const Audio = {
     const beep = (f1, f2, dur, type, v, dt = 0) => { const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t + dt); o.frequency.exponentialRampToValueAtTime(f2, t + dt + dur); const g = this.ctx.createGain(); g.gain.setValueAtTime(v, t + dt); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + dur); o.connect(g); g.connect(this.sfxGain); o.start(t + dt); o.stop(t + dt + dur + 0.02); };
     switch (kind) {
       case 'move': beep(700, 900, 0.05, 'square', 0.1); break;
+      // the little tick a line of dialogue makes as it types itself out
+      case 'type': beep(1500, 1400, 0.015, 'square', 0.035); break;
       case 'select': beep(600, 1200, 0.08, 'square', 0.13); beep(900, 1600, 0.1, 'square', 0.1, 0.06); break;
       case 'back': beep(500, 300, 0.1, 'square', 0.1); break;
       case 'coin': beep(1400, 2100, 0.07, 'sine', 0.18); beep(2100, 2600, 0.12, 'sine', 0.13, 0.06); break;

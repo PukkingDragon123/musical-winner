@@ -744,6 +744,8 @@ const Audio = {
     const beep = (f1, f2, dur, type, v, dt = 0) => { const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t + dt); o.frequency.exponentialRampToValueAtTime(f2, t + dt + dur); const g = this.ctx.createGain(); g.gain.setValueAtTime(v, t + dt); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + dur); o.connect(g); g.connect(this.sfxGain); o.start(t + dt); o.stop(t + dt + dur + 0.02); };
     switch (kind) {
       case 'move': beep(700, 900, 0.05, 'square', 0.1); break;
+      // the little tick a line of dialogue makes as it types itself out
+      case 'type': beep(1500, 1400, 0.015, 'square', 0.035); break;
       case 'select': beep(600, 1200, 0.08, 'square', 0.13); beep(900, 1600, 0.1, 'square', 0.1, 0.06); break;
       case 'back': beep(500, 300, 0.1, 'square', 0.1); break;
       case 'coin': beep(1400, 2100, 0.07, 'sine', 0.18); beep(2100, 2600, 0.12, 'sine', 0.13, 0.06); break;
@@ -1681,7 +1683,11 @@ function uiButton(ctx, x, y, w, h, label, state = 'normal', opts = {}) {
   rect(ctx, x + 2, y + h - 3, w - 4, 1, lo); rect(ctx, x + w - 2, y + 2 + oy, 1, h - 6, lo);
   if (state === 'hover') { ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.fillRect(x + 1, y + 1 + oy, w - 2, h - 3 - oy); }
   const tc = dis ? '#dcdccc' : (opts.text || '#fff8e8');
-  const sc = opts.scale || 1;
+  // The label is drawn as large as the button will hold. Without a scale it
+  // grows to fill; with one it still shrinks rather than spilling out of the
+  // box, which is what used to happen to the longer labels.
+  let sc = opts.scale || 4;
+  while (sc > 1 && textWidth(label, { scale: sc }) > w - 12) sc--;
   drawText(ctx, label, x + w / 2, y + Math.floor((h - 2 - 7 * sc) / 2) + oy, tc, { align: 'center', scale: sc, shadow: opts.noShadow ? null : ol });
   if (opts.icon) ctx.drawImage(opts.icon, x + 6, y + Math.floor((h - opts.icon.height) / 2) + oy);
 }
@@ -3918,6 +3924,182 @@ function earPointerUp(scene, id) {
   return true;
 }
 
+// ---------- Striking a kit, wherever a kit is being played ----------
+// The gig and the opening concert both put a drum kit under your hands, and
+// for a while only one of them knew how to be hit: the stage had no drum
+// input at all, so a drummer's opening show could only be played on a
+// keyboard. Both scenes call these now, so they cannot drift apart again.
+function kitScene(scene) {
+  const R = scene.rhythm;
+  return R && R.instrument && R.instrument.view === 'kit' ? R : null;
+}
+// The drum under a point, hit radius honoured.
+function kitDrumAt(scene, x, y) {
+  const R = kitScene(scene); const spots = R && R.kitSpots; if (!spots) return null;
+  let best = null, bestD = Infinity;
+  for (const sp of spots) {
+    if (!kitHit(sp, x, y)) continue;
+    const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6;
+    if (d < bestD) { bestD = d; best = sp; }
+  }
+  return best;
+}
+// The nearest drum, hit radius or not: what a strike in open air sounds like
+// when the chart is asking for nothing.
+function kitNearest(scene, x, y) {
+  const R = kitScene(scene); const spots = R && R.kitSpots; if (!spots || !spots.length) return null;
+  let best = null, bestD = Infinity;
+  for (const sp of spots) { const d = (x - sp.x) * (x - sp.x) + (y - sp.y) * (y - sp.y) * 2.6; if (d < bestD) { bestD = d; best = sp; } }
+  return best;
+}
+// A strike is over the instant it happens. Nothing about the finger that made
+// it is remembered, so a pointerup the browser never delivers cannot strand
+// anything — which on a phone it does, constantly.
+function kitPointerDown(scene, x, y, id) {
+  const R = kitScene(scene); if (!R) return false;
+  const drum = kitDrumAt(scene, x, y);
+  if (drum) { R.keyDown(R.instrument.keys[drum.i]); scene.dragDrum && scene.dragDrum.set(id, drum.i); return true; }
+  // ...and anywhere else on the scene still counts: hunting a sprite with a
+  // finger inside one beat is a second, harder game nobody asked for.
+  const lane = R.dueLane(), near = kitNearest(scene, x, y);
+  const i = lane != null ? lane : (near ? near.i : null);
+  if (i == null) return false;
+  R.keyDown(R.instrument.keys[i]);
+  scene.dragDrum && scene.dragDrum.set(id, near ? near.i : -1);
+  return true;
+}
+// Dragging across a kit is a fill: every new drum the finger crosses is struck
+// once. Resting on one does nothing.
+function kitPointerMove(scene, x, y, id) {
+  const R = kitScene(scene); if (!R || !scene.dragDrum || !scene.dragDrum.has(id)) return false;
+  const d = kitDrumAt(scene, x, y);
+  if (d && d.i !== scene.dragDrum.get(id)) { scene.dragDrum.set(id, d.i); R.keyDown(R.instrument.keys[d.i]); }
+  return true;
+}
+function kitPointerUp(scene, id) { if (scene.dragDrum) scene.dragDrum.delete(id); }
+
+// ===== js/art/cutscene.js =====
+// ---------- Cutscenes ----------
+// A cinematic layer anything can borrow: letterbox bars slide in, a portrait
+// of whoever is talking slides up from the corner, the line types itself out,
+// and a tap takes you to the next beat. It draws over whatever scene is
+// underneath, so the world keeps moving behind the conversation.
+'use strict';
+
+// A beat: { who, name, spec, text, portrait, shake, sfx, flip }
+class Cutscene {
+  constructor(beats, opts = {}) {
+    this.beats = beats.filter(Boolean); this.i = 0; this.t = 0; this.chars = 0;
+    this.opts = opts; this.done = false; this.enterT = 0;
+    this.speed = opts.speed || 46;         // characters a second
+    this.onEnd = opts.onEnd || null;
+  }
+  get beat() { return this.beats[this.i]; }
+  get full() { return this.beat ? this.beat.text.length : 0; }
+  get typed() { return Math.min(this.full, Math.floor(this.chars)); }
+  get complete() { return this.typed >= this.full; }
+  update(dt) {
+    if (this.done) return;
+    this.t += dt; this.enterT = Math.min(1, this.enterT + dt * 3.4);
+    if (!this.complete) {
+      const was = this.typed;
+      this.chars += dt * this.speed;
+      // a soft click per couple of glyphs, so a line has a voice
+      if (Math.floor(this.typed / 3) !== Math.floor(was / 3) && this.typed < this.full) Audio.ui('type');
+    }
+  }
+  // tap or key: finish the line, then move on
+  advance() {
+    if (this.done) return true;
+    if (!this.complete) { this.chars = this.full; return false; }
+    this.i++; this.chars = 0;
+    if (this.i >= this.beats.length) { this.done = true; if (this.onEnd) this.onEnd(); return true; }
+    Audio.ui('move');
+    return false;
+  }
+  draw(ctx) {
+    if (this.done || !this.beat) return;
+    const b = this.beat, k = easeOut(this.enterT);
+    // letterbox: the cheapest way to say "this is a scene, not a menu"
+    const bar = Math.round(38 * k);
+    rect(ctx, 0, 0, W, bar, '#07060c'); rect(ctx, 0, H - bar, W, bar, '#07060c');
+    rect(ctx, 0, bar, W, 1, 'rgba(255,255,255,0.08)'); rect(ctx, 0, H - bar - 1, W, 1, 'rgba(255,255,255,0.08)');
+    // the box
+    const bw = W - 64, bh = Game.touch ? 132 : 122;
+    const bx = Math.round((W - bw) / 2), by = Math.round(H - bar - bh - 16 + (1 - k) * 40);
+    ctx.globalAlpha = k;
+    rect(ctx, bx + 4, by + 5, bw, bh, 'rgba(6,4,12,0.5)');
+    rect(ctx, bx, by, bw, bh, '#161226');
+    frame(ctx, bx, by, bw, bh, '#6a5f9a');
+    frame(ctx, bx + 2, by + 2, bw - 4, bh - 4, '#2e2748');
+    rect(ctx, bx + 1, by + 1, bw - 2, 1, '#8a7fc0');
+    // the portrait of whoever is speaking, in its own framed plate
+    let tx = bx + 16;
+    if (b.spec) {
+      const pw = Game.touch ? 84 : 76, px2 = bx + 8, py2 = by + Math.round((bh - pw) / 2);
+      rect(ctx, px2, py2, pw, pw, '#0e0b1a'); frame(ctx, px2, py2, pw, pw, '#4a4270');
+      ctx.save(); ctx.beginPath(); ctx.rect(px2 + 2, py2 + 2, pw - 4, pw - 4); ctx.clip();
+      // a soft pool behind them so the silhouette reads
+      ctx.globalAlpha = k * 0.35; ellipsePx(ctx, px2 + pw / 2, py2 + pw - 10, pw * 0.42, pw * 0.2, b.tint || '#c58bff'); ctx.globalAlpha = k;
+      drawBugAt(ctx, b.spec, px2 + pw / 2, py2 + pw - 4, { pose: b.pose || 'idle', scale: (pw / 46), flip: !!b.flip, expr: b.expr });
+      ctx.restore();
+      tx = px2 + pw + 12;
+    }
+    // who is talking
+    if (b.name) {
+      const nw = textWidth(b.name, { scale: 3 }) + 20;
+      rect(ctx, tx - 4, by - 15, nw, 24, '#2a2348'); frame(ctx, tx - 4, by - 15, nw, 24, '#6a5f9a');
+      rect(ctx, tx - 3, by - 14, nw - 2, 1, '#8a7fc0');
+      drawText(ctx, b.name, tx + 6, by - 9, b.tint || '#ffd24a', { scale: 3 });
+    }
+    // The line, typing itself out, at twice the size it used to be. Dialogue
+    // read at arm's length on a phone is the whole reason any of this is here.
+    const shown = b.text.slice(0, this.typed);
+    drawWrapped(ctx, shown, tx, by + 20, Math.floor((bx + bw - tx - 18) / 12), '#efe8ff', 21, { scale: 2 });
+    // the prompt, once the line has finished arriving
+    if (this.complete) {
+      const py3 = by + bh - 16, bob = Math.round(Math.sin(this.t * 5) * 2);
+      const label = this.i >= this.beats.length - 1 ? (Game.touch ? 'TAP TO GO ON' : 'ENTER') : (Game.touch ? 'TAP' : 'ENTER');
+      drawText(ctx, label, bx + bw - 16, py3 - 2, '#a79ce0', { align: 'right' });
+      for (let r = 0; r < 4; r++) rect(ctx, bx + bw - 14 + r, py3 - 10 + bob + r, 1, 1, '#ffd24a');
+      for (let r = 0; r < 4; r++) rect(ctx, bx + bw - 14 - r + 6, py3 - 10 + bob + r, 1, 1, '#ffd24a');
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Somebody to talk to. Stable per key, so the shop owner is the same bug every
+// time you walk in.
+const CAST = {};
+function castMember(key, over) {
+  if (!CAST[key]) CAST[key] = Object.assign(randomBugSpec(makeRng(hashStr('cast|' + key))), over || {});
+  return CAST[key];
+}
+
+// ---------- An intro any scene can wear ----------
+// Scenes that used to cut straight to a menu now open with somebody saying
+// something first. Mix it in with three lines: hold the intro in `intro`, call
+// `introUpdate` / `introDraw`, and let `introTap` eat the first tap.
+function sceneIntro(beats, opts) { const c = new Cutscene(beats, opts || {}); return c.beats.length ? c : null; }
+function introUpdate(scene, dt) { if (scene.intro) { scene.intro.update(dt); if (scene.intro.done) scene.intro = null; return true; } return false; }
+function introDraw(scene, ctx) { if (scene.intro) { scene.intro.draw(ctx); return true; } return false; }
+function introTap(scene) { if (!scene.intro) return false; scene.intro.advance(); if (scene.intro && scene.intro.done) scene.intro = null; return true; }
+
+// What the person behind the counter says when you walk in. Keyed off the
+// place, so the same shop greets you the same way every time.
+const SHOP_HELLO = [
+  ['IRASSHAIMASE!', 'She does not look up from the magazine. The bell over the door is still swinging.'],
+  ['IRASSHAIMASE!', '"Have a look. Touch anything you like, you break it you buy it, the usual."'],
+  ['IRASSHAIMASE!', '"You are the ones from the station. I heard you through the floor."'],
+  ['IRASSHAIMASE!', '"Everything here is slightly overpriced. It is Tokyo. What can I do."'],
+  ['IRASSHAIMASE!', '"Careful with the cases by the door, they are not mine and he is coming back for them."'],
+];
+const FOOD_HELLO = [
+  ['"SIT ANYWHERE."', 'Steam, a radio playing something from thirty years ago, and six seats at a counter.'],
+  ['"SIT ANYWHERE."', '"You want the set. Everybody wants the set. Nobody has ever wanted anything else."'],
+  ['"SIT ANYWHERE."', 'He is already reaching for the bowls before any of you have said a word.'],
+];
+
 // ===== js/art/sleeves.js =====
 // ---------- Record sleeves ----------
 // Original cover art, one per tune, drawn in the *design language* of a period
@@ -5198,7 +5380,78 @@ const EVENTS = [
 'use strict';
 const MYSTERIES = [
   {
-    id: 'dango', scene: 'dango', title: 'THE DANGO CART',
+    id: 'purikura', scene: 'purikura', title: 'THE PHOTO BOOTH',
+    speaker: 'schoolgirl', speakerName: 'THREE OF THEM', tint: '#ff9fef',
+    beats: [
+      { text: 'A wall of photo booths in blinding pink, each one screaming a jingle at a different tempo.' },
+      { who: 'THREE OF THEM', text: '"You are the band! You ARE the band. Get in. All of you. GET IN."' },
+      { who: 'THREE OF THEM', text: 'One of them is already holding the curtain open. This does not appear to be a request.' },
+    ],
+    line: 'Three of them have you by the sleeve and the curtain is already open. The booth costs four dollars and holds, generously, two.',
+    choices: [
+      { label: 'All of you, in ($4)', req: s => s.money >= 4,
+        apply: (s, log) => { s.money -= 4; s.buffs.crowd = (s.buffs.crowd || 1) * 1.45; s.karma++; log('The strip comes out. It is unusable and perfect. They post it everywhere. (Much bigger crowd)'); } },
+      { label: 'Pose properly, for once', game: 'timing', gameLabel: 'HIT THE SHUTTER',
+        good: (s, log) => { s.buffs.crowd = (s.buffs.crowd || 1) * 1.6; s.buffs.mult = (s.buffs.mult || 0) + 1; log('Four frames, all of them good. That strip is going to follow you around. (+1 Mult, huge crowd)'); },
+        bad: (s, log) => { log('You blink in three of the four. The fourth is your ear.'); } },
+      { label: 'Politely extract yourself', apply: (s, log) => { s.karma--; log('You get free. They photograph you leaving, which is worse.'); } },
+    ],
+  },
+  {
+    id: 'kaiten', scene: 'kaiten', title: 'THE BELT',
+    speaker: null, tint: '#8ad8ff',
+    beats: [
+      { text: 'Plates go past at walking pace under little plastic domes. Colour is price. Nobody is watching the belt but you.' },
+      { text: 'Your stomach makes a noise loud enough that the bug two seats down looks over.' },
+    ],
+    line: 'Every plate is a different colour and every colour is a different price, and the whole thing moves at exactly the speed of temptation.',
+    choices: [
+      { label: 'Eat sensibly ($6)', req: s => s.money >= 6,
+        apply: (s, log) => { s.money -= 6; s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 30)); log('Four plates, all blue. Everyone is fed and nobody is ruined. (+30 stamina each)'); } },
+      { label: 'Take whatever looks good', game: 'timing', gameLabel: 'GRAB IT OFF THE BELT',
+        good: (s, log) => { s.members.forEach(m => m.stamina = 100); s.money = Math.max(0, s.money - 3); log('You time it perfectly and take the gold plate as it passes. Three dollars. (Full stamina)'); },
+        bad: (s, log) => { s.money = Math.max(0, s.money - 14); log('The stack at the end of the meal is the colour of a bad decision. -$14.'); } },
+      { label: 'Just the tea, thanks', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 6)); log('Free tea, a hot towel, and the smell of everybody else eating. (+6 stamina each)'); } },
+    ],
+  },
+  {
+    id: 'hanami', scene: 'hanami', title: 'UNDER THE TREES',
+    speaker: 'salaryman', speakerName: 'THE BLUE SHEET', tint: '#ff9fef',
+    beats: [
+      { text: 'Twenty of them on a blue plastic sheet under the blossom, an entire office, four hours into it.' },
+      { who: 'THE BLUE SHEET', text: '"MUSICIANS!" somebody bellows, with the delight of a man who has found exactly what the afternoon was missing.' },
+      { who: 'THE BLUE SHEET', text: 'A space is being cleared on the sheet whether you agree to this or not.' },
+    ],
+    line: 'An entire office department, four hours into a hanami party, has spotted your cases and is now clearing a space on the sheet.',
+    choices: [
+      { label: 'Play the whole set for them', game: 'copy', gameLabel: 'THEY SING IT - PLAY IT BACK',
+        good: (s, log) => { const t = 26 + Math.floor(Math.random() * 20); s.money += t; s.buffs.mult = (s.buffs.mult || 0) + 1; log('They lose their minds. The section head empties his wallet: ' + fmtMoney(t) + '. (+1 Mult)'); },
+        bad: (s, log) => { s.members.forEach(m => m.stamina = Math.max(0, m.stamina - 14)); log('Four hours of beer versus your arrangement. The beer wins. (-14 stamina each)'); } },
+      { label: 'Sit down and eat with them', apply: (s, log) => { s.members.forEach(m => m.stamina = Math.min(100, m.stamina + 26)); s.karma += 2; s.money += 6; log('Bento, beer, petals in everything. You leave fed and six dollars up. (+26 stamina each)'); } },
+      { label: 'Wave and keep walking', apply: (s, log) => log('You wave. Twenty of them wave back, for a very long time, as you go.') },
+    ],
+  },
+  {
+    id: 'lostcase', scene: 'lostcase', title: 'SOMEBODY LEFT THIS',
+    speaker: 'rival', speakerName: 'OUT OF BREATH', tint: '#6be585',
+    beats: [
+      { text: 'A hard case sits alone on a bench. Good latches. Stickers from eleven countries. Nobody anywhere near it.' },
+      { text: 'Then, from the far end of the street, somebody starts running. Badly. Waving.' },
+      { who: 'OUT OF BREATH', text: '"That is MINE, that is mine, do not — oh thank god. Thank god." He cannot finish a sentence.' },
+    ],
+    line: 'A case worth more than everything you own, and a bug sprinting down the street towards it with his coat half off.',
+    choices: [
+      { label: 'Hand it straight back', apply: (s, log) => { s.karma += 3; s.money += 22; s.buffs.mult = (s.buffs.mult || 0) + 1; log('He presses $22 on you and will not take no. He also knows a promoter. (+1 Mult)'); } },
+      { label: 'Open it first', apply: (s, log) => { s.karma -= 2; const k = s.randomCharm(); if (k && s.addCharm(k)) { Audio.ui('fanfare'); log('A ' + CHARMS[k].name + ' in the accessory pocket. He never knew. You will.'); } else log('Nothing in it but a horn and forty years of somebody else\'s life. You close it.'); } },
+      { label: 'Play something while he catches up', game: 'timing', gameLabel: 'MEET HIM ON THE BEAT',
+        good: (s, log) => { s.karma += 2; s.money += 15; s.buffs.crowd = (s.buffs.crowd || 1) * 1.3; log('He arrives into the last bar of it, laughing, and joins in. Half the street stops. (+$15, bigger crowd)'); },
+        bad: (s, log) => { log('You start in the wrong key and he arrives to the sound of it. He is gracious. It is worse.'); } },
+    ],
+  },
+  {
+    id: 'dango',
+    speaker: 'vendor', speakerName: 'THE OLD MOTH', tint: '#ffd24a',
+    beats: [{"text": "He turns three sticks on the coals without looking at them. The smell arrives before he does."}, {"who": "THE OLD MOTH", "text": "\"You have been playing out there two hours. I could hear the bucket from here.\""}, {"who": "THE OLD MOTH", "text": "\"Dango. Two dollars. Sweet, and it will keep you upright.\""}], scene: 'dango', title: 'THE DANGO CART',
     line: 'An old moth leans over a yatai cart and holds out three dumplings on a stick. Steam off the grill, a red lantern swinging. "Dango? Two dollars."',
     choices: [
       { label: 'Buy a stick ($2)', req: s => s.money >= 2,
@@ -5212,7 +5465,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'cat', scene: 'cat', title: 'OCCUPIED',
+    id: 'cat',
+    speaker: null, speakerName: null, tint: '#c58bff',
+    beats: [{"text": "Your amp has a cat on it. Not a small cat. It has arranged itself over the whole cabinet like a spilled rug."}, {"text": "Its tail moves once, slowly. Nothing else about it moves at all."}], scene: 'cat', title: 'OCCUPIED',
     line: 'A enormous tortoiseshell cat has fallen asleep on your amp. It is not a small cat. Its tail moves once, slowly, which is somehow a threat.',
     choices: [
       { label: 'Play around it', game: 'copy', gameLabel: 'KEEP IT QUIET - COPY THE PHRASE',
@@ -5224,7 +5479,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'salaryman', scene: 'salaryman', title: 'ONE MORE SONG',
+    id: 'salaryman',
+    speaker: 'salaryman', speakerName: 'A SALARYMAN', tint: '#ff9f68',
+    beats: [{"text": "He has been swaying in front of you for ten minutes. His tie is at half mast and his briefcase is open."}, {"who": "A SALARYMAN", "text": "\"You know the one. You KNOW the one. Everybody knows the one.\""}, {"who": "A SALARYMAN", "text": "He produces a fistful of coins and holds them out with enormous ceremony."}], scene: 'salaryman', title: 'ONE MORE SONG',
     line: 'A salaryman beetle, tie at half mast, has been swaying to you for ten minutes. He produces a fistful of coins and requests something. He is not specific.',
     choices: [
       { label: 'Play him something', game: 'timing', gameLabel: 'LAND IT ON THE BEAT',
@@ -5235,7 +5492,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'busker', scene: 'busker', title: 'THE OTHER END OF THE UNDERPASS',
+    id: 'busker',
+    speaker: 'rival', speakerName: 'THE OTHER BUSKER', tint: '#8ad8ff',
+    beats: [{"text": "Forty metres down the tunnel, another act has set up. Same key. Same tempo. Better amp."}, {"text": "He plays a phrase, holds the last note, and lets the tiles carry it all the way to you. He has not looked over once."}], scene: 'busker', title: 'THE OTHER END OF THE UNDERPASS',
     line: 'Another busker has set up forty metres away, in the same tunnel, in the same key. He is very good. He knows it. He has not looked at you once.',
     choices: [
       { label: 'Cut him', game: 'copy', gameLabel: 'PLAY IT BACK BETTER',
@@ -5246,7 +5505,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'gacha', scene: 'gacha', title: 'A WALL OF CAPSULES',
+    id: 'gacha',
+    speaker: null, speakerName: null, tint: '#ff9fef',
+    beats: [{"text": "Sixteen machines under a strip light that cannot decide whether it is on."}, {"text": "One of them is full of tiny brass instruments. You have a pocket of coins and no self-control whatsoever."}], scene: 'gacha', title: 'A WALL OF CAPSULES',
     line: 'Sixteen gachapon machines under a flickering strip light. One of them is full of tiny brass instruments. You have a pocket of coins and no self-control.',
     choices: [
       { label: 'One go ($3)', req: s => s.money >= 3,
@@ -5257,7 +5518,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'monk', scene: 'monk', title: 'THE ALMS BOWL',
+    id: 'monk',
+    speaker: 'monk', speakerName: 'THE MONK', tint: '#ffd9a0',
+    beats: [{"text": "He is standing so still at the foot of the steps that you walk past him once before you notice him."}, {"who": "THE MONK", "text": "He does not ask for anything. He rings the bell, once, and waits with the bowl."}], scene: 'monk', title: 'THE ALMS BOWL',
     line: 'A monk stands perfectly still at the foot of the temple steps with a bowl and a small bell. He has been there since before you arrived and will be there after.',
     choices: [
       { label: 'Give what you can ($5)', req: s => s.money >= 5,
@@ -5269,7 +5532,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'scout', scene: 'scout', title: 'A CARD WITH A LOGO ON IT',
+    id: 'scout',
+    speaker: 'scout', speakerName: 'A&R', tint: '#c58bff',
+    beats: [{"text": "She has been filming you on a phone for a minute and a half. She stops, and only then says hello."}, {"who": "A&R", "text": "\"Six months. We handle the bookings, the van, the recording, everything.\""}, {"who": "A&R", "text": "\"You would never have to carry anything ever again.\" She holds out a card."}], scene: 'scout', title: 'A CARD WITH A LOGO ON IT',
     line: 'A wasp in a very good suit has been filming you on a phone. She hands you a card. "Six months. We handle everything. You would not have to carry anything ever again."',
     choices: [
       { label: 'Sign it', apply: (s, log) => { s.money += 60; s.buffs.mult = (s.buffs.mult || 0) - 1; s.karma -= 2; log('$60 today. She takes the setlist, the name, and the right to both. (-1 Mult)'); } },
@@ -5280,7 +5545,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'rain', scene: 'rain', title: 'IT COMES DOWN ALL AT ONCE',
+    id: 'rain',
+    speaker: null, speakerName: null, tint: '#8ab0e0',
+    beats: [{"text": "The sky goes green. Then it arrives sideways, all at once, and thirty umbrellas open like a magic trick."}, {"text": "Your gear is not waterproof. Neither, it turns out, are you."}], scene: 'rain', title: 'IT COMES DOWN ALL AT ONCE',
     line: 'The sky goes green and then the rain arrives sideways. Thirty umbrellas open at once like a magic trick. Your gear is not waterproof and neither are you.',
     choices: [
       { label: 'Pack up fast', game: 'timing', gameLabel: 'GET THE LID ON IN TIME',
@@ -5292,7 +5559,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'crane', scene: 'crane', title: 'THE CLAW',
+    id: 'crane',
+    speaker: null, speakerName: null, tint: '#6be585',
+    beats: [{"text": "A crane machine lit like an altar, and one enormous plush frog wedged against the glass."}, {"text": "The claw has the grip strength of a damp tissue. You know this. You have always known this."}], scene: 'crane', title: 'THE CLAW',
     line: 'A crane machine, lit like an altar, with a single enormous plush frog wedged against the glass. The claw has the grip strength of a damp tissue. You know this.',
     choices: [
       { label: 'Have a go ($2)', req: s => s.money >= 2, game: 'timing', gameLabel: 'LINE THE CLAW UP',
@@ -5304,7 +5573,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'train', scene: 'train', title: 'THE LAST TRAIN',
+    id: 'train',
+    speaker: null, speakerName: null, tint: '#8ad8ff',
+    beats: [{"text": "00:42. The board says LAST. The platform is emptying and your cases are heavy."}, {"text": "There is exactly one more service tonight and a very long flight of stairs between you and it."}], scene: 'train', title: 'THE LAST TRAIN',
     line: 'The board says 00:42 and the platform is emptying. There is exactly one more service. Your cases are heavy and the stairs are long.',
     choices: [
       { label: 'Run for it', game: 'timing', gameLabel: 'THROUGH THE DOORS',
@@ -5315,7 +5586,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'vending', scene: 'vending', title: 'THE MACHINE THAT TAKES',
+    id: 'vending',
+    speaker: null, speakerName: null, tint: '#a8d8e8',
+    beats: [{"text": "A machine humming to itself in an otherwise empty side street. You put in two dollars."}, {"text": "Nothing comes out. The machine hums on, entirely unmoved by the transaction."}], scene: 'vending', title: 'THE MACHINE THAT TAKES',
     line: 'A vending machine hums in an otherwise empty side street. You put in two dollars. Nothing comes out. The machine hums on, unmoved.',
     choices: [
       { label: 'Hit it in the right place', game: 'timing', gameLabel: 'ON THE BEAT, ON THE SIDE',
@@ -5327,7 +5600,9 @@ const MYSTERIES = [
     ],
   },
   {
-    id: 'koban', scene: 'koban', title: 'THE POLICE BOX',
+    id: 'koban',
+    speaker: 'officer', speakerName: 'THE OFFICER', tint: '#8ab0e0',
+    beats: [{"text": "The light on the police box turns, and turns, and then the officer steps out with his hands behind his back."}, {"who": "THE OFFICER", "text": "\"That amp. Is it yours?\" He is not writing anything down. Yet."}], scene: 'koban', title: 'THE POLICE BOX',
     line: 'The officer at the koban has been watching the amp. He steps out with his hands behind his back, which is never the start of good news.',
     choices: [
       { label: 'Turn it down and apologise', apply: (s, log) => { s.karma++; s.buffs.crowd = (s.buffs.crowd || 1) * 0.85; log('He nods and goes back in. Quieter, smaller crowd, no trouble.'); } },
@@ -6952,7 +7227,17 @@ class Crowd {
 // ---------- Touch controls ----------
 'use strict';
 class Btn {
-  constructor(x, y, w, h, label, onTap, opts = {}) { Object.assign(this, { x, y, w, h, label, onTap, opts, held: false, flash: 0 }); }
+  // Buttons were sized for a mouse pointer on a desktop. Every one of them now
+  // has a floor, taller again on a touch screen, and grows about its own
+  // centre so a layout that placed it carefully stays where it was put. Small
+  // square icon buttons are left alone — they are not labels.
+  constructor(x, y, w, h, label, onTap, opts = {}) {
+    if (w >= 60 && !opts.tight) {
+      const minH = Game.touch ? 48 : 40;
+      if (h < minH) { y -= Math.round((minH - h) / 2); h = minH; }
+    }
+    Object.assign(this, { x, y, w, h, label, onTap, opts, held: false, flash: 0 });
+  }
   hit(px, py) { return px >= this.x && px < this.x + this.w && py >= this.y && py < this.y + this.h; }
   draw(ctx, state) { uiButton(ctx, this.x, this.y, this.w, this.h, this.label, state || (this.flash > 0 ? 'down' : 'normal'), this.opts); }
   update(dt) { this.flash = Math.max(0, this.flash - dt * 4); }
@@ -7180,6 +7465,15 @@ class ShopScene {
     if (!node.stock) { node.rerolls = 0; this.restock(); }
     this.sel = 0; this.msg = 'Irasshaimase. Everything here is slightly overpriced. It is Tokyo.';
     this.buttons = [];
+    // You walk in and somebody says something, instead of a shelf of prices
+    // appearing out of nowhere.
+    const rr = makeRng(hashStr('hello|' + node.id));
+    const hello = SHOP_HELLO[rr.int(0, SHOP_HELLO.length - 1)];
+    this.owner = castMember('shop|' + node.id);
+    this.intro = sceneIntro([
+      { name: node.name, text: hello[1], tint: '#8ad8ff' },
+      { name: hello[0], spec: this.owner, text: 'She gestures at the whole shop with a magazine and goes back to reading it.', tint: '#ffd24a', flip: true },
+    ]);
   }
   restock() {
     const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
@@ -7212,8 +7506,9 @@ class ShopScene {
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
   reroll() { const r = Game.run; const p = this.rerollPrice(); if (r.money < p) { this.msg = 'Not enough cash to reroll.'; Audio.ui('error'); return; } r.money -= p; this.node.rerolls++; this.restock(); this.sel = 0; Audio.ui('select'); this.msg = 'Fresh stock!'; }
-  update(dt) { this.t += dt; }
+  update(dt) { this.t += dt; introUpdate(this, dt); }
   key(code) {
+    if (this.intro) { if (['Enter', 'Space', 'KeyZ', 'Escape'].includes(code)) introTap(this); return; }
     const n = this.items.length;
     if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + n) % Math.max(1, n); Audio.ui('move'); }
     else if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % Math.max(1, n); Audio.ui('move'); }
@@ -7221,6 +7516,7 @@ class ShopScene {
     else if (code === 'KeyR') this.reroll(); else if (code === 'Escape' || code === 'KeyL') Game.go(() => new CityScene(), 'slideR');
   }
   click(x, y) {
+    if (introTap(this)) return;
     for (const b of this.buttons) if (b.hit(x, y)) { b.onTap(); return; }
     (this.cards || []).forEach((c) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === c.i) this.buy(this.items[c.i]); else { this.sel = c.i; Audio.ui('move'); } } });
   }
@@ -7386,6 +7682,7 @@ class ShopScene {
     ];
     for (const b of this.buttons) b.draw(ctx);
     Game.drawHud(ctx);
+    introDraw(this, ctx);
   }
 }
 // ---------- Event ----------
@@ -7641,6 +7938,133 @@ function drawMysteryStreet(ctx, t, seed, opts = {}) {
 // ---- the vignettes. One distinctive thing and one character, each doing
 // something, rather than ten half-drawn backdrops.
 const MYSTERY_ART = {
+  purikura(ctx, t) {
+    // a wall of photo booths, each screaming a different jingle in pink
+    vgrad(ctx, 0, 0, W, H, '#3a1f40', '#1c0f22');
+    for (let i = 0; i < 5; i++) {
+      const bx = 60 + i * 190, lit = Math.sin(t * (3 + i * 0.7)) > -0.2;
+      rect(ctx, bx, 96, 168, 330, i % 2 ? '#e05a9a' : '#f07ab0');
+      rect(ctx, bx, 96, 168, 8, '#fff0f8');
+      rect(ctx, bx + 8, 112, 152, 96, '#2a1430');
+      ctx.globalAlpha = lit ? 0.85 : 0.35;
+      rect(ctx, bx + 12, 116, 144, 88, ['#ffd24a', '#8ad8ff', '#ff9fef', '#6be585', '#ffffff'][i]);
+      ctx.globalAlpha = 1;
+      // the curtain
+      for (let c = 0; c < 6; c++) { const sw = Math.sin(t * 2 + c + i) * 2; rect(ctx, bx + 10 + c * 25 + sw, 212, 22, 200, c % 2 ? '#8a2a5a' : '#a03a6a'); }
+      // bulbs round the frame
+      for (let bl = 0; bl < 7; bl++) { const on = (Math.floor(t * 6) + bl + i) % 3 === 0; ellipsePx(ctx, bx + 12 + bl * 24, 104, 4, 4, on ? '#fff8d0' : '#c08aa8'); }
+    }
+    rect(ctx, 0, 426, W, H - 426, '#2a1830'); rect(ctx, 0, 426, W, 3, '#4a2a48');
+    // three of them, bouncing, one holding the curtain
+    for (let i = 0; i < 3; i++) {
+      const gx = 560 + i * 74, bob = Math.round(Math.abs(Math.sin(t * 4 + i * 1.3)) * 7);
+      drawShadow(ctx, gx, 426, 26);
+      drawBugAt(ctx, MYSTERY_BUGS.schoolgirls[i], gx, 426 - bob, { pose: 'cheer', scale: 1.4, flip: i === 2 });
+    }
+    // the strip of photos, dangling
+    const sx = 300, sy = 150 + Math.sin(t * 1.5) * 4;
+    rect(ctx, sx - 2, sy - 6, 34, 150, '#f6f2e6'); frame(ctx, sx - 2, sy - 6, 34, 150, '#c8b8a0');
+    for (let f = 0; f < 4; f++) { rect(ctx, sx + 2, sy + f * 36, 26, 30, ['#ffd7e8', '#d7f0ff', '#fff0c8', '#e0ffd7'][f]); rect(ctx, sx + 6, sy + 6 + f * 36, 18, 18, '#8a6a7a'); }
+    drawParty(ctx, 110, 426, t);
+  },
+  kaiten(ctx, t) {
+    // a counter, a belt, and plates going past at walking pace
+    vgrad(ctx, 0, 0, W, H, '#241c1a', '#16100f');
+    rect(ctx, 0, 60, W, 120, '#3a2c24'); rect(ctx, 0, 60, W, 4, '#5e4a3a');
+    for (let i = 0; i < 8; i++) { rect(ctx, 30 + i * 120, 72, 92, 44, '#f4ecd8'); frame(ctx, 30 + i * 120, 72, 92, 44, '#8a6a48');
+      drawText(ctx, ['MAGURO', 'TAMAGO', 'EBI', 'SAKE', 'IKA', 'UNI', 'TORO', 'ANAGO'][i], 76 + i * 120, 88, '#8a3a2a', { align: 'center' }); }
+    // the kitchen slot, with somebody's hands in it
+    rect(ctx, 0, 180, W, 96, '#4a382c'); rect(ctx, 0, 180, W, 3, '#6e5844');
+    // the belt itself, moving
+    const beltY = 276;
+    rect(ctx, 0, beltY, W, 46, '#2a2430'); rect(ctx, 0, beltY, W, 3, '#4a4458');
+    for (let x = -((t * 46) % 26); x < W; x += 26) rect(ctx, x, beltY + 4, 14, 38, '#3a3446');
+    // plates under their domes
+    for (let i = 0; i < 9; i++) {
+      const px2 = ((i * 116 + t * 46) % (W + 116)) - 58;
+      const col = ['#4a7fd0', '#4a7fd0', '#d04a5a', '#4a7fd0', '#e0b040', '#4a7fd0', '#5aa050', '#4a7fd0', '#d04a5a'][i];
+      ellipsePx(ctx, px2, beltY + 30, 26, 9, darken(col, 0.3));
+      ellipsePx(ctx, px2, beltY + 28, 26, 8, col);
+      ellipsePx(ctx, px2, beltY + 27, 20, 6, lighten(col, 0.25));
+      // the food, and the plastic dome over it
+      ellipsePx(ctx, px2 - 5, beltY + 23, 7, 4, '#f0e4d0'); ellipsePx(ctx, px2 - 5, beltY + 21, 7, 3, '#e06a5a');
+      ellipsePx(ctx, px2 + 6, beltY + 23, 7, 4, '#f0e4d0'); ellipsePx(ctx, px2 + 6, beltY + 21, 7, 3, '#e8a050');
+      ctx.globalAlpha = 0.28; ellipsePx(ctx, px2, beltY + 18, 24, 14, '#cfe4ff'); ctx.globalAlpha = 1;
+      ellipsePx(ctx, px2, beltY + 6, 3, 2, '#e8f4ff');
+    }
+    // the counter you are sitting at
+    rect(ctx, 0, beltY + 46, W, 24, '#7a5434'); rect(ctx, 0, beltY + 46, W, 4, '#a8794e');
+    rect(ctx, 0, beltY + 70, W, H - beltY - 70, '#241c20');
+    // a tea tap and a stack of the day's plates
+    rect(ctx, 830, beltY + 22, 16, 26, '#8a8a98'); rect(ctx, 826, beltY + 16, 24, 8, '#a8a8b8');
+    for (let i = 0; i < 4; i++) ellipsePx(ctx, 130, beltY + 46 - i * 5, 24, 7, i % 2 ? '#4a7fd0' : '#d04a5a');
+    drawParty(ctx, 300, beltY + 68, t, 'idle');
+  },
+  hanami(ctx, t) {
+    // an afternoon under the blossom, four hours in
+    const [c1, c2] = skyColors(0.42); vgrad(ctx, 0, 0, W, H, c1, c2);
+    ctx.drawImage(skylineCanvas(19, W, 90, { color: '#9aa0b8', lit: '#fff', density: 0.04 }), 0, 190);
+    rect(ctx, 0, 268, W, H - 268, '#6aa855'); rect(ctx, 0, 268, W, 4, '#86c46a');
+    for (let i = 0; i < 120; i++) rect(ctx, (i * 73) % W, 276 + (i * 41) % 250, 3, 2, '#82bc62');
+    // the trees
+    for (let i = 0; i < 5; i++) {
+      const tx = 70 + i * 210, ty = 262;
+      rect(ctx, tx - 7, ty - 60, 14, 62, '#5a3a28'); rect(ctx, tx - 7, ty - 60, 5, 62, '#7a5238');
+      for (const [ox, oy, r] of [[0, -84, 42], [-34, -64, 30], [34, -66, 32], [-14, -104, 26], [18, -102, 24]]) {
+        ellipsePx(ctx, tx + ox, ty + oy + 2, r, r * 0.66, '#e88ab0');
+        ellipsePx(ctx, tx + ox, ty + oy, r, r * 0.66, '#f8b6d0');
+        ellipsePx(ctx, tx + ox - r * 0.3, ty + oy - r * 0.26, r * 0.4, r * 0.26, '#ffd6e6');
+      }
+    }
+    // petals coming down
+    for (let i = 0; i < 44; i++) {
+      const px2 = ((i * 151 + t * 22) % (W + 40)) - 20 + Math.sin(t * 1.4 + i) * 14;
+      const py = ((i * 97 + t * 44) % (H + 40)) - 20;
+      rect(ctx, px2, py, 3, 2, i % 3 ? '#f8b6d0' : '#ffd6e6');
+    }
+    // the blue sheet, and an entire office on it
+    const sy = 400;
+    ctx.globalAlpha = 0.25; rect(ctx, 356, sy + 4, 500, 90, '#0a2a5a'); ctx.globalAlpha = 1;
+    rect(ctx, 352, sy, 500, 88, '#2a5ab8'); rect(ctx, 352, sy, 500, 4, '#4a7ad8');
+    for (let i = 0; i < 9; i++) rect(ctx, 360 + i * 56, sy + 8, 40, 76, 'rgba(255,255,255,0.05)');
+    // shoes off at the edge, because of course
+    for (let i = 0; i < 6; i++) rect(ctx, 356 + i * 22, sy - 10, 16, 8, i % 2 ? '#2a2430' : '#5a3a2a');
+    // the party
+    for (let i = 0; i < 6; i++) {
+      const gx = 400 + i * 78, bob = Math.round(Math.sin(t * 2.4 + i * 0.8) * 3);
+      drawBugAt(ctx, MYSTERY_BUGS.office[i % MYSTERY_BUGS.office.length], gx, sy + 26 + bob, { pose: i % 3 ? 'cheer' : 'idle', scale: 1.25, flip: i % 2 === 1 });
+      if (i % 2) { rect(ctx, gx + 12, sy + 6 + bob, 7, 12, '#e8b040'); rect(ctx, gx + 12, sy + 6 + bob, 7, 3, '#fff0b0'); }
+    }
+    // somebody bellowing
+    for (let i = 0; i < 3; i++) { const k = ((t * 0.7 + i * 0.33) % 1); ctx.globalAlpha = (1 - k) * 0.8;
+      drawText(ctx, '♪', 560 + Math.sin(k * 6) * 16, sy - 20 - k * 60, '#fff0b0', { scale: 2, outline: '#4a2a10' }); ctx.globalAlpha = 1; }
+    drawParty(ctx, 110, 430, t);
+  },
+  lostcase(ctx, t) {
+    drawMysteryStreet(ctx, t, 31);
+    // the bench, and the case somebody left on it
+    const bx = 560, by = 430;
+    ctx.drawImage(propCanvas('bench'), bx - 46, by - 22, 92, 43);
+    const cx = bx + 6, cy = by - 34;
+    rect(ctx, cx - 54, cy - 2, 108, 34, '#1a1620');
+    rect(ctx, cx - 52, cy, 104, 30, '#2e2736'); rect(ctx, cx - 52, cy, 104, 3, '#4e4558');
+    rect(ctx, cx - 52, cy + 14, 104, 2, '#12101a');
+    for (const d of [-1, 1]) { rect(ctx, cx + d * 34 - 4, cy + 10, 9, 9, '#cfc4a8'); rect(ctx, cx + d * 34 - 3, cy + 11, 7, 3, '#f0e8d0'); }
+    rect(ctx, cx - 8, cy + 28, 17, 6, '#1a1620');
+    // stickers from eleven countries
+    const cols = ['#e0503c', '#e8b840', '#3f6fb0', '#6be585', '#c58bff', '#ff9fef'];
+    for (let i = 0; i < 9; i++) { const sx2 = cx - 44 + (i % 5) * 20, sy2 = cy + 3 + Math.floor(i / 5) * 12;
+      rect(ctx, sx2, sy2, 13, 8, cols[i % cols.length]); rect(ctx, sx2, sy2, 13, 2, lighten(cols[i % cols.length], 0.3)); }
+    // him, running, badly
+    const run = clamp((t % 4) / 4, 0, 1), rx = 940 - run * 300;
+    drawShadow(ctx, rx, by, 28);
+    drawBugAt(ctx, MYSTERY_BUGS.rival, rx, by - Math.abs(Math.sin(t * 9)) * 6, { pose: 'cheer', scale: 1.5, flip: true });
+    // his coat, half off, and the dust of him
+    for (let i = 0; i < 3; i++) { ctx.globalAlpha = 0.3 - i * 0.08; ellipsePx(ctx, rx + 22 + i * 13, by - 4, 7 - i, 3, '#cfc4b0'); ctx.globalAlpha = 1; }
+    for (let i = 0; i < 2; i++) { const k = ((t * 1.4 + i * 0.5) % 1); ctx.globalAlpha = (1 - k) * 0.85;
+      drawText(ctx, '!', rx - 16, by - 56 - k * 20, '#ff5a5a', { scale: 3, outline: '#2a1010' }); ctx.globalAlpha = 1; }
+    drawParty(ctx, 110, 430, t);
+  },
   dango(ctx, t) {
     drawMysteryStreet(ctx, t, 4, { night: true });
     const cx = 600, gy = 430;
@@ -7909,6 +8333,13 @@ const MYSTERY_BUGS = (() => {
     scout: mk(9105, { outfit: { jacket: '#2a2438', shirt: '#f0f0f4', trousers: '#2a2438', wristband: '#c58bff' } }),
     officer: mk(9106, { outfit: { jacket: '#1e2a58', shirt: '#dfe4f0', hat: 'cap', hatColor: '#16204a', trousers: '#1e2a58' } }),
     crowd: [mk(9110), mk(9111), mk(9112), mk(9113), mk(9114), mk(9115)],
+    schoolgirls: [mk(9120, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#ff9fef' } }),
+                  mk(9121, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#8ad8ff' } }),
+                  mk(9122, { outfit: { jacket: '#2a2c4a', shirt: '#f4f4ee', skirt: '#8a2c4a', wristband: '#ffd24a' } })],
+    office: [mk(9130, { outfit: { jacket: '#2a2c38', shirt: '#f4f4ee', tie: '#8a2c2c' } }),
+             mk(9131, { outfit: { jacket: '#38323c', shirt: '#eef0f4', tie: '#2c4a8a' } }),
+             mk(9132, { outfit: { jacket: '#2c3830', shirt: '#f4f0e6', tie: '#7a6a2a' } }),
+             mk(9133, { outfit: { jacket: '#382c34', shirt: '#f0eef4', tie: '#4a2c6a' } })],
   };
 })();
 
@@ -7922,6 +8353,15 @@ class MysteryScene {
     this.m = r.rng.pick(pool); r.seenMysteries.push(this.m.id);
     this.node = node; this.t = 0; this.phase = 'reveal'; this.log = []; this.game = null;
     this.fx = new Particles();
+    // Every encounter opens as a scene: whoever is there says their piece
+    // before you are handed a menu. The choices are the end of a conversation,
+    // not the whole of it.
+    const sp = MYSTERY_BUGS[this.m.speaker] || null;
+    this.cut = new Cutscene((this.m.beats || []).map(bt => ({
+      name: bt.who || (this.m.speakerName || null), spec: bt.self ? (Game.run && Game.run.members[0] || {}).spec : sp,
+      text: bt.text, tint: bt.self ? '#6be585' : (this.m.tint || '#ffd24a'), flip: !bt.self, expr: bt.expr, pose: bt.pose,
+    })), { onEnd: () => { this.phase = 'choose'; } });
+    if (!this.cut.beats.length) this.cut = null;
     this.buildChoices();
   }
   buildChoices() {
@@ -7957,7 +8397,8 @@ class MysteryScene {
   }
   update(dt) {
     this.t += dt; this.fx.update(dt);
-    if (this.phase === 'reveal' && this.t > 0.5) this.phase = 'choose';
+    if (this.phase === 'reveal' && this.t > 0.5) this.phase = this.cut ? 'talk' : 'choose';
+    if (this.phase === 'talk' && this.cut) this.cut.update(dt);
     const g = this.game;
     if (this.phase === 'game' && g && !g.over) {
       if (g.kind === 'timing') {
@@ -8002,6 +8443,7 @@ class MysteryScene {
     this.endGame(hit);
   }
   key(code) {
+    if (this.phase === 'talk') { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.cut.advance(); return; }
     if (this.phase === 'game') {
       const g = this.game; if (!g || g.over) return;
       if (g.kind === 'timing') { if (['Space', 'Enter'].includes(code)) this.stopNeedle(); return; }
@@ -8011,7 +8453,7 @@ class MysteryScene {
     }
     this.menu.key(code);
   }
-  click(x, y) { if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
+  click(x, y) { if (this.phase === 'talk') { this.cut.advance(); return; } if (this.phase === 'game') { this.hitGame(x, y); return; } this.menu.click(x, y); }
   hover(x, y) { if (this.phase !== 'game') this.menu.hover(x, y); }
   draw(ctx) {
     const art = MYSTERY_ART[this.m.scene] || MYSTERY_ART.dango;
@@ -8033,6 +8475,7 @@ class MysteryScene {
       ctx.globalAlpha = 1;
       Game.drawHud(ctx); return;
     }
+    if (this.phase === 'talk') { this.cut.draw(ctx); return; }
     if (this.phase === 'game') { this.drawGame(ctx); this.fx.draw(ctx); Game.drawHud(ctx); return; }
     // the panel: who it is, what they want, what you can do about it
     const inner = uiPanel(ctx, 60, H - 196, W - 120, 176, { title: this.m.title });
@@ -8329,7 +8772,11 @@ class ConcertScene {
     // along the bottom edge; a chart still splits the screen the old way.
     const you = Game.run ? Game.run.members[0] : null;
     this.earLayout = you && (INSTRUMENTS[you.instrument] || {}).game === 'ear';
-    if (this.earLayout) {
+    // A kit gets the open stage too: it is played on the drums themselves, so
+    // it needs no pads and no split screen, and a five-piece squeezed into a
+    // 250px band with the band crammed above it looked like neither.
+    this.kitLayout = you && (INSTRUMENTS[you.instrument] || {}).view === 'kit';
+    if (this.earLayout || this.kitLayout) {
       this.L = { open: true, rhythmY: 16, rhythmH: H - 16, stageTop: 20, stageBottom: t ? 404 : 430, padY: 0, padH: 0 };
       return;
     }
@@ -8412,7 +8859,7 @@ class ConcertScene {
     this.backing = new Backing(song, start - song.leadIn,
       () => this.earMode && this.rhythm.phase === 'call' ? { bass: true, chords: true } : ({ drums: mv.instrument === 'drums', pad: mv.instrument === 'piano' }),
       this.earMode ? { loop: true, steps } : {});
-    this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map();
+    this.song = song; this.phase = 'play'; this.phaseT = 0; this.padKey = null; this.pads = []; this.padPointers = new Map(); this.dragDrum = new Map();
     this.pyro(mv.pyro);
   }
   pyro(n) { for (let k = 0; k < n; k++) { const x = k % 2 ? 76 : W - 76; for (let i = 0; i < 14; i++) this.fx.add({ x: x + (Math.random() - 0.5) * 8, y: this.L.stageBottom - 26, vx: (Math.random() - 0.5) * 34, vy: -170 - Math.random() * 130, life: 0.7 + Math.random() * 0.4, kind: 'fire', size: 4, gravity: 130 }); } if (n) { Audio.ui('pyro'); Game.shake.hit(2, 0.15); this.pyroT = 0.3; } }
@@ -8436,17 +8883,22 @@ class ConcertScene {
     if (this.phase === 'done') { this.doneBtn.onTap(); return; }
     if (this.phase === 'play') {
       const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
+      // The stage had no drum input whatsoever, so a drummer's opening show
+      // could only be played on a keyboard. It uses the gig's code now.
+      if (kitPointerDown(this, x, y, id)) return;
       earPointerDown(this, x, y, id);
     }
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play') return;
+    if (kitPointerMove(this, x, y, id)) return;
     if (earPointerMove(this, x, y, id)) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
     const pad = this.padAt(x, y); const next = pad ? pad.code : null; if (next === prev) return;
     this.rhythm.keyUp(prev); if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
   pointerUp(x, y, id) {
+    kitPointerUp(this, id);
     if (earPointerUp(this, id)) return;
     const c = this.padPointers && this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
   }
@@ -8553,7 +9005,9 @@ class ConcertScene {
     const yx = W / 2 - 90, yy = floorY + 8;
     drawShadow(ctx, yx, yy, 46, 0.35);
     const youPose = bandPose(beat ? 'play' : 'play2');
-    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawBigKit(ctx, yx, yy - 20, beat); }
+    // The player's own kit is the playable one, drawn full size over the top
+    // of everything. Drawing the prop version here too put two kits on stage.
+    if (this.you.instrument === 'drums') { drawBugAt(ctx, this.you.spec, yx, yy - 10, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); if (this.phase !== 'play') this.drawBigKit(ctx, yx, yy - 20, beat); }
     else if (this.you.instrument === 'piano') { ctx.drawImage(propCanvas('micstand'), yx - 52, yy - 76, 16, 62); drawBugAt(ctx, this.you.spec, yx, yy - 4, { pose: youPose, scale: 2.1, expr: bandExpr, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 }); this.drawRig(ctx, yx, yy); }
     else drawBugAt(ctx, this.you.spec, yx, yy, { pose: youPose, instrument: this.you.instrument, scale: 2.1, expr: bandExpr, squash: beat && !dead ? 1.04 : 1, rate: won ? 4.2 : 2.4, bounce: won ? 2.4 : dead ? 0.35 : 1 });
     ctx.drawImage(propCanvas('cab'), yx - 92, yy - 26, 30, 26);
@@ -8676,7 +9130,8 @@ class ConcertScene {
     }
 
     // ---- playing
-    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: !!L.open });
+    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: !!L.open,
+      kit: this.kitLayout ? { cx: W / 2, baseY: H - 150, width: W, zoom: 2 } : null });
     const p = this.rhythm.progress != null ? this.rhythm.progress : clamp(this.rhythm.now / this.song.length, 0, 1);
     const barY = L.open ? 0 : L.rhythmY + L.rhythmH - 3;
     rect(ctx, 0, barY, W, 4, '#241d2e'); rect(ctx, 0, barY, Math.round(W * p), 4, '#ffd24a');
@@ -10267,20 +10722,13 @@ class GigScene {
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
     const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
     // A kit is played by hitting the drums themselves, mouse or finger alike.
-    const drum = this.drumAt(x, y);
-    if (drum) { this.rhythm.keyDown(this.rhythm.instrument.keys[drum.i]); this.dragDrum.set(id, drum.i); return; }
+    // A kit is struck wherever you touch, and the stage uses the same code.
+    if (kitPointerDown(this, x, y, id)) return;
     // ...and a kit takes a strike anywhere in the scene. Hunting a small
     // sprite with a mouse inside one beat was the whole difficulty, so a tap
     // in open air lands on the drum the chart wants and scores in full. With
     // nothing due it still sounds the nearest drum, so you can noodle.
-    if (this.rhythm.instrument.view === 'kit') {
-      const lane = this.rhythm.dueLane(), near = this.nearestDrum(x, y);
-      const i = lane != null ? lane : (near ? near.i : null);
-      // A strike is over the instant it happens. Nothing is remembered about
-      // the finger that made it, so a pointerup the browser never delivers
-      // cannot strand anything.
-      if (i != null) { this.rhythm.keyDown(this.rhythm.instrument.keys[i]); this.dragDrum.set(id, near ? near.i : -1); return; }
-    }
+
     // Keys and necks are played on the instrument: the note under your finger
     // is the note that sounds, exactly as it would be in the room.
     if (earPointerDown(this, x, y, id)) return;
@@ -10288,14 +10736,7 @@ class GigScene {
   }
   pointerMove(x, y, id) {
     if (this.phase !== 'play' || this.paused) return;
-    // Dragging across a kit is a fill: every new drum the finger crosses is
-    // struck once. Only a change of drum fires, so resting a finger on one
-    // does nothing.
-    if (this.rhythm && this.rhythm.instrument.view === 'kit' && this.dragDrum.has(id)) {
-      const d = this.drumAt(x, y);
-      if (d && d.i !== this.dragDrum.get(id)) { this.dragDrum.set(id, d.i); this.rhythm.keyDown(this.rhythm.instrument.keys[d.i]); }
-      return;
-    }
+    if (kitPointerMove(this, x, y, id)) return;
     const prev = this.padPointers.get(id); if (prev === undefined) return;
     if (earPointerMove(this, x, y, id)) return;
     const pad = this.padAt(x, y); let next = pad ? pad.code : null;
@@ -10304,7 +10745,7 @@ class GigScene {
     if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
   }
   pointerUp(x, y, id) {
-    this.dragDrum.delete(id);
+    kitPointerUp(this, id);
     const c = this.padPointers.get(id); if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
     earPointerUp(this, id);
   }

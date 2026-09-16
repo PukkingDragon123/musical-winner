@@ -17,6 +17,15 @@ class ShopScene {
     if (!node.stock) { node.rerolls = 0; this.restock(); }
     this.sel = 0; this.msg = 'Irasshaimase. Everything here is slightly overpriced. It is Tokyo.';
     this.buttons = [];
+    // You walk in and somebody says something, instead of a shelf of prices
+    // appearing out of nowhere.
+    const rr = makeRng(hashStr('hello|' + node.id));
+    const hello = SHOP_HELLO[rr.int(0, SHOP_HELLO.length - 1)];
+    this.owner = castMember('shop|' + node.id);
+    this.intro = sceneIntro([
+      { name: node.name, text: hello[1], tint: '#8ad8ff' },
+      { name: hello[0], spec: this.owner, text: 'She gestures at the whole shop with a magazine and goes back to reading it.', tint: '#ffd24a', flip: true },
+    ]);
   }
   restock() {
     const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
@@ -49,8 +58,9 @@ class ShopScene {
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
   reroll() { const r = Game.run; const p = this.rerollPrice(); if (r.money < p) { this.msg = 'Not enough cash to reroll.'; Audio.ui('error'); return; } r.money -= p; this.node.rerolls++; this.restock(); this.sel = 0; Audio.ui('select'); this.msg = 'Fresh stock!'; }
-  update(dt) { this.t += dt; }
+  update(dt) { this.t += dt; introUpdate(this, dt); }
   key(code) {
+    if (this.intro) { if (['Enter', 'Space', 'KeyZ', 'Escape'].includes(code)) introTap(this); return; }
     const n = this.items.length;
     if (code === 'ArrowLeft' || code === 'KeyA') { this.sel = (this.sel - 1 + n) % Math.max(1, n); Audio.ui('move'); }
     else if (code === 'ArrowRight' || code === 'KeyD') { this.sel = (this.sel + 1) % Math.max(1, n); Audio.ui('move'); }
@@ -58,6 +68,7 @@ class ShopScene {
     else if (code === 'KeyR') this.reroll(); else if (code === 'Escape' || code === 'KeyL') Game.go(() => new CityScene(), 'slideR');
   }
   click(x, y) {
+    if (introTap(this)) return;
     for (const b of this.buttons) if (b.hit(x, y)) { b.onTap(); return; }
     (this.cards || []).forEach((c) => { if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) { if (this.sel === c.i) this.buy(this.items[c.i]); else { this.sel = c.i; Audio.ui('move'); } } });
   }
@@ -223,6 +234,7 @@ class ShopScene {
     ];
     for (const b of this.buttons) b.draw(ctx);
     Game.drawHud(ctx);
+    introDraw(this, ctx);
   }
 }
 // ---------- Event ----------
