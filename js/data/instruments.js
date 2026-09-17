@@ -80,6 +80,8 @@ const INSTRUMENTS = {
   triangle:   { name: 'Triangle', game: 'npc', keys: [], keyNames: [], voice: 'tambourine', price: 0, tipMult: 0.6, family: 'percussion', desc: 'Ding.' },
   keytar:     { name: 'Keytar', game: 'npc', keys: [], keyNames: [], voice: 'organ', price: 0, tipMult: 1.2, family: 'keys', desc: 'The eighties never ended.' },
 };
+// every instrument knows its own key, which is how a skin finds it
+for (const k in INSTRUMENTS) INSTRUMENTS[k].key = k;
 const PLAYABLE = ['guitar', 'bass', 'piano', 'tambourine', 'drums', 'sax', 'trumpet', 'violin', 'taiko', 'shamisen', 'koto', 'shakuhachi'];
 // The ones a Tokyo shop is most likely to have on the wall.
 const JP_INSTRUMENTS = PLAYABLE.filter(k => INSTRUMENTS[k].jp);

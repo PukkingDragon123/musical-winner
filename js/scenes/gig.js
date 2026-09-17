@@ -123,7 +123,7 @@ class GigScene {
       this.rhythm.instr = lInstr; this.rhythm.instrKey = leader.instrument; this.rhythm.member = leader;
       this.earMode = true;
     } else this.rhythm = new RhythmGame(this.song, sections, notes, mods, {
-      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); this.duelJudge(j); },
+      onJudge: (n, j, info) => { const a = this.S.onHit(n, j, info); if (a) this.fx.text(this.hatX + 30, this.L.groundY - 74, '+' + a, n.star ? '#ffd24a' : '#fff', { life: 0.6 }); this.duelJudge(j); this.thanksJudge(j, n); },
       onCheer: () => this.S.onCheer(), onQte: (j) => this.S.onQte(j), onRoll: () => this.S.onRoll(),
       onBombDodged: () => { this.S.onBombDodged(); if (this.mods.dodgeMult) this.S.multAdd += this.mods.dodgeMult; },
       onSection: (sec, isLast) => this.S.setSection(isLast),
@@ -207,6 +207,7 @@ class GigScene {
       this.S.watcherTick(dt, this.crowd.watchers.length, !this.earMode || this.rhythm.phase === 'response');
       if (this.bossMod === 'quake') { this.quakeT -= dt; if (this.quakeT <= 0) { this.quakeT = 4 + Math.random() * 5; Game.shake.hit(6, 0.6); Audio.drum('stomp', 0, 0.6); } }
       this.train.t -= dt; if (this.train.t < 0 && this.venue.kind === 'subway') { this.train.x += dt * 300; if (this.train.x > W + 400) { this.train.x = -700; this.train.t = 7 + Math.random() * 8; } }
+      this.updateThanks(dt);
       if (this.rhythm.finished) this.songDone();
     } else if (this.phase === 'break') {
       // a beat between numbers: the crowd claps, you catch your breath
@@ -281,6 +282,9 @@ class GigScene {
     if (this.phase === 'tally') { if (!this.tallyDone) { if (['Enter', 'Space'].includes(code)) this.tallyT = 999; return; } if (['Enter', 'Space'].includes(code)) this.next(); return; }
     if (code === 'Escape') { this.togglePause(); return; }
     if (this.paused) { if (code === 'KeyQ') this.quit(); return; }
+    // the thank-you window takes the key before the chart does, so bowing
+    // never costs you a note
+    if (this.thanks && !this.thanks.hit && ['Space', 'Enter', 'KeyZ'].includes(code)) { this.takeThanks(); return; }
     this.rhythm.keyDown(code);
   }
   keyUp(code) { if (this.phase === 'play' && !this.paused) this.rhythm.keyUp(code); }
@@ -317,6 +321,7 @@ class GigScene {
       return;
     }
     if (this.phase === 'tally') { if (!this.tallyDone) { this.tallyT = 999; return; } this.next(); return; }
+    if (this.thanks && !this.thanks.hit) { this.takeThanks(); return; }
     if (this.paused) { for (const b of this.pauseButtons) if (b.hit(x, y)) { b.onTap(); return; } return; }
     if (this.pauseBtn.hit(x, y)) { this.pauseBtn.onTap(); return; }
     const pad = this.padAt(x, y); if (pad) { this.padPointers.set(id, pad.code); this.rhythm.keyDown(pad.code); return; }
@@ -509,6 +514,79 @@ class GigScene {
       drawText(ctx, fmtNum(this.S.applause), W - 48, rdY + 4, '#fff', { align: 'right', scale: 3 });
       ctx.drawImage(icon('heart'), W - 190, rdY + 28, 12, 10); drawText(ctx, this.crowd.watchers.length + '', W - 174, rdY + 29, '#cfc9e6');
       ctx.drawImage(icon('coin'), W - 138, rdY + 27, 13, 12); drawText(ctx, fmtMoney(this.crowd.earned), W - 120, rdY + 29, '#ffd24a');
+      this.drawGratitude(ctx, W - 196, rdY + 50, 156);
+      this.drawThanks(ctx);
+  }
+  // ---- Saying thank you.
+  // Busking is not only playing. The crowd builds while you hold a run of
+  // clean notes, and when enough of them have stopped, there is a moment to
+  // look up and thank them. Take it on time and they empty their pockets.
+  thanksJudge(j, n) {
+    if (this.thanks) return;
+    if (j === 'perfect') this.grat = Math.min(1, (this.grat || 0) + 0.035 + (n && n.star ? 0.03 : 0));
+    else if (j === 'great') this.grat = Math.min(1, (this.grat || 0) + 0.014);
+    else if (j === 'miss') this.grat = Math.max(0, (this.grat || 0) - 0.06);
+    if ((this.grat || 0) >= 1 && !this.thanksDone) {
+      this.thanks = { t: 0, len: 2.1, hit: null };
+      Audio.ui('pop');
+    }
+  }
+  // the window is the middle third of the bar sweeping across
+  takeThanks() {
+    const T = this.thanks; if (!T || T.hit) return;
+    const k = T.t / T.len;
+    const off = Math.abs(k - 0.5);
+    const good = off < 0.07, ok = off < 0.16;
+    T.hit = good ? 'perfect' : ok ? 'ok' : 'miss';
+    const r = Game.run;
+    if (good) {
+      const bonus = 2 + Math.round((this.crowd ? this.crowd.watchers.length : 4) * 0.5);
+      this.crowd.earned += bonus;
+      r.gratitude = (r.gratitude || 0) + 1;
+      this.fx.text(W / 2, this.L.groundY - 120, 'THANK YOU  +' + fmtMoney(bonus), '#6be585', { life: 1.4, scale: 3 });
+      for (let i = 0; i < 18; i++) this.fx.add({ x: this.hatX + 30 + (Math.random() - 0.5) * 120, y: this.L.groundY - 120, vx: (Math.random() - 0.5) * 60, vy: -80 - Math.random() * 60, life: 1.1, color: '#ffd24a', kind: 'star', size: 2, gravity: 220 });
+      Audio.ui('fanfare'); Audio.roar(1.2, 0.25);
+    } else if (ok) {
+      const bonus = 1 + Math.round((this.crowd ? this.crowd.watchers.length : 4) * 0.2);
+      this.crowd.earned += bonus;
+      this.fx.text(W / 2, this.L.groundY - 120, 'THANKS  +' + fmtMoney(bonus), '#ffd24a', { life: 1.2, scale: 2 });
+      Audio.ui('coin');
+    } else {
+      this.fx.text(W / 2, this.L.groundY - 120, 'THE MOMENT PASSES', '#e0785a', { life: 1.2, scale: 2 });
+      Audio.ui('error');
+    }
+    this.thanksDone = true; this.grat = 0;
+  }
+  updateThanks(dt) {
+    const T = this.thanks; if (!T) return;
+    T.t += dt;
+    if (T.hit && T.t > T.len * 0.5 + 0.9) { this.thanks = null; return; }
+    if (!T.hit && T.t > T.len) { this.takeThanks(); }
+  }
+  drawThanks(ctx) {
+    const T = this.thanks; if (!T) return;
+    const bw = 340, bx = W / 2 - bw / 2, by = this.L.open ? 96 : this.L.stageTop + 56;
+    ctx.globalAlpha = 0.85; rect(ctx, bx - 8, by - 30, bw + 16, 72, '#0b0914'); ctx.globalAlpha = 1;
+    frame(ctx, bx - 8, by - 30, bw + 16, 72, '#c8a03a');
+    drawText(ctx, 'LOOK UP AND SAY THANK YOU', W / 2, by - 24, '#ffe9a8', { align: 'center', scale: 2 });
+    rect(ctx, bx, by, bw, 18, '#241d33');
+    // the sweet spot, then the wider one either side of it
+    rect(ctx, bx + bw * 0.34, by, bw * 0.32, 18, '#3a5f3a');
+    rect(ctx, bx + bw * 0.43, by, bw * 0.14, 18, '#6be585');
+    const k = clamp(T.t / T.len, 0, 1);
+    rect(ctx, bx + bw * k - 2, by - 4, 4, 26, '#fff8e0');
+    frame(ctx, bx, by, bw, 18, '#4a4068');
+    if (T.hit) drawText(ctx, T.hit === 'perfect' ? 'PERFECT' : T.hit === 'ok' ? 'CLOSE' : 'MISSED IT', W / 2, by + 24, T.hit === 'miss' ? '#e0785a' : '#6be585', { align: 'center', scale: 2 });
+    else drawText(ctx, Game.touch ? 'TAP' : 'SPACE', W / 2, by + 24, '#8ad8ff', { align: 'center', scale: 2 });
+  }
+  // the meter itself, beside the takings
+  drawGratitude(ctx, x, y, w) {
+    const g = this.grat || 0;
+    rect(ctx, x, y, w, 8, '#241d33');
+    rect(ctx, x, y, Math.round(w * g), 8, g >= 1 ? '#6be585' : '#c8a03a');
+    if (g >= 1) { ctx.globalAlpha = 0.4 + 0.3 * Math.sin(this.t * 8); rect(ctx, x, y, w, 8, '#fff8e0'); ctx.globalAlpha = 1; }
+    frame(ctx, x, y, w, 8, '#4a4068');
+    drawText(ctx, 'GRATITUDE', x, y - 10, '#8a82a8', { font: 'small' });
   }
   // Standing outside the venue before the set. The scene does the talking:
   // the band is on the pavement, you tap a bug to put them in or out.

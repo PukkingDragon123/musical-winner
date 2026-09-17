@@ -330,6 +330,8 @@ class RhythmGame {
     ctx.save(); ctx.beginPath(); ctx.rect(A.x, A.y - 40, A.w, A.h + 40); ctx.clip(); this.fx.draw(ctx);
     for (const b of this.bursts) { speedLines(ctx, b.x, b.y, 26 * b.scale, 70 * b.scale, 14, b.color, this.now, 0.35 * (1 - b.t)); comicBurst(ctx, b.x, b.y, b.text, b.color, b.t, b.scale); }
     ctx.restore();
+    // whatever the instrument is painted, painted over the instrument
+    if (typeof drawSkinOverlay === 'function' && this.instrument) drawSkinOverlay(ctx, A, this.instrument);
     this.drawHud(ctx, A);
   }
   // A lit stage around the play area: truss, moving beams, speaker stacks, a front row.

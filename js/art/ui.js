@@ -176,3 +176,57 @@ const ICON_DEFS = {
   chips:    { rows: ['..bbbb..', '.bwwwwb.', 'bwwwwwwb', 'bwwbbwwb', 'bwwwwwwb', '.bwwwwb.', '..bbbb..'], pal: { b: '#3a6ab0', w: '#8ab8ff' } },
 };
 function icon(kind) { const d = ICON_DEFS[kind] || ICON_DEFS.event; return cached('icon|' + kind, () => pixFromRows(d.rows, d.pal).toCanvas()); }
+
+// ---------- A sign, the way this city makes them ----------
+// Every building in Shinjuku wears one: a lit box on a steel frame, bolted to
+// the wall, with a vertical strip of kana down one side and a row of bulbs
+// along the bottom. The menu is a wall of them.
+const BILL_COLS = [
+  { face: '#d8283c', edge: '#7a1020', text: '#fff2d8', glow: '#ff5a6a' },
+  { face: '#1f7fd0', edge: '#103a6a', text: '#e8f4ff', glow: '#5ab4ff' },
+  { face: '#f0b520', edge: '#8a5a08', text: '#2a1c00', glow: '#ffe07a' },
+  { face: '#2f9a6a', edge: '#13503a', text: '#eafff2', glow: '#6be5a8' },
+  { face: '#8a3fd0', edge: '#3f1470', text: '#f4e8ff', glow: '#c58bff' },
+];
+function uiBillboard(ctx, x, y, w, h, label, state, seed = 0) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const on = state !== 'disabled';
+  const C = BILL_COLS[seed % BILL_COLS.length];
+  const face = on ? C.face : '#4a4a56', edge = on ? C.edge : '#24242c', text = on ? C.text : '#8a8a96';
+  const sel = state === 'hover' || state === 'down';
+  const t = ANIM_T;
+  // the scaffold it is bolted to, and the shadow it throws on the wall
+  ctx.globalAlpha = 0.35; rect(ctx, x + 5, y + 6, w, h, '#0a0812'); ctx.globalAlpha = 1;
+  rect(ctx, x - 4, y + 4, 4, h - 6, '#2a2a34'); rect(ctx, x + w, y + 4, 4, h - 6, '#2a2a34');
+  for (let i = 0; i < 3; i++) { rect(ctx, x - 4, y + 6 + i * ((h - 12) / 2), 4, 2, '#4a4a58'); rect(ctx, x + w, y + 6 + i * ((h - 12) / 2), 4, 2, '#4a4a58'); }
+  // the box
+  rect(ctx, x, y, w, h, edge);
+  rect(ctx, x + 2, y + 2, w - 4, h - 4, face);
+  vgrad(ctx, x + 2, y + 2, w - 4, h - 4, lighten(face, 0.16), face);
+  rect(ctx, x + 2, y + 2, w - 4, 1, lighten(face, 0.4));
+  rect(ctx, x + 2, y + h - 3, w - 4, 1, darken(face, 0.3));
+  // the kana strip down the left, the way a vertical shop sign runs
+  rect(ctx, x + 5, y + 4, 11, h - 8, edge);
+  for (let i = 0; i < Math.floor((h - 12) / 9); i++) {
+    const gy = y + 7 + i * 9;
+    rect(ctx, x + 7, gy, 7, 2, text); rect(ctx, x + 7, gy + 3, 4, 2, text);
+  }
+  // the label, as large as the box will take it
+  let sc = 4; const room = w - 34;
+  while (sc > 1 && textWidth(label, { scale: sc }) > room) sc--;
+  drawText(ctx, label, x + 22 + (w - 26) / 2, y + Math.floor((h - 7 * sc) / 2), text, { align: 'center', scale: sc, shadow: edge });
+  // the bulbs along the bottom, chasing
+  for (let i = 0; i < Math.floor((w - 12) / 10); i++) {
+    const bx = x + 8 + i * 10, lit = on && (Math.floor(t * 6 + i) % 4 !== 0);
+    rect(ctx, bx, y + h - 6, 3, 3, lit ? '#fff4c0' : darken(face, 0.35));
+    if (lit) { ctx.globalAlpha = 0.25; circle(ctx, bx + 1, y + h - 5, 4, C.glow); ctx.globalAlpha = 1; }
+  }
+  // selected: the whole sign kicks on
+  if (sel && on) {
+    ctx.globalAlpha = 0.16 + 0.1 * Math.sin(t * 7); rect(ctx, x - 6, y - 6, w + 12, h + 12, C.glow); ctx.globalAlpha = 1;
+    frame(ctx, x - 1, y - 1, w + 2, h + 2, '#fff8e0');
+    // and an arrow, painted on the wall beside it
+    drawText(ctx, '▶', x - 20, y + h / 2 - 6, '#fff8e0', { scale: 2 });
+  }
+  if (!on) { ctx.globalAlpha = 0.35; rect(ctx, x + 2, y + 2, w - 4, h - 4, '#12101c'); ctx.globalAlpha = 1; }
+}

@@ -5,6 +5,17 @@ function collectMods(run, extra = {}) {
   const m = { windowMult: 1, missMult: 1, crowd: 1, watchTime: 1, decay: 1, watcherApplause: 1, cheerMult: 0.3, safetyNet: 0, staminaExtra: 0, encore: false, metronome: false, earplugs: false, tuner: false, quality: 0, permit: false, eliteBonus: 1, multBonus: 0, starRate: 0.08, bombMult: 1, tipMult: 1, dodgeMult: 0, tickets: 0, cheapTravel: false };
   if (!run) return Object.assign(m, extra);
   for (const k of run.charms) { const c = CHARMS[k]; if (c && c.mods) for (const key in c.mods) { const v = c.mods[key]; if (typeof v === 'number' && ['crowd', 'watchTime', 'decay', 'watcherApplause', 'windowMult', 'missMult', 'bombMult', 'tipMult'].includes(key)) m[key] *= v; else if (typeof v === 'number') m[key] = ['tickets', 'dodgeMult', 'safetyNet'].includes(key) ? (m[key] || 0) + v : Math.max(m[key] || 0, v); else m[key] = v; } }
+  // what is bolted to the instrument counts the same as what is in your pocket
+  for (const k of (run.gearMods || [])) {
+    const g = typeof GEAR_MODS !== 'undefined' && GEAR_MODS[k];
+    if (!g || !g.mods) continue;
+    for (const key in g.mods) {
+      const v = g.mods[key];
+      if (['crowd', 'windowMult', 'tipMult', 'bombMult', 'missMult'].includes(key)) m[key] *= v;
+      else if (key === 'safetyNet') m.safetyNet = (m.safetyNet || 0) + v;
+      else m[key] = Math.max(m[key] || 0, v);
+    }
+  }
   const p = run.perks || {};
   if (p.crowd) m.crowd *= p.crowd; if (p.watchTime) m.watchTime *= p.watchTime; if (p.window) m.windowMult *= p.window; if (p.quality) m.quality += p.quality;
   const b = run.buffs || {};

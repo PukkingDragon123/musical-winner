@@ -13,6 +13,9 @@ class RunState {
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
     this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
+    // what is bolted to the instrument, what it is painted, and how much the
+    // city owes you back
+    this.skins = {}; this.ownedSkins = []; this.gearMods = []; this.gratitude = 0;
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -68,14 +71,14 @@ class RunState {
   gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, skins: this.skins, ownedSkins: this.ownedSkins, gearMods: this.gearMods, gratitude: this.gratitude, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -109,6 +112,7 @@ class Menu {
     this.items.forEach((it, i) => {
       const yy = y + i * rowH, sel = i === this.idx; this.rects.push({ x, y: yy, w, h: rowH - 2 });
       if (style === 'buttons') { uiButton(ctx, x, yy, w, rowH - 3, it.label, it.disabled ? 'disabled' : sel ? 'hover' : 'normal', it.color ? { color: it.color, hi: lighten(it.color, 0.2), lo: darken(it.color, 0.2), ol: darken(it.color, 0.45) } : {}); return; }
+      if (style === 'billboard') { uiBillboard(ctx, x, yy, w, rowH - 6, it.label, it.disabled ? 'disabled' : sel ? 'hover' : 'normal', i); return; }
       if (sel) { rect(ctx, x, yy, w, rowH - 2, it.disabled ? 'rgba(90,58,30,0.15)' : UI.paperLo); frame(ctx, x, yy, w, rowH - 2, it.disabled ? UI.paperLine : UI.wood); }
       const col = it.disabled ? UI.inkFaint : UI.ink; let tx = x + 6;
       if (it.icon) { const ic = typeof it.icon === 'string' ? icon(it.icon) : it.icon; ctx.drawImage(ic, x + 4, yy + Math.floor((rowH - 2 - ic.height) / 2)); tx = x + 20; }

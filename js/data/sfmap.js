@@ -91,6 +91,12 @@ const NODES = [
   { id: 'ameyoko', x: 700, y: 120, name: 'AMEYOKO MARKET', type: 'pickup', icon: 'coin' },
   { id: 'sensoji', x: 900, y: 92, name: 'SENSO-JI', type: 'venue', venue: 'temple', icon: 'gig', sub: 'INCENSE AND LANTERNS' },
   { id: 'nakamise', x: 950, y: 120, name: 'NAKAMISE-DORI', type: 'pickup', icon: 'coin' },
+  // ---- the places you go when you are not working: four attractions, each
+  // one a room you walk around from above
+  { id: 'uenozoo', x: 815, y: 92, name: 'UENO ZOO', type: 'place', place: 'zoo', icon: 'rest', sub: 'PANDAS, AND A VERY LOUD BIRD' },
+  { id: 'sumida', x: 940, y: 158, name: 'SUMIDA AQUARIUM', type: 'place', place: 'aquarium', icon: 'rest', sub: 'BLUE LIGHT AND SLOW FISH' },
+  { id: 'animate', x: 690, y: 185, name: 'ANIME MEGA STORE', type: 'place', place: 'anime', icon: 'shop', sub: 'DECALS, PEDALS, SEVEN FLOORS' },
+  { id: 'gamecenter', x: 455, y: 432, name: 'GAME CENTER', type: 'place', place: 'arcade', icon: 'event', sub: 'CRANES AND A RHYTHM MACHINE' },
   // ---- Odaiba and the finale
   { id: 'odaiba', x: 890, y: 590, name: 'ODAIBA WATERFRONT', type: 'venue', venue: 'bayside', icon: 'elite', sub: 'BIG GIG - BAY BREEZE' },
   { id: 'dome', x: 610, y: 255, name: 'TOKYO DOME', type: 'venue', venue: 'dome', icon: 'elite', sub: 'BIG GIG - THE BIG EGG' },
@@ -195,35 +201,6 @@ const MAP_DETAILS = [
   for (const d of DISTRICTS) {
     if (d.park) continue;
     push({ kind: 'mascot', x: d.x + rng.range(-46, 46), y: d.y + rng.range(18, 40), m: rng.pick(MK), c: rng.int(0, 5) });
-  }
-  // awnings: a strip of shopfront colour along the smaller streets
-  for (const st of STREETS) {
-    if (st.big) continue;
-    for (let i = 0; i < st.pts.length - 1; i++) {
-      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
-      const len = Math.hypot(bx - ax, by - ay) || 1;
-      const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      const ang = Math.atan2(by - ay, bx - ax);
-      for (let d = 18; d < len - 10; d += 22) {
-        if (rng.chance(0.45)) continue;
-        const k = d / len, side = rng.sign();
-        push({ kind: 'awning', x: ax + (bx - ax) * k + nx * 11 * side, y: ay + (by - ay) * k + ny * 11 * side, a: ang, c: rng.int(0, 5) });
-      }
-    }
-  }
-  // parked cars nosed up to the kerb, for colour and for scale
-  for (const st of STREETS) {
-    for (let i = 0; i < st.pts.length - 1; i++) {
-      const [ax, ay] = st.pts[i], [bx, by] = st.pts[i + 1];
-      const len = Math.hypot(bx - ax, by - ay) || 1;
-      const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      const ang = Math.atan2(by - ay, bx - ax);
-      for (let d = 34; d < len - 20; d += 58) {
-        if (rng.chance(0.68)) continue;
-        const k = d / len, side = rng.sign();
-        push({ kind: 'parked', x: ax + (bx - ax) * k + nx * 7 * side, y: ay + (by - ay) * k + ny * 7 * side, a: ang, c: rng.int(0, 6) });
-      }
-    }
   }
 })();
 function nodeById(id) { return NODES.find(n => n.id === id); }

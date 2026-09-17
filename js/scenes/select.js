@@ -30,20 +30,42 @@ function drawStageBack(ctx, t, opts = {}) {
   return floorY;
 }
 function drawArenaCrowd(ctx, crowd, t, top, bottom, mood, hype = 1) {
+  vgrad(ctx, top - 30, 0, 0, 0, 'rgba(0,0,0,0)', 'rgba(0,0,0,0)');   // no-op guard
   vgrad(ctx, 0, top - 30, W, bottom - top + 30, 'rgba(8,6,20,0)', 'rgba(8,6,20,0.92)');
+  // Forty thousand of them, and every one is a bug: antennae, a round back,
+  // two arms that go up when the room goes up, and a light in one hand.
   for (const c of crowd) {
     const jump = mood === 'angry' ? 0 : Math.sin(t * 5 * hype + c.o) * 3 * hype;
     const y = top + c.row * 9 + Math.round(jump);
-    const lit = mood !== 'angry' && c.lighter;
-    circle(ctx, c.x, y, 6, c.col); rect(ctx, c.x - 5, y + 4, 11, 18, c.col);
-    // arms go up when the crowd is jumping
-    if (mood !== 'angry' && jump < -1) { rect(ctx, c.x - 7, y - 4, 2, 8, c.col); rect(ctx, c.x + 5, y - 4, 2, 8, c.col); }
-    if (lit && Math.sin(t * 3 + c.o) > 0) {
-      const fy = y - 9 - (jump < -1 ? 5 : 0);
-      rect(ctx, c.x + 4, fy, 2, 4, '#ffd24a'); px(ctx, c.x + 4, fy - 1, '#fff8c0');
-      ctx.globalAlpha = 0.1; circle(ctx, c.x + 5, fy, 7, '#ffd24a'); ctx.globalAlpha = 1;
+    const up = mood !== 'angry' && jump < -1;
+    const x = Math.round(c.x);
+    const body = c.col;
+    // antennae, which is what makes a silhouette read as a bug and not a head
+    const ant = up ? 2 : 0;
+    rect(ctx, x - 5, y - 9 - ant, 1, 5, body); rect(ctx, x - 6, y - 10 - ant, 1, 2, body);
+    rect(ctx, x + 4, y - 9 - ant, 1, 5, body); rect(ctx, x + 5, y - 10 - ant, 1, 2, body);
+    // head and shell
+    circle(ctx, x, y, 5, body);
+    circle(ctx, x, y - 1, 4, lighten(body, 0.1));
+    rect(ctx, x - 5, y + 4, 11, 18, body);
+    rect(ctx, x - 5, y + 4, 11, 2, lighten(body, 0.16));
+    // the wing-case seam down the back
+    rect(ctx, x, y + 6, 1, 14, darken(body, 0.35));
+    // arms: down at the sides, up when the room is up
+    if (up) { rect(ctx, x - 8, y - 5, 2, 9, body); rect(ctx, x + 6, y - 5, 2, 9, body); }
+    else { rect(ctx, x - 7, y + 6, 2, 8, body); rect(ctx, x + 5, y + 6, 2, 8, body); }
+    // two eyes, just catching the stage light
+    if (mood !== 'angry') { px(ctx, x - 2, y - 1, '#5a5478'); px(ctx, x + 1, y - 1, '#5a5478'); }
+    // and the light stick, held up and waving out of time with everyone else
+    if (c.lighter && mood !== 'angry') {
+      const wag = Math.sin(t * 3 + c.o) * 3;
+      const fx2 = x + 6 + Math.round(wag), fy = y - 8 - (up ? 5 : 0);
+      const col = c.glow || '#ffd24a';
+      rect(ctx, fx2, fy, 2, 9, col);
+      rect(ctx, fx2, fy, 2, 3, '#fff8e0');
+      ctx.globalAlpha = 0.18; circle(ctx, fx2 + 1, fy + 3, 6, col); ctx.globalAlpha = 1;
     }
-    if (mood === 'angry' && c.o < 2) rect(ctx, c.x - 3, y - 2, 7, 4, '#2a0a0a');
+    if (mood === 'angry' && c.o < 2) rect(ctx, x - 3, y - 2, 7, 4, '#2a0a0a');
   }
 }
 class TitleScene {
@@ -116,10 +138,11 @@ class TitleScene {
     const bob = Math.round(Math.sin(this.t * 2) * 3);
     drawText(ctx, 'BUG BUSKER', W / 2, 38 + bob, '#ffd24a', { align: 'center', scale: 8, outline: '#5a2a10', shadow: '#20100a' });
     drawText(ctx, 'ORCHESTRA', W / 2, 96 + bob, '#ff9f68', { align: 'center', scale: 5, outline: '#5a2a10' });
-    // a real menu: full-size buttons with room to be pressed, not a list
-    const n = this.menu.items.length, rowH = n > 4 ? 38 : 44;
-    const inner = uiPanel(ctx, W / 2 - 168, 146, 336, rowH * n + 26);
-    this.menu.draw(ctx, inner.x + 14, inner.y + 8, inner.w - 28, rowH, 'buttons');
+    // the menu is a wall of lit signs, because that is what this city puts on
+    // the side of every building
+    const n = this.menu.items.length, rowH = n > 4 ? 50 : 58;
+    const bw = 330, bx = W / 2 - bw / 2, by = 150;
+    this.menu.draw(ctx, bx, by, bw, rowH, 'billboard');
     if (this.boot > 0) { const k = clamp(this.boot / 1, 0, 1); const h = H / 2 * easeInOut(k); vgrad(ctx, 0, 0, W, h, '#6a1020', '#3a0812'); vgrad(ctx, 0, H - h, W, h, '#3a0812', '#6a1020'); rect(ctx, 0, h - 4, W, 4, '#d9a520'); rect(ctx, 0, H - h, W, 4, '#d9a520'); }
   }
 }
@@ -148,7 +171,7 @@ class SelectScene {
   constructor() {
     this.t = 0; this.sel = 1; this.confirmT = 0; this.confirmed = false; this.fx = new Particles();
     this.rng = makeRng(99); this.crowd = [];
-    for (let i = 0; i < 150; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 3), o: this.rng.range(0, 6), lighter: this.rng.chance(0.3), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
+    for (let i = 0; i < 150; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 3), o: this.rng.range(0, 6), lighter: this.rng.chance(0.42), col: this.rng.pick(['#231b38', '#2b2246', '#1b1728', '#322648']), glow: this.rng.pick(['#ffd24a', '#8ad8ff', '#ff5a9a', '#6be585']) });
     this.spot = 1; this.cells = [];
     // ---- the sequence
     this.phase = 'dark'; this.phaseT = 0; this.introIdx = -1; this.lit = [false, false, false, false];

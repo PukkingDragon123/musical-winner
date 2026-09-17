@@ -19,7 +19,7 @@ class ConcertScene {
     this.straightIn = !!opts.straightIn;
     this.t = 0; this.phase = 'rise'; this.phaseT = 0; this.moveIdx = 0; this.fx = new Particles(); this.lightT = 0; this.strobe = 0; this.results = [];
     this.rng = makeRng(777); this.crowd = [];
-    for (let i = 0; i < 260; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 4), o: this.rng.range(0, 6), lighter: this.rng.chance(0.32), col: this.rng.pick(['#171224', '#1e1830', '#12101c']) });
+    for (let i = 0; i < 300; i++) this.crowd.push({ x: this.rng.range(-10, W + 10), row: this.rng.int(0, 4), o: this.rng.range(0, 6), lighter: this.rng.chance(0.44), col: this.rng.pick(['#231b38', '#2b2246', '#1b1728', '#322648']), glow: this.rng.pick(['#ffd24a', '#8ad8ff', '#ff5a9a', '#6be585', '#c58bff']) });
     this.layout(); this.pyroT = 0; this.throwables = []; this.booT = 0;
     this.haze = new Haze(8, 11);
     this.you = Game.run ? Game.run.members[0] : new Member({ name: 'STAG', presetKey: 'stag', spec: HERO_PRESETS.stag, instrument: 'guitar' });
