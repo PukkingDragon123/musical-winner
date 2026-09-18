@@ -1,7 +1,10 @@
 // ---------- Tokyo: a living map you travel with train passes ----------
 'use strict';
-const MAP_SCALE = 1.5;
-const MAPW = 1500, MAPH = 1140;
+// Tokyo at something closer to its own scale. Everything in this file is
+// authored in a 1000x760 sketch and multiplied up, so the city can grow by
+// changing one number: at 3x a walk across Shibuya is a walk, not a hop.
+const MAP_SCALE = 3;
+const MAPW = 3000, MAPH = 2280;
 const DISTRICTS = [
   { name: 'SHINJUKU', x: 300, y: 180, poly: [[190, 110], [430, 115], [435, 255], [190, 250]] },
   { name: 'KABUKICHO', x: 330, y: 118, poly: [[250, 80], [430, 85], [430, 140], [250, 138]] },
@@ -91,6 +94,9 @@ const NODES = [
   { id: 'ameyoko', x: 700, y: 120, name: 'AMEYOKO MARKET', type: 'pickup', icon: 'coin' },
   { id: 'sensoji', x: 900, y: 92, name: 'SENSO-JI', type: 'venue', venue: 'temple', icon: 'gig', sub: 'INCENSE AND LANTERNS' },
   { id: 'nakamise', x: 950, y: 120, name: 'NAKAMISE-DORI', type: 'pickup', icon: 'coin' },
+  // ---- where you sleep. A capsule hotel in Shimokitazawa, three minutes from
+  // the station, cheaper than anywhere with a door.
+  { id: 'capsule', x: 196, y: 462, name: 'HOTEL HACHI', type: 'home', icon: 'rest', sub: 'YOUR CAPSULE. FLOOR THREE.' },
   // ---- the places you go when you are not working: four attractions, each
   // one a room you walk around from above
   { id: 'uenozoo', x: 815, y: 92, name: 'UENO ZOO', type: 'place', place: 'zoo', icon: 'rest', sub: 'PANDAS, AND A VERY LOUD BIRD' },

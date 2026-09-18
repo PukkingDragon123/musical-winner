@@ -11,6 +11,44 @@ function drawTownBackdrop(ctx, t, kind, seed) {
 function drawParty(ctx, x, y, t, pose) { const r = Game.run; r.members.forEach((m, i) => { drawShadow(ctx, x + i * 52, y, 34); drawBugAt(ctx, m.spec, x + i * 52, y + Math.round(Math.sin(t * 3 + i)), { pose: pose || (Math.floor(t * 2 + i) % 3 ? 'idle' : 'play'), instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.4 }); }); }
 
 // ---------- Shop ----------
+// ---------- What a shop has in it, and what happens when you buy it ----------
+// Lifted out of the scene so the walkable shop and the old counter are the
+// same shop, stocked the same way.
+function shopStock(node) {
+  const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
+  const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
+  const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
+  for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
+  const me = r.members[0], myQ = me.quality || 1;
+  if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
+  const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
+  if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
+  stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
+  node.rerolls = node.rerolls || 0;
+  return stock;
+}
+function shopBuy(r, s) {
+  r.money -= s.price; s.sold = true; Audio.ui('cash');
+  if (s.kind === 'charm') { r.addCharm(s.key); return 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
+  if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); return VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
+  if (s.kind === 'use') { r.consumables.push(s.key); return 'Bought ' + CONSUMABLES[s.key].name + '.'; }
+  if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); return s.key === 'drums' ? 'You are behind a ' + KIT_LADDER[clamp(s.quality, 1, 5)].name.toLowerCase() + ' now.' : 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
+  if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; return 'You now play ' + INSTRUMENTS[s.key].name + '. Your old one is a spare.'; }
+  if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); return s.member.name + ' joins the band!'; }
+  if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; Audio.ui('eat'); return 'Back on your feet. +' + s.restores + ' stamina.'; }
+  return '';
+}
+// what a piece of stock is called and looks like on a shelf
+function stockLabel(s) {
+  if (s.kind === 'charm') return { title: CHARMS[s.key].name.toUpperCase(), desc: CHARMS[s.key].desc, icon: CHARMS[s.key].icon || 'star' };
+  if (s.kind === 'voucher') return { title: VOUCHERS[s.key].name.toUpperCase(), desc: VOUCHERS[s.key].desc, icon: 'note' };
+  if (s.kind === 'use') return { title: CONSUMABLES[s.key].name.toUpperCase(), desc: CONSUMABLES[s.key].desc, icon: CONSUMABLES[s.key].icon || 'food' };
+  if (s.kind === 'upgrade') return { title: 'UPGRADE: ' + INSTRUMENTS[s.key].name.toUpperCase(), desc: 'Your own instrument, rebuilt to ' + gearTier(s.quality).name + '.', icon: 'gig' };
+  if (s.kind === 'instrument') return { title: INSTRUMENTS[s.key].name.toUpperCase(), desc: 'Second hand, ' + gearTier(s.quality).name + '. You would switch to it.', icon: 'gig' };
+  if (s.kind === 'recruit') return { title: (s.member.name || 'SOMEBODY').toUpperCase(), desc: 'Wants to join. Plays ' + (INSTRUMENTS[s.member.instrument] ? INSTRUMENTS[s.member.instrument].name : s.member.instrument) + '.', icon: 'openmic' };
+  if (s.kind === 'rest') return { title: 'CANNED COFFEE', desc: 'Hot, from the machine. +' + s.restores + ' stamina.', icon: 'food' };
+  return { title: 'SOMETHING', desc: '', icon: 'star' };
+}
 class ShopScene {
   constructor(node) {
     this.node = node; const r = Game.run; this.t = 0;
@@ -27,19 +65,7 @@ class ShopScene {
       { name: hello[0], spec: this.owner, text: 'She gestures at the whole shop with a magazine and goes back to reading it.', tint: '#ffd24a', flip: true },
     ]);
   }
-  restock() {
-    const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
-    const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
-    const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
-    for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
-    // an upgrade for the instrument you already play, if there is headroom
-    const me = r.members[0], myQ = me.quality || 1;
-    if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
-    const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
-    if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
-    stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
-    this.node.stock = stock;
-  }
+  restock() { this.node.stock = shopStock(this.node); }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
   cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return s.key === 'drums' ? KIT_LADDER[clamp(s.quality, 1, 5)].name : gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
@@ -47,14 +73,7 @@ class ShopScene {
   canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
-    r.money -= s.price; s.sold = true; Audio.ui('cash');
-    if (s.kind === 'charm') { r.addCharm(s.key); this.msg = 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
-    else if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); this.msg = VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
-    else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
-    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = s.key === 'drums' ? 'You are behind a ' + KIT_LADDER[clamp(s.quality, 1, 5)].name.toLowerCase() + ' now.' : 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
-    else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
-    else if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); this.msg = s.member.name + ' joins the band!'; }
-    else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
+    this.msg = shopBuy(r, s);
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
   reroll() { const r = Game.run; const p = this.rerollPrice(); if (r.money < p) { this.msg = 'Not enough cash to reroll.'; Audio.ui('error'); return; } r.money -= p; this.node.rerolls++; this.restock(); this.sel = 0; Audio.ui('select'); this.msg = 'Fresh stock!'; }

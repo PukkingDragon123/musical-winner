@@ -4966,6 +4966,244 @@ const STORY = {
   ],
 };
 
+// ===== js/data/rooms.js =====
+// ---------- The rooms ----------
+// Four places laid out square by square: what is in them, who is in them, and
+// what happens when you stand in front of a thing and press the button.
+'use strict';
+// helper: a run of the same prop along a line
+function propRow(kind, tx, ty, tw, th, n, step, extra) {
+  const out = []; for (let i = 0; i < n; i++) out.push(Object.assign({ kind, tx: tx + i * step, ty, tw, th }, extra || {}));
+  return out;
+}
+const ROOMS = {
+  // ======================= NARITA, ARRIVALS =======================
+  airport: {
+    name: 'NARITA - ARRIVALS', sub: 'FOLLOW THE GREEN SIGNS', tint: '#1f5f4a',
+    w: 46, h: 20, zoom: 1.9,
+    floor: '#d8d2c4', floorAlt: '#cfc8b8', wall: '#6a7280', wallTop: '#98a2b0',
+    start: { tx: 4, ty: 10 },
+    enter: 'THE DOORS HISS SHUT BEHIND YOU.',
+    props: [].concat(
+      // the belt you came off, still going round
+      [{ kind: 'counter', tx: 6, ty: 3, tw: 14, th: 2, label: 'BAGGAGE BELT 4' }],
+      propRow('luggage', 7, 2, 3, 1, 4, 4),
+      propRow('trolley', 6, 6, 2, 2, 3, 5),
+      // the waiting area
+      propRow('seats', 4, 12, 4, 1, 3, 5),
+      propRow('seats', 4, 15, 4, 1, 3, 5),
+      [{ kind: 'plant', tx: 3, ty: 13, tw: 2, th: 2 }, { kind: 'plant', tx: 20, ty: 13, tw: 2, th: 2 }],
+      // the row of shops down the middle
+      [{ kind: 'shelf', tx: 23, ty: 3, tw: 6, th: 3, label: 'CONVENIENCE STORE' },
+       { kind: 'shelf', tx: 23, ty: 7, tw: 6, th: 3, label: 'SNACKS AND CHARMS' },
+       { kind: 'till', tx: 30, ty: 5, tw: 3, th: 2, label: 'TILL' },
+       { kind: 'glasscase', tx: 23, ty: 12, tw: 6, th: 3, label: 'CAPSULE TOYS' },
+       { kind: 'vending', tx: 31, ty: 12, tw: 2, th: 3, label: 'VENDING MACHINE' },
+       { kind: 'vending', tx: 33, ty: 12, tw: 2, th: 3, label: 'HOT DRINKS' }],
+      // information, and the boards nobody can read fast enough
+      [{ kind: 'counter', tx: 34, ty: 3, tw: 8, th: 2, label: 'INFORMATION' },
+       { kind: 'board', tx: 35, ty: 6, tw: 7, th: 4, overhead: true, walk: true },
+       { kind: 'gate', tx: 36, ty: 12, tw: 4, th: 3, text: 'GATE 41' }],
+      // signage overhead, all the way down
+      [{ kind: 'sign', tx: 8, ty: 9, tw: 4, th: 1, text: 'EXIT', col: '#1f6f4a', arrow: 1, walk: true, overhead: true },
+       { kind: 'sign', tx: 20, ty: 9, tw: 5, th: 1, text: 'TRAINS', col: '#2f5a9a', arrow: 1, walk: true, overhead: true },
+       { kind: 'sign', tx: 32, ty: 9, tw: 4, th: 1, text: 'EXIT', col: '#1f6f4a', arrow: 1, walk: true, overhead: true }],
+      propRow('bin', 12, 17, 1, 1, 4, 8),
+      propRow('pole', 15, 2, 1, 16, 2, 14, { walk: false }),
+      // the way out
+      [{ kind: 'sign', tx: 42, ty: 9, tw: 3, th: 2, text: 'TOKYO', col: '#1f6f4a', label: 'WALK OUT INTO TOKYO', act: 'exit' }]
+    ),
+    npcs: [
+      { name: 'A TIRED FAMILY', carry: 'bag', tag: 'Four of them, three suitcases, one of them asleep standing up.',
+        route: [{ tx: 8, ty: 6, wait: 2 }, { tx: 18, ty: 8, wait: 1 }, { tx: 30, ty: 10, wait: 3 }, { tx: 40, ty: 10, wait: 1 }, { tx: 20, ty: 5, wait: 2 }] },
+      { name: 'GROUND STAFF', carry: 'phone', tag: '"Trains are through there. Mind the step. Welcome back."',
+        route: [{ tx: 34, ty: 6, wait: 4, act: 'stand' }, { tx: 28, ty: 8, wait: 2 }, { tx: 34, ty: 6, wait: 5 }] },
+      { name: 'A BUSINESS BUG', carry: 'case', tag: 'Asleep on his feet. Been in the air eleven hours.',
+        route: [{ tx: 6, ty: 14, wait: 6, act: 'sit' }, { tx: 20, ty: 14, wait: 2 }, { tx: 6, ty: 14, wait: 8 }] },
+      { name: 'A STUDENT', carry: 'bag', tag: '"You in a band? You look like you are in a band."',
+        route: [{ tx: 24, ty: 16, wait: 2 }, { tx: 36, ty: 16, wait: 2 }, { tx: 30, ty: 11, wait: 3 }] },
+      { name: 'CLEANER', tag: 'Going over the same six feet of floor for the third time.',
+        route: [{ tx: 14, ty: 18, wait: 1 }, { tx: 26, ty: 18, wait: 1 }, { tx: 14, ty: 18, wait: 1 }] },
+      { name: 'A COUPLE', carry: 'umbrella', tag: 'Reading the sign, then the map, then the sign again.',
+        route: [{ tx: 21, ty: 4, wait: 3 }, { tx: 21, ty: 12, wait: 3 }, { tx: 33, ty: 8, wait: 2 }] },
+    ],
+    use(S, p) {
+      if (p.kind === 'vending') { const r = Game.run; if (r.money >= 2) { r.money -= 2; r.stamina = Math.min(r.staminaMax, r.stamina + 10); S.flash('CANNED COFFEE. -$2, +10 STAMINA.'); Audio.ui('eat'); } else S.flash('THE MACHINE WANTS TWO DOLLARS.'); return; }
+      if (p.kind === 'glasscase') { S.flash('CAPSULE TOYS. YOU HAVE NO COINS SMALL ENOUGH.'); return; }
+      if (p.kind === 'board') { S.flash('EVERY BOARD SAYS THE SAME THING: YOU ARE HERE.'); return; }
+      S.flash(p.label || 'NOTHING TO DO HERE.');
+    },
+  },
+  // ======================= THE SECOND-HAND MUSIC SHOP =======================
+  hardoff: {
+    name: 'OFF-BEAT USED GEAR', sub: 'EVERYTHING HERE BELONGED TO SOMEBODY', tint: '#1f4a7a',
+    w: 26, h: 16, zoom: 2.4,
+    floor: '#c8c2b0', floorAlt: '#bfb8a4', wall: '#3f4a5c', wallTop: '#5f6a7c',
+    start: { tx: 13, ty: 14 },
+    enter: 'IRASSHAIMASE. NOBODY LOOKS UP.',
+    props: [].concat(
+      [{ kind: 'wallguitars', tx: 2, ty: 1, tw: 10, th: 3, label: 'GUITARS ON THE WALL' },
+       { kind: 'wallguitars', tx: 14, ty: 1, tw: 9, th: 3, label: 'MORE GUITARS' },
+       { kind: 'amps', tx: 2, ty: 5, tw: 7, th: 2, label: 'AMPS, ALL WORKING' },
+       { kind: 'amps', tx: 17, ty: 5, tw: 6, th: 2, label: 'AMPS, MOSTLY WORKING' },
+       { kind: 'pedals', tx: 11, ty: 5, tw: 4, th: 2, label: 'PEDAL WALL' },
+       { kind: 'shelf', tx: 2, ty: 9, tw: 5, th: 3 },
+       { kind: 'shelf', tx: 9, ty: 9, tw: 5, th: 3 },
+       { kind: 'shelf', tx: 16, ty: 9, tw: 5, th: 3 },
+       { kind: 'glasscase', tx: 2, ty: 13, tw: 6, th: 2 },
+       { kind: 'crate', tx: 10, ty: 13, tw: 5, th: 2, label: 'CRATE OF RECORDS' },
+       { kind: 'till', tx: 21, ty: 12, tw: 4, th: 2, label: 'THE TILL' },
+       { kind: 'poster', tx: 24, ty: 2, tw: 2, th: 3, walk: true },
+       { kind: 'poster', tx: 24, ty: 6, tw: 2, th: 3, walk: true },
+       { kind: 'bin', tx: 24, ty: 14, tw: 1, th: 1 }]
+    ),
+    npcs: [
+      { name: 'THE OWNER', carry: 'phone', tag: '"Everything is as it is. Plug it in if you want. Do not plug in the orange one."',
+        route: [{ tx: 22, ty: 11, wait: 8, act: 'stand' }, { tx: 18, ty: 11, wait: 3 }, { tx: 22, ty: 11, wait: 9 }] },
+      { name: 'A REGULAR', carry: 'case', tag: '"Been coming here since the nineties. They know what I want before I do."',
+        route: [{ tx: 5, ty: 8, wait: 4 }, { tx: 12, ty: 8, wait: 3 }, { tx: 19, ty: 8, wait: 4 }, { tx: 12, ty: 12, wait: 2 }] },
+      { name: 'A KID', tag: 'Staring at a bass he is nine hundred dollars away from.',
+        route: [{ tx: 16, ty: 4, wait: 7, act: 'stand' }, { tx: 8, ty: 7, wait: 2 }, { tx: 16, ty: 4, wait: 8 }] },
+    ],
+    use(S, p) { S.flash(p.label ? p.label + '.' : 'A LOT OF DUST AND A LOT OF HISTORY.'); },
+    buy(S, p) {
+      const r = Game.run, it = p.item;
+      if (it.sold) return;
+      if (r.money < it.price) { S.flash('NOT ENOUGH FOR THAT.'); Audio.ui('error'); return; }
+      const msg = shopBuy(r, it.stock);
+      it.sold = it.stock.sold; S.flash(msg.toUpperCase()); r.save();
+      S.fx.burst(S.cam.sx(p.x + p.w / 2), S.cam.sy(p.y), 12, { color: ['#ffd24a', '#fff'], speed: 80, life: 0.6, kind: 'star', size: 2, gravity: 120 });
+    },
+  },
+  // ======================= THE RAMEN COUNTER =======================
+  ramen: {
+    name: 'MENYA HACHI', sub: 'TICKET FIRST. THEN SIT.', tint: '#8a2a1c',
+    w: 20, h: 12, zoom: 2.8,
+    floor: '#8a7a5e', floorAlt: '#7f7054', wall: '#4a3524', wallTop: '#6a4f36',
+    start: { tx: 10, ty: 10 },
+    enter: 'IT IS THE SIZE OF A CORRIDOR AND SMELLS LIKE HEAVEN.',
+    props: [].concat(
+      [{ kind: 'noren', tx: 6, ty: 0, tw: 8, th: 1, walk: true, overhead: true },
+       { kind: 'ticketmachine', tx: 2, ty: 8, tw: 2, th: 3, label: 'TICKET MACHINE', act: 'ticket' },
+       { kind: 'ramencounter', tx: 3, ty: 4, tw: 14, th: 2, label: 'THE COUNTER', act: 'counter' },
+       { kind: 'kitchen', tx: 3, ty: 1, tw: 14, th: 2 },
+       { kind: 'stools', tx: 3, ty: 7, tw: 14, th: 1, label: 'SIT DOWN', act: 'sit' },
+       { kind: 'water', tx: 17, ty: 7, tw: 2, th: 2, label: 'WATER AND CUPS' },
+       { kind: 'bin', tx: 18, ty: 10, tw: 1, th: 1 },
+       { kind: 'poster', tx: 0, ty: 2, tw: 1, th: 3, walk: true }]
+    ),
+    npcs: [
+      { name: 'THE CHEF', tag: '"Ticket. Then sit. Then eat. Then go."', speed: 30,
+        route: [{ tx: 6, ty: 3, wait: 3, act: 'work' }, { tx: 12, ty: 3, wait: 3, act: 'work' }, { tx: 9, ty: 3, wait: 4, act: 'work' }] },
+      { name: 'A SALARYMAN', tag: 'Eating with the focus of somebody with eleven minutes.',
+        route: [{ tx: 6, ty: 7, wait: 12, act: 'eat' }, { tx: 6, ty: 7, wait: 12, act: 'eat' }] },
+      { name: 'A STUDENT', tag: '"Extra noodles are free. Do not tell anyone."',
+        route: [{ tx: 13, ty: 7, wait: 9, act: 'eat' }, { tx: 15, ty: 9, wait: 3 }, { tx: 13, ty: 7, wait: 9 }] },
+    ],
+    use(S, p) {
+      const r = Game.run;
+      if (p.act === 'ticket') {
+        if (S.ticket) { S.flash('YOU ALREADY HAVE A TICKET. GIVE IT TO THE COUNTER.'); return; }
+        S.menu = S.menu || 0;
+        const M = RAMEN_MENU[S.menu % RAMEN_MENU.length];
+        if (r.money < M.price) { S.flash('THE MACHINE WANTS ' + fmtMoney(M.price) + '. IT DOES NOT NEGOTIATE.'); Audio.ui('error'); S.menu++; return; }
+        r.money -= M.price; S.ticket = M; S.menu++;
+        Audio.ui('cash'); S.flash('A TICKET FOR ' + M.name + '. ' + fmtMoney(M.price) + '.');
+        return;
+      }
+      if (p.act === 'counter') {
+        if (!S.ticket) { S.flash('TICKET FIRST. THE MACHINE IS BY THE DOOR.'); return; }
+        if (S.cooking != null) { S.flash('IT IS COMING.'); return; }
+        S.cooking = 4.5; S.speak('THE CHEF', 'He takes the ticket without looking at it and drops noodles into the water.');
+        return;
+      }
+      if (p.act === 'sit') {
+        if (!S.bowl) { S.flash(S.cooking != null ? 'NOT YET. IT IS COOKING.' : 'NOTHING TO EAT YET.'); return; }
+        const M = S.bowl; S.bowl = null;
+        for (const m of r.members) { m.hunger = 0; m.stamina = Math.min(m.maxStamina || 100, (m.stamina || 0) + 20); }
+        r.stamina = Math.min(r.staminaMax, r.stamina + M.stam);
+        r.gratitude = (r.gratitude || 0) + (M.grat || 0);
+        Audio.ui('eat'); r.save();
+        S.speak('YOU', M.after);
+        S.flash('+' + M.stam + ' STAMINA. EVERYBODY IS FED.');
+        return;
+      }
+      if (p.kind === 'water') { S.flash('COLD WATER. YOU POUR ONE FOR EVERYBODY.'); return; }
+      S.flash(p.label || 'STEAM.');
+    },
+    tick(S, dt) {
+      if (S.cooking != null) { S.cooking -= dt; if (S.cooking <= 0) { S.cooking = null; S.bowl = S.ticket; S.ticket = null; Audio.ui('fanfare'); S.flash(S.bowl.name + ' IS UP. SIT DOWN.'); } }
+    },
+    over(ctx, S) {
+      // the bowl on the counter when it is ready, and the steam off it
+      if (S.bowl) {
+        const bx = 10 * RT, by = 5 * RT;
+        ellipsePx(ctx, bx, by, 11, 7, '#f0ece2'); ellipsePx(ctx, bx, by - 1, 9, 5, '#e0a04a');
+        rect(ctx, bx - 3, by - 3, 7, 2, '#f4e8d0'); rect(ctx, bx + 2, by - 2, 4, 2, '#c84a3a');
+        for (let i = 0; i < 4; i++) { const k = ((ANIM_T * 0.8 + i * 0.25) % 1); ctx.globalAlpha = 0.5 * (1 - k); rect(ctx, bx - 4 + i * 3, by - 8 - k * 14, 2, 4, '#f0ece2'); ctx.globalAlpha = 1; }
+      }
+      if (S.cooking != null) {
+        const bx = 9 * RT, by = 2 * RT;
+        for (let i = 0; i < 6; i++) { const k = ((ANIM_T * 1.2 + i * 0.18) % 1); ctx.globalAlpha = 0.45 * (1 - k); rect(ctx, bx - 8 + i * 4, by - k * 20, 3, 5, '#e8ecf4'); ctx.globalAlpha = 1; }
+      }
+    },
+  },
+  // ======================= THE CAPSULE HOTEL =======================
+  capsule: {
+    name: 'HOTEL HACHI - CAPSULES', sub: 'SHOES OFF. FLOOR THREE.', tint: '#2f3f6a',
+    w: 24, h: 16, zoom: 2.3,
+    floor: '#3a4256', floorAlt: '#333b4e', wall: '#1f2636', wallTop: '#39445c',
+    start: { tx: 12, ty: 14 },
+    enter: 'THE CORRIDOR SMELLS OF CLEAN TOWELS AND HOT VENDING-MACHINE SOUP.',
+    dark: 'rgba(12,18,38,0.22)',
+    props: [].concat(
+      [{ kind: 'counter', tx: 8, ty: 12, tw: 8, th: 2, label: 'CHECK IN', act: 'checkin' },
+       { kind: 'shoerack', tx: 2, ty: 12, tw: 5, th: 2, label: 'SHOE LOCKERS' },
+       { kind: 'lockers', tx: 17, ty: 11, tw: 6, th: 4, label: 'YOUR LOCKER', act: 'locker' },
+       { kind: 'pods', tx: 2, ty: 1, tw: 10, th: 5, label: 'CAPSULES 101-110', act: 'sleep' },
+       { kind: 'pods', tx: 13, ty: 1, tw: 9, th: 5, label: 'CAPSULES 111-118', act: 'sleep' },
+       { kind: 'washbasin', tx: 2, ty: 8, tw: 6, th: 2, label: 'WASH AREA' },
+       { kind: 'vending', tx: 10, ty: 8, tw: 2, th: 3, label: 'VENDING MACHINE', act: 'vend' },
+       { kind: 'vending', tx: 12, ty: 8, tw: 2, th: 3, label: 'HOT SOUP', act: 'vend' },
+       { kind: 'table', tx: 16, ty: 8, tw: 4, th: 2, label: 'COMMON TABLE' },
+       { kind: 'tv', tx: 21, ty: 7, tw: 2, th: 3, walk: true, label: 'THE TELEVISION' },
+       { kind: 'bench', tx: 16, ty: 6, tw: 5, th: 1 },
+       { kind: 'rug', tx: 9, ty: 6, tw: 6, th: 1, walk: true, col: '#5a3a4a' },
+       { kind: 'sign', tx: 5, ty: 6, tw: 3, th: 1, text: 'BATHS', col: '#2f5a9a', walk: true, overhead: true },
+       { kind: 'bin', tx: 22, ty: 14, tw: 1, th: 1 }]
+    ),
+    npcs: [
+      { name: 'THE NIGHT CLERK', tag: '"Curfew is never. Bath closes at two. Sleep well."',
+        route: [{ tx: 12, ty: 11, wait: 10, act: 'stand' }, { tx: 9, ty: 11, wait: 3 }, { tx: 12, ty: 11, wait: 12 }] },
+      { name: 'A GUEST', carry: 'bag', tag: 'Been here six weeks. Says it is cheaper than a flat and there is soup.',
+        route: [{ tx: 18, ty: 9, wait: 5 }, { tx: 11, ty: 9, wait: 3 }, { tx: 6, ty: 10, wait: 4 }, { tx: 18, ty: 9, wait: 6 }] },
+      { name: 'ANOTHER MUSICIAN', carry: 'case', tag: '"You playing tomorrow? Everybody here is playing tomorrow."',
+        route: [{ tx: 17, ty: 7, wait: 8, act: 'sit' }, { tx: 20, ty: 10, wait: 3 }, { tx: 17, ty: 7, wait: 9 }] },
+    ],
+    use(S, p) {
+      const r = Game.run;
+      if (p.act === 'sleep') {
+        r.nightPending = true; r.save();
+        Audio.ui('select');
+        Game.go(() => new NightScene(), 'fade', { dur: 0.8 });
+        S.left = true;
+        return;
+      }
+      if (p.act === 'vend') { if (r.money >= 3) { r.money -= 3; r.stamina = Math.min(r.staminaMax, r.stamina + 14); Audio.ui('eat'); S.flash('HOT CORN SOUP. -$3, +14 STAMINA.'); } else S.flash('THREE DOLLARS. YOU ARE SHORT.'); return; }
+      if (p.act === 'locker') { S.flash('YOUR WHOLE LIFE FITS IN IT, WHICH IS THE POINT.'); return; }
+      if (p.act === 'checkin') { S.speak('THE NIGHT CLERK', 'She slides a wristband across without looking up. "Same as last night. Three-oh-four."'); return; }
+      S.flash(p.label || 'QUIET.');
+    },
+  },
+};
+// what the machine sells
+const RAMEN_MENU = [
+  { name: 'SHOYU RAMEN', price: 7, stam: 26, grat: 0, after: 'Salt, fat, noodles. You feel like a person again.' },
+  { name: 'MISO RAMEN, EXTRA CORN', price: 9, stam: 32, grat: 1, after: 'You get corn in every single mouthful. Worth the two dollars.' },
+  { name: 'TSUKEMEN', price: 10, stam: 34, grat: 1, after: 'Dipping noodles. You take your time. Nobody hurries you.' },
+  { name: 'GYOZA SET', price: 8, stam: 24, grat: 0, after: 'Six of them, and the last one is always the best.' },
+];
+
 // ===== js/data/songs.js =====
 // ---------- Real music: public-domain melodies + the rock opera ----------
 'use strict';
@@ -5326,8 +5564,11 @@ function chartFromMelody(song, sections, difficulty, rng, opts = {}) {
 // ===== js/data/sfmap.js =====
 // ---------- Tokyo: a living map you travel with train passes ----------
 'use strict';
-const MAP_SCALE = 1.5;
-const MAPW = 1500, MAPH = 1140;
+// Tokyo at something closer to its own scale. Everything in this file is
+// authored in a 1000x760 sketch and multiplied up, so the city can grow by
+// changing one number: at 3x a walk across Shibuya is a walk, not a hop.
+const MAP_SCALE = 3;
+const MAPW = 3000, MAPH = 2280;
 const DISTRICTS = [
   { name: 'SHINJUKU', x: 300, y: 180, poly: [[190, 110], [430, 115], [435, 255], [190, 250]] },
   { name: 'KABUKICHO', x: 330, y: 118, poly: [[250, 80], [430, 85], [430, 140], [250, 138]] },
@@ -5417,6 +5658,9 @@ const NODES = [
   { id: 'ameyoko', x: 700, y: 120, name: 'AMEYOKO MARKET', type: 'pickup', icon: 'coin' },
   { id: 'sensoji', x: 900, y: 92, name: 'SENSO-JI', type: 'venue', venue: 'temple', icon: 'gig', sub: 'INCENSE AND LANTERNS' },
   { id: 'nakamise', x: 950, y: 120, name: 'NAKAMISE-DORI', type: 'pickup', icon: 'coin' },
+  // ---- where you sleep. A capsule hotel in Shimokitazawa, three minutes from
+  // the station, cheaper than anywhere with a door.
+  { id: 'capsule', x: 196, y: 462, name: 'HOTEL HACHI', type: 'home', icon: 'rest', sub: 'YOUR CAPSULE. FLOOR THREE.' },
   // ---- the places you go when you are not working: four attractions, each
   // one a room you walk around from above
   { id: 'uenozoo', x: 815, y: 92, name: 'UENO ZOO', type: 'place', place: 'zoo', icon: 'rest', sub: 'PANDAS, AND A VERY LOUD BIRD' },
@@ -6340,6 +6584,235 @@ class ScoreState {
     this.total = this.basePay + this.cash.reduce((a, c) => a + c.n, 0);
     return this.total;
   }
+}
+
+// ===== js/sim/world.js =====
+// ---------- The top-down world ----------
+// One engine for every place you can stand in: the airport, the street, a
+// shop, a restaurant, the hotel. It owns movement, collision, the camera and
+// everybody else walking about, so all of those places feel like the same
+// game rather than a set of different screens.
+'use strict';
+// ---- Eight directions, and the sprite frame that goes with each
+const DIR8 = [
+  { dx: 0, dy: -1, name: 'n' }, { dx: 1, dy: -1, name: 'ne' }, { dx: 1, dy: 0, name: 'e' }, { dx: 1, dy: 1, name: 'se' },
+  { dx: 0, dy: 1, name: 's' }, { dx: -1, dy: 1, name: 'sw' }, { dx: -1, dy: 0, name: 'w' }, { dx: -1, dy: -1, name: 'nw' },
+];
+function dirIndex(dx, dy) {
+  if (!dx && !dy) return 4;
+  const a = Math.atan2(dy, dx);                    // -pi..pi, 0 = east
+  return ((Math.round(a / (Math.PI / 4)) + 2) + 8) % 8;
+}
+// ---- A body that walks. Acceleration, friction and a slide along walls, so
+// clipping a doorframe pushes you round it instead of stopping you dead.
+class Walker {
+  constructor(x, y, opts = {}) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.r = opts.r || 9;
+    this.speed = opts.speed || 128;
+    this.accel = opts.accel || 1100;
+    this.friction = opts.friction || 1000;
+    this.dir = 4; this.walkT = 0; this.moving = false;
+    this.spec = opts.spec || null;
+    this.scale = opts.scale || 1.4;
+  }
+  // in: {x, y} desired direction, length <= 1
+  step(dt, ix, iy, solid) {
+    const len = Math.hypot(ix, iy);
+    if (len > 1) { ix /= len; iy /= len; }
+    const want = Math.min(1, len);
+    if (want > 0.02) {
+      this.vx += ix * this.accel * dt;
+      this.vy += iy * this.accel * dt;
+      const sp = Math.hypot(this.vx, this.vy), max = this.speed * want;
+      if (sp > max) { this.vx = this.vx / sp * max; this.vy = this.vy / sp * max; }
+      this.dir = dirIndex(ix, iy);
+      this.moving = true;
+    } else {
+      const sp = Math.hypot(this.vx, this.vy);
+      if (sp > 0) {
+        const drop = Math.min(sp, this.friction * dt);
+        this.vx -= this.vx / sp * drop; this.vy -= this.vy / sp * drop;
+      }
+      this.moving = Math.hypot(this.vx, this.vy) > 8;
+    }
+    const moved = this.slide(this.vx * dt, this.vy * dt, solid);
+    if (this.moving) this.walkT += dt * (0.6 + Math.hypot(this.vx, this.vy) / this.speed);
+    return moved;
+  }
+  // move each axis on its own, so a wall on one side never blocks the other
+  slide(dx, dy, solid) {
+    let moved = 0;
+    const R = this.r;
+    if (dx) {
+      const nx = this.x + dx;
+      if (!solid(nx + Math.sign(dx) * R, this.y - R * 0.6) && !solid(nx + Math.sign(dx) * R, this.y + R * 0.6)) { this.x = nx; moved += Math.abs(dx); }
+      else this.vx = 0;
+    }
+    if (dy) {
+      const ny = this.y + dy;
+      if (!solid(this.x - R * 0.6, ny + Math.sign(dy) * R) && !solid(this.x + R * 0.6, ny + Math.sign(dy) * R)) { this.y = ny; moved += Math.abs(dy); }
+      else this.vy = 0;
+    }
+    return moved;
+  }
+  get facing() { return DIR8[this.dir]; }
+  get flip() { return this.facing.dx < 0; }
+  // the pose to draw: two walk frames, or standing
+  get pose() { return this.moving ? (Math.floor(this.walkT * 7) % 2 ? 'walk1' : 'walk2') : 'idle'; }
+}
+// ---- Input: keys, a virtual stick on touch, and tap-to-walk
+class WorldInput {
+  constructor() { this.keys = new Set(); this.stick = null; this.tapGoal = null; this.pointers = new Map(); }
+  key(code) { this.keys.add(code); this.tapGoal = null; }
+  keyUp(code) { this.keys.delete(code); }
+  clear() { this.keys.clear(); this.stick = null; this.tapGoal = null; this.pointers.clear(); }
+  // where the player wants to go this frame, as a vector
+  vector(from) {
+    let ix = 0, iy = 0;
+    if (this.keys.has('ArrowLeft') || this.keys.has('KeyA')) ix -= 1;
+    if (this.keys.has('ArrowRight') || this.keys.has('KeyD')) ix += 1;
+    if (this.keys.has('ArrowUp') || this.keys.has('KeyW')) iy -= 1;
+    if (this.keys.has('ArrowDown') || this.keys.has('KeyS')) iy += 1;
+    if (ix || iy) return { x: ix, y: iy };
+    if (this.stick) return { x: this.stick.x, y: this.stick.y };
+    if (this.tapGoal && from) {
+      const dx = this.tapGoal.x - from.x, dy = this.tapGoal.y - from.y, d = Math.hypot(dx, dy);
+      if (d < 6) { this.tapGoal = null; return { x: 0, y: 0 }; }
+      return { x: dx / d, y: dy / d };
+    }
+    return { x: 0, y: 0 };
+  }
+  // the stick lives wherever the thumb first lands
+  down(x, y, id) { if (!Game.touch) return false; if (this.stick) return false; this.stick = { ox: x, oy: y, x: 0, y: 0, id }; this.pointers.set(id, 'stick'); return true; }
+  move(x, y, id) {
+    if (!this.stick || this.stick.id !== id) return false;
+    const dx = x - this.stick.ox, dy = y - this.stick.oy, d = Math.hypot(dx, dy);
+    const dead = 6, max = 46;
+    if (d < dead) { this.stick.x = 0; this.stick.y = 0; return true; }
+    const k = Math.min(1, (d - dead) / (max - dead));
+    this.stick.x = dx / d * k; this.stick.y = dy / d * k;
+    return true;
+  }
+  up(id) { if (this.stick && this.stick.id === id) this.stick = null; this.pointers.delete(id); }
+  drawStick(ctx) {
+    if (!this.stick) return;
+    const s = this.stick;
+    ctx.globalAlpha = 0.18; circle(ctx, s.ox, s.oy, 46, '#ffffff'); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.3; ringPx(ctx, s.ox, s.oy, 46, '#ffffff'); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.5; circle(ctx, s.ox + s.x * 40, s.oy + s.y * 40, 16, '#ffffff'); ctx.globalAlpha = 1;
+  }
+}
+// ---- A camera that follows, zooms and stays inside the world
+class WorldCam {
+  constructor(opts = {}) {
+    this.x = 0; this.y = 0; this.z = opts.z || 2; this.targetZ = this.z;
+    this.view = opts.view || { x: 0, y: 26, w: W, h: H - 60 };
+    this.bounds = opts.bounds || { w: 4000, h: 4000 };
+    this.lead = opts.lead != null ? opts.lead : 0.18;
+    this.shakeT = 0;
+  }
+  snapTo(x, y) { const t = this.want(x, y, 0, 0); this.x = t.x; this.y = t.y; }
+  want(x, y, vx, vy) {
+    const V = this.view, z = this.z;
+    let cx = x * z - V.w / 2 + (vx || 0) * this.lead;
+    let cy = y * z - V.h / 2 + (vy || 0) * this.lead;
+    const maxX = Math.max(0, this.bounds.w * z - V.w), maxY = Math.max(0, this.bounds.h * z - V.h);
+    return { x: clamp(cx, 0, maxX), y: clamp(cy, 0, maxY) };
+  }
+  follow(dt, x, y, vx, vy) {
+    this.z += (this.targetZ - this.z) * Math.min(1, dt * 4);
+    const t = this.want(x, y, vx, vy);
+    const k = Math.min(1, dt * 7);
+    this.x += (t.x - this.x) * k; this.y += (t.y - this.y) * k;
+  }
+  // world -> screen
+  sx(x) { return Math.round(x * this.z - this.x + this.view.x); }
+  sy(y) { return Math.round(y * this.z - this.y + this.view.y); }
+  // screen -> world
+  wx(x) { return (x - this.view.x + this.x) / this.z; }
+  wy(y) { return (y - this.view.y + this.y) / this.z; }
+  push(ctx) { ctx.save(); ctx.beginPath(); ctx.rect(this.view.x, this.view.y, this.view.w, this.view.h); ctx.clip(); ctx.translate(this.view.x - this.x, this.view.y - this.y); ctx.scale(this.z, this.z); }
+  pop(ctx) { ctx.restore(); }
+  visible(x, y, pad = 40) {
+    const s = { x: this.sx(x), y: this.sy(y) };
+    return s.x > this.view.x - pad && s.x < this.view.x + this.view.w + pad && s.y > this.view.y - pad && s.y < this.view.y + this.view.h + pad;
+  }
+}
+// ---- Somebody else who lives here.
+// An NPC is not a wanderer: it has a list of places it means to be, in order,
+// and it walks to each one and stands there for a while doing its thing.
+class Npc {
+  constructor(opts) {
+    this.body = new Walker(opts.x, opts.y, { r: opts.r || 8, speed: opts.speed || 52, accel: 700, friction: 900, scale: opts.scale || 1.2 });
+    this.spec = opts.spec;
+    this.route = opts.route || [];              // [{x, y, wait, act}]
+    this.i = 0; this.wait = opts.wait || 0;
+    this.act = 'walk';
+    this.tag = opts.tag || null;                // what they say if you talk
+    this.name = opts.name || null;
+    this.carry = opts.carry || null;            // a bag, a case, a tray
+    this.o = Math.random() * 6.3;
+  }
+  get x() { return this.body.x; } get y() { return this.body.y; }
+  update(dt, solid) {
+    if (this.wait > 0) { this.wait -= dt; this.body.step(dt, 0, 0, solid); return; }
+    const g = this.route[this.i];
+    if (!g) { this.body.step(dt, 0, 0, solid); return; }
+    const dx = g.x - this.body.x, dy = g.y - this.body.y, d = Math.hypot(dx, dy);
+    if (d < 7) {
+      this.wait = g.wait != null ? g.wait : 1.5;
+      this.act = g.act || 'stand';
+      this.i = (this.i + 1) % this.route.length;
+      return;
+    }
+    this.act = 'walk';
+    const moved = this.body.step(dt, dx / d, dy / d, solid);
+    // stuck against something: give up on this stop and try the next
+    if (moved < 0.2) { this.stuck = (this.stuck || 0) + dt; if (this.stuck > 1.2) { this.stuck = 0; this.i = (this.i + 1) % this.route.length; } }
+    else this.stuck = 0;
+  }
+  draw(ctx, t) {
+    const b = this.body;
+    drawShadow(ctx, b.x, b.y + 6, 18 * b.scale, 0.3);
+    drawBugAt(ctx, this.spec, b.x, b.y + 8, { pose: b.pose, scale: b.scale, flip: b.flip, bounce: b.moving ? 0.9 : 0.5, phase: this.o });
+    if (this.carry) drawCarried(ctx, this.carry, b.x, b.y, b.flip);
+  }
+}
+// the thing an NPC is holding, which is most of what tells you who they are
+function drawCarried(ctx, kind, x, y, flip) {
+  const s = flip ? -1 : 1, hx = x + s * 12;
+  if (kind === 'case') { rect(ctx, hx - 4, y - 2, 9, 14, '#4a3a2a'); rect(ctx, hx - 4, y - 2, 9, 2, '#6a5340'); rect(ctx, hx - 1, y - 5, 3, 4, '#8a8a98'); }
+  else if (kind === 'bag') { rect(ctx, hx - 4, y + 2, 8, 9, '#c8402c'); rect(ctx, hx - 3, y - 1, 6, 3, '#8a2a1c'); }
+  else if (kind === 'tray') { rect(ctx, hx - 8, y - 1, 16, 4, '#d8d2c4'); rect(ctx, hx - 5, y - 4, 6, 3, '#e8503a'); rect(ctx, hx + 2, y - 3, 4, 2, '#f2efe8'); }
+  else if (kind === 'amp') { rect(ctx, hx - 6, y - 4, 13, 14, '#241f2e'); rect(ctx, hx - 5, y - 3, 11, 8, '#3a3448'); rect(ctx, hx - 5, y + 6, 11, 2, '#8a8a98'); }
+  else if (kind === 'phone') { rect(ctx, hx - 2, y - 4, 5, 8, '#1b1e26'); rect(ctx, hx - 1, y - 3, 3, 5, '#8ad8ff'); }
+  else if (kind === 'umbrella') { rect(ctx, hx - 1, y - 8, 2, 16, '#3a3448'); ellipsePx(ctx, hx, y - 9, 8, 4, '#cfe4f8'); }
+}
+// ---- Things in the world you can walk up to and use
+// {x, y, w, h, label, kind, act, solid}
+function nearestProp(props, x, y, reach = 26) {
+  let best = null, bd = Infinity;
+  for (const p of props) {
+    if (p.hidden) continue;
+    const cx = p.x + (p.w || 0) / 2, cy = p.y + (p.h || 0) / 2;
+    const dx = Math.max(Math.abs(x - cx) - (p.w || 0) / 2, 0), dy = Math.max(Math.abs(y - cy) - (p.h || 0) / 2, 0);
+    const d = Math.hypot(dx, dy);
+    if (d < reach && d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+// the little prompt over whatever you are standing in front of
+function drawPrompt(ctx, cam, p, t, label) {
+  const sx = cam.sx(p.x + (p.w || 0) / 2), sy = cam.sy(p.y) - 14;
+  const txt = label || p.label || '';
+  const w = textWidth(txt, { scale: 2 }) + 18;
+  const bob = Math.round(Math.sin(t * 5) * 2);
+  rect(ctx, sx - w / 2, sy - 22 + bob, w, 22, 'rgba(10,8,20,0.86)');
+  frame(ctx, sx - w / 2, sy - 22 + bob, w, 22, '#ffd24a');
+  drawText(ctx, txt, sx, sy - 15 + bob, '#ffe9a8', { align: 'center', scale: 2 });
+  ctx.fillStyle = '#ffd24a';
+  ctx.beginPath(); ctx.moveTo(sx - 4, sy + bob); ctx.lineTo(sx + 4, sy + bob); ctx.lineTo(sx, sy + 5 + bob); ctx.fill();
 }
 
 // ===== js/sim/rhythm.js =====
@@ -7674,6 +8147,122 @@ class Crowd {
   }
 }
 
+// ===== js/sim/bugcrowd.js =====
+// ---------- A crowd of bugs, however many you need ----------
+// Close up they are the same bugs as everybody else. Further back they become
+// silhouettes — but silhouettes with shape to them: horns, antennae, wing
+// cases, tall ones, round ones. That is what lets a stadium hold forty
+// thousand of them without turning into soup.
+'use strict';
+const BUG_SHAPES = ['beetle', 'stag', 'moth', 'mantis', 'roach', 'ladybug', 'cricket', 'rhino'];
+function makeBugCrowd(n, seed, opts = {}) {
+  const r = makeRng(seed >>> 0);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({
+      shape: r.pick(BUG_SHAPES),
+      h: r.range(0.8, 1.35),                 // how tall they are
+      o: r.range(0, 6.3),                    // where they are in the bounce
+      hype: r.range(0.7, 1.3),
+      col: r.pick(opts.cols || ['#1b1728', '#231b38', '#2b2246', '#322648', '#141020']),
+      glow: r.chance(opts.glowRate != null ? opts.glowRate : 0.34) ? r.pick(['#ffd24a', '#8ad8ff', '#ff5a9a', '#6be585', '#c58bff']) : null,
+      arms: r.chance(0.5),
+      x: 0, y: 0, z: 0,
+    });
+  }
+  return out;
+}
+// one bug, as a solid shape. `s` is pixels per unit: about 8 is a distant
+// silhouette, 20 is somebody you could talk to.
+function drawBugSilhouette(ctx, b, x, y, s, t, mood = 'happy', detail = 0) {
+  const bounce = mood === 'flat' ? 0 : Math.sin(t * 5 * b.hype + b.o);
+  const up = bounce < -0.3 && mood !== 'flat';
+  const yy = y + (mood === 'flat' ? 0 : bounce * s * 0.14);
+  const col = b.col, hi = lighten(col, detail > 0 ? 0.22 : 0.1);
+  const bw = s * 0.52, bh = s * 0.72 * b.h;
+  // the shadow it stands in
+  ctx.globalAlpha = 0.22; ellipsePx(ctx, x, y + bh * 0.62, bw * 0.8, s * 0.1, '#000'); ctx.globalAlpha = 1;
+  // body: a wing case with a seam
+  ellipsePx(ctx, x, yy + bh * 0.16, bw * 0.62, bh * 0.44, col);
+  rect(ctx, Math.round(x), Math.round(yy - bh * 0.1), 1, Math.round(bh * 0.5), darken(col, 0.4));
+  // head
+  const hy = yy - bh * 0.3;
+  ellipsePx(ctx, x, hy, bw * 0.4, bw * 0.36, col);
+  if (detail > 0) { ellipsePx(ctx, x - bw * 0.16, hy - bw * 0.06, bw * 0.1, bw * 0.1, hi); ellipsePx(ctx, x + bw * 0.16, hy - bw * 0.06, bw * 0.1, bw * 0.1, hi); }
+  // what kind of bug: the bit that makes the silhouette read
+  const k = s * 0.1;
+  switch (b.shape) {
+    case 'stag':                                   // two big jaws off the head
+      rect(ctx, x - bw * 0.6, hy - k, k, k * 3, col); rect(ctx, x - bw * 0.7, hy - k * 2, k * 2, k, col);
+      rect(ctx, x + bw * 0.5, hy - k, k, k * 3, col); rect(ctx, x + bw * 0.5, hy - k * 2, k * 2, k, col);
+      break;
+    case 'rhino':                                  // one horn, curving forward
+      rect(ctx, x - k / 2, hy - bw * 0.8, k, bw * 0.6, col); rect(ctx, x - k, hy - bw * 0.95, k * 2, k, col);
+      break;
+    case 'moth':                                   // wings wider than the body
+      ellipsePx(ctx, x - bw * 0.75, yy + bh * 0.08, bw * 0.5, bh * 0.3, col);
+      ellipsePx(ctx, x + bw * 0.75, yy + bh * 0.08, bw * 0.5, bh * 0.3, col);
+      rect(ctx, x - bw * 0.3, hy - bw * 0.7, k, bw * 0.6, col); rect(ctx, x + bw * 0.3, hy - bw * 0.7, k, bw * 0.6, col);
+      break;
+    case 'mantis':                                 // long, and folded arms up front
+      rect(ctx, x - bw * 0.55, yy - bh * 0.1, k, bh * 0.3, col); rect(ctx, x - bw * 0.55, yy - bh * 0.12, bw * 0.4, k, col);
+      rect(ctx, x + bw * 0.4, yy - bh * 0.1, k, bh * 0.3, col);
+      break;
+    case 'cricket':                                // back legs cocked
+      rect(ctx, x - bw * 0.7, yy + bh * 0.2, k, bh * 0.28, col); rect(ctx, x + bw * 0.6, yy + bh * 0.2, k, bh * 0.28, col);
+      break;
+    case 'ladybug':
+      if (detail > 0) { ellipsePx(ctx, x - bw * 0.25, yy + bh * 0.1, k, k, darken(col, 0.5)); ellipsePx(ctx, x + bw * 0.25, yy + bh * 0.24, k, k, darken(col, 0.5)); }
+      break;
+    case 'roach':
+      ellipsePx(ctx, x, yy + bh * 0.3, bw * 0.5, bh * 0.2, darken(col, 0.25));
+      break;
+    default: break;
+  }
+  // antennae, on everybody
+  rect(ctx, x - bw * 0.28, hy - bw * 0.62, k * 0.8, bw * 0.5, col);
+  rect(ctx, x - bw * 0.42, hy - bw * 0.72, k * 1.4, k * 0.8, col);
+  rect(ctx, x + bw * 0.2, hy - bw * 0.62, k * 0.8, bw * 0.5, col);
+  rect(ctx, x + bw * 0.22, hy - bw * 0.72, k * 1.4, k * 0.8, col);
+  // arms, up when the room goes up
+  if (up || b.arms) {
+    const ay = up ? yy - bh * 0.35 : yy + bh * 0.05;
+    rect(ctx, x - bw * 0.72, ay, k, bh * 0.3, col);
+    rect(ctx, x + bw * 0.62, ay, k, bh * 0.3, col);
+  }
+  // and a light stick in the hand of about a third of them
+  if (b.glow && mood !== 'flat') {
+    const wag = Math.sin(t * 3 + b.o) * s * 0.06;
+    const gx = x + bw * 0.66 + wag, gy = (up ? yy - bh * 0.5 : yy - bh * 0.1);
+    rect(ctx, gx, gy, Math.max(1, k * 0.9), s * 0.3, b.glow);
+    rect(ctx, gx, gy, Math.max(1, k * 0.9), s * 0.1, '#fff8e0');
+    if (detail > 0) { ctx.globalAlpha = 0.2; circle(ctx, gx, gy + s * 0.1, s * 0.16, b.glow); ctx.globalAlpha = 1; }
+  }
+}
+// Lay a crowd out in an arc in front of something, packed tighter at the front.
+// Returns the same array with x/y/scale filled in, sorted back to front.
+function layoutCrowdArc(crowd, cx, cy, opts = {}) {
+  const rows = opts.rows || 8, spread = opts.spread || 260, depth = opts.depth || 150;
+  const near = opts.near || 34, far = opts.far || 9;
+  const per = Math.ceil(crowd.length / rows);
+  let i = 0;
+  for (let row = 0; row < rows && i < crowd.length; row++) {
+    const k = row / Math.max(1, rows - 1);
+    const y = cy + opts.gap + k * depth;
+    const w = spread * (0.5 + k * 0.9);
+    const n = Math.min(per + row * 2, crowd.length - i);
+    for (let j = 0; j < n; j++, i++) {
+      const b = crowd[i];
+      const t = n === 1 ? 0.5 : j / (n - 1);
+      b.x = cx + (t - 0.5) * w + (b.o % 1 - 0.5) * 10;
+      b.y = y + (b.o % 1) * 6;
+      b.s = lerp(near, far, k);
+      b.row = row;
+    }
+  }
+  return crowd.slice(0, i).sort((a, b) => a.y - b.y);
+}
+
 // ===== js/touch.js =====
 // ---------- Touch controls ----------
 'use strict';
@@ -7941,6 +8530,44 @@ function drawTownBackdrop(ctx, t, kind, seed) {
 function drawParty(ctx, x, y, t, pose) { const r = Game.run; r.members.forEach((m, i) => { drawShadow(ctx, x + i * 52, y, 34); drawBugAt(ctx, m.spec, x + i * 52, y + Math.round(Math.sin(t * 3 + i)), { pose: pose || (Math.floor(t * 2 + i) % 3 ? 'idle' : 'play'), instrument: m.instrument !== 'drums' && m.instrument !== 'piano' ? m.instrument : null, scale: 1.4 }); }); }
 
 // ---------- Shop ----------
+// ---------- What a shop has in it, and what happens when you buy it ----------
+// Lifted out of the scene so the walkable shop and the old counter are the
+// same shop, stocked the same way.
+function shopStock(node) {
+  const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
+  const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
+  const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
+  for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
+  const me = r.members[0], myQ = me.quality || 1;
+  if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
+  const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
+  if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
+  stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
+  node.rerolls = node.rerolls || 0;
+  return stock;
+}
+function shopBuy(r, s) {
+  r.money -= s.price; s.sold = true; Audio.ui('cash');
+  if (s.kind === 'charm') { r.addCharm(s.key); return 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
+  if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); return VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
+  if (s.kind === 'use') { r.consumables.push(s.key); return 'Bought ' + CONSUMABLES[s.key].name + '.'; }
+  if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); return s.key === 'drums' ? 'You are behind a ' + KIT_LADDER[clamp(s.quality, 1, 5)].name.toLowerCase() + ' now.' : 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
+  if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; return 'You now play ' + INSTRUMENTS[s.key].name + '. Your old one is a spare.'; }
+  if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); return s.member.name + ' joins the band!'; }
+  if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; Audio.ui('eat'); return 'Back on your feet. +' + s.restores + ' stamina.'; }
+  return '';
+}
+// what a piece of stock is called and looks like on a shelf
+function stockLabel(s) {
+  if (s.kind === 'charm') return { title: CHARMS[s.key].name.toUpperCase(), desc: CHARMS[s.key].desc, icon: CHARMS[s.key].icon || 'star' };
+  if (s.kind === 'voucher') return { title: VOUCHERS[s.key].name.toUpperCase(), desc: VOUCHERS[s.key].desc, icon: 'note' };
+  if (s.kind === 'use') return { title: CONSUMABLES[s.key].name.toUpperCase(), desc: CONSUMABLES[s.key].desc, icon: CONSUMABLES[s.key].icon || 'food' };
+  if (s.kind === 'upgrade') return { title: 'UPGRADE: ' + INSTRUMENTS[s.key].name.toUpperCase(), desc: 'Your own instrument, rebuilt to ' + gearTier(s.quality).name + '.', icon: 'gig' };
+  if (s.kind === 'instrument') return { title: INSTRUMENTS[s.key].name.toUpperCase(), desc: 'Second hand, ' + gearTier(s.quality).name + '. You would switch to it.', icon: 'gig' };
+  if (s.kind === 'recruit') return { title: (s.member.name || 'SOMEBODY').toUpperCase(), desc: 'Wants to join. Plays ' + (INSTRUMENTS[s.member.instrument] ? INSTRUMENTS[s.member.instrument].name : s.member.instrument) + '.', icon: 'openmic' };
+  if (s.kind === 'rest') return { title: 'CANNED COFFEE', desc: 'Hot, from the machine. +' + s.restores + ' stamina.', icon: 'food' };
+  return { title: 'SOMETHING', desc: '', icon: 'star' };
+}
 class ShopScene {
   constructor(node) {
     this.node = node; const r = Game.run; this.t = 0;
@@ -7957,19 +8584,7 @@ class ShopScene {
       { name: hello[0], spec: this.owner, text: 'She gestures at the whole shop with a magazine and goes back to reading it.', tint: '#ffd24a', flip: true },
     ]);
   }
-  restock() {
-    const r = Game.run, rng = r.rng, pm = 1 + r.day * 0.1; const stock = [];
-    const ex = []; for (let i = 0; i < 2; i++) { const k = r.randomCharm(ex); if (k) { ex.push(k); stock.push({ kind: 'charm', key: k, price: Math.round(CHARMS[k].price * pm) }); } }
-    const vk = rng.shuffle(VOUCHER_KEYS.filter(k => !r.vouchers.includes(k)))[0]; if (vk) stock.push({ kind: 'voucher', key: vk, price: Math.round(VOUCHERS[vk].price * pm) });
-    for (const k of rng.shuffle(CONSUMABLE_KEYS).slice(0, 2)) stock.push({ kind: 'use', key: k, price: Math.round(CONSUMABLES[k].price * pm) });
-    // an upgrade for the instrument you already play, if there is headroom
-    const me = r.members[0], myQ = me.quality || 1;
-    if (myQ < 5) { const q = Math.min(5, myQ + (r.day >= 2 ? 2 : 1)); stock.push({ kind: 'upgrade', key: me.instrument, quality: q, price: Math.round(INSTRUMENTS[me.instrument].price * (0.5 + q * 0.45) * pm) }); }
-    const ik = rng.pick(PLAYABLE.filter(k => k !== me.instrument)); const q2 = rng.int(2, Math.min(4, 2 + r.day)); stock.push({ kind: 'instrument', key: ik, quality: q2, price: Math.round(INSTRUMENTS[ik].price * (0.7 + q2 * 0.3) * pm) });
-    if (rng.chance(0.5) && r.members.length < 6) { const m = r.makeMember(); stock.push({ kind: 'recruit', member: m, price: 18 + r.day * 7 + m.skill * 2 }); }
-    stock.push({ kind: 'rest', key: 'coffee', price: 4 + r.day, restores: 18 });
-    this.node.stock = stock;
-  }
+  restock() { this.node.stock = shopStock(this.node); }
   get items() { return this.node.stock.filter(s => !s.sold); }
   rerollPrice() { return Math.max(1, 5 + this.node.rerolls * 2 - (Game.run.perks.rerollDiscount || 0)); }
   cardLabel(s) { if (s.kind === 'rest') return 'COFFEE BREAK'; if (s.kind === 'upgrade') return s.key === 'drums' ? KIT_LADDER[clamp(s.quality, 1, 5)].name : gearTier(s.quality).name + ' ' + INSTRUMENTS[s.key].name; return s.kind === 'charm' ? CHARMS[s.key].name : s.kind === 'voucher' ? VOUCHERS[s.key].name : s.kind === 'use' ? CONSUMABLES[s.key].name : s.kind === 'instrument' ? INSTRUMENTS[s.key].name + ' ' + '★'.repeat(s.quality) : 'HIRE ' + s.member.name; }
@@ -7977,14 +8592,7 @@ class ShopScene {
   canBuy(s) { const r = Game.run; if (r.money < s.price) return 'Not enough cash.'; if (s.kind === 'rest' && r.stamina >= r.staminaMax) return 'Nobody is tired yet.'; if (s.kind === 'charm' && r.charms.length >= r.charmSlots) return 'No charm slots free. Sell one in BAND & BAG.'; if (s.kind === 'use' && r.consumables.length >= 6) return 'Your pockets are full.'; if (s.kind === 'recruit' && r.members.length >= 6) return 'The band is full.'; return null; }
   buy(s) {
     const r = Game.run; const why = this.canBuy(s); if (why) { this.msg = why; Audio.ui('error'); return; }
-    r.money -= s.price; s.sold = true; Audio.ui('cash');
-    if (s.kind === 'charm') { r.addCharm(s.key); this.msg = 'Bought ' + CHARMS[s.key].name + '. ' + CHARMS[s.key].desc; }
-    else if (s.kind === 'voucher') { r.vouchers.push(s.key); VOUCHERS[s.key].apply(r); this.msg = VOUCHERS[s.key].name + ' redeemed. ' + VOUCHERS[s.key].desc; }
-    else if (s.kind === 'use') { r.consumables.push(s.key); this.msg = 'Bought ' + CONSUMABLES[s.key].name + '.'; }
-    else if (s.kind === 'upgrade') { const m = r.members[0]; m.quality = s.quality; r.today.upgrades = (r.today.upgrades || 0) + 1; checkGoals(r); this.msg = s.key === 'drums' ? 'You are behind a ' + KIT_LADDER[clamp(s.quality, 1, 5)].name.toLowerCase() + ' now.' : 'Your ' + INSTRUMENTS[s.key].name + ' is now ' + gearTier(s.quality).name + '.'; }
-    else if (s.kind === 'instrument') { const m = r.members[0]; r.spareInstruments.push({ kind: m.instrument, quality: m.quality }); m.instrument = s.key; m.quality = s.quality; this.msg = 'You now play ' + INSTRUMENTS[s.key].name + '. Your old instrument is stored as a spare (BAND & BAG).'; }
-    else if (s.kind === 'recruit') { r.members.push(s.member); r.today.recruited = (r.today.recruited || 0) + 1; checkGoals(r); this.msg = s.member.name + ' joins the band!'; }
-    else if (s.kind === 'rest') { r.rest(s.restores); s.sold = false; s.price += 2; this.msg = 'Back on your feet. +' + s.restores + ' stamina.'; Audio.ui('eat'); }
+    this.msg = shopBuy(r, s);
     this.sel = Math.min(this.sel, Math.max(0, this.items.length - 1)); r.save();
   }
   reroll() { const r = Game.run; const p = this.rerollPrice(); if (r.money < p) { this.msg = 'Not enough cash to reroll.'; Audio.ui('error'); return; } r.money -= p; this.node.rerolls++; this.restock(); this.sel = 0; Audio.ui('select'); this.msg = 'Fresh stock!'; }
@@ -9345,6 +9953,848 @@ class InteriorScene {
   }
 }
 
+// ===== js/scenes/room.js =====
+// ---------- Rooms you walk around in ----------
+// The airport, the second-hand music shop, the ramen counter, the capsule
+// hotel. All of them are the same thing: a floor, walls, a lot of furniture
+// you can bump into, people with somewhere to be, and things you can stand in
+// front of and use. Same camera, same movement, same game as the street.
+'use strict';
+const RT = 24;                                  // room tile
+// ---------- Furniture ----------
+// Everything here is drawn in room pixels. `solid` is what you cannot walk
+// through; `label` is what it says when you stand in front of it.
+function drawRoomProp(ctx, p, t, room) {
+  const x = p.x, y = p.y, w = p.w, h = p.h;
+  const sh = () => { ctx.globalAlpha = 0.28; rect(ctx, x + 3, y + 4, w, h, '#000'); ctx.globalAlpha = 1; };
+  switch (p.kind) {
+    // ---- airport
+    case 'seats': {
+      sh();
+      for (let i = 0; i < Math.max(1, Math.floor(w / 22)); i++) {
+        const sx = x + i * 22;
+        rect(ctx, sx + 1, y + 4, 20, 16, '#2f4a68'); rect(ctx, sx + 1, y + 4, 20, 3, '#4a6f96');
+        rect(ctx, sx + 1, y, 20, 6, '#24384f');
+        rect(ctx, sx + 2, y + 19, 3, 5, '#8a8f98'); rect(ctx, sx + 17, y + 19, 3, 5, '#8a8f98');
+      }
+      break;
+    }
+    case 'bench': { sh(); rect(ctx, x, y + 2, w, h - 6, '#8a6a44'); rect(ctx, x, y + 2, w, 2, '#a88a5e'); for (let i = 0; i < w; i += 8) rect(ctx, x + i, y + 2, 1, h - 6, '#6a5030'); rect(ctx, x + 2, y + h - 4, 4, 4, '#4a4a52'); rect(ctx, x + w - 6, y + h - 4, 4, 4, '#4a4a52'); break; }
+    case 'luggage': {
+      sh();
+      const cols = ['#c8402c', '#2f5a9a', '#3f8f6a', '#d8b83c', '#6a4a8a'];
+      for (let i = 0; i < Math.max(1, Math.floor(w / 14)); i++) {
+        const bx = x + i * 14, c = cols[(i + p.x) % cols.length];
+        rect(ctx, bx + 1, y + 2, 12, h - 4, c); rect(ctx, bx + 1, y + 2, 12, 2, lighten(c, 0.25));
+        rect(ctx, bx + 4, y, 6, 3, '#4a4a52'); rect(ctx, bx + 2, y + Math.floor(h / 2), 10, 1, darken(c, 0.3));
+      }
+      break;
+    }
+    case 'counter': {
+      sh();
+      rect(ctx, x, y, w, h, '#d8d2c4'); rect(ctx, x, y, w, 4, '#f0ece2');
+      rect(ctx, x, y + h - 5, w, 5, '#9a958a');
+      for (let i = 12; i < w - 8; i += 34) { rect(ctx, x + i, y + 5, 16, 11, '#1b2230'); rect(ctx, x + i + 1, y + 6, 14, 9, '#3f6f9e'); rect(ctx, x + i + 1, y + 6, 14, 3, '#6fa8e8'); }
+      break;
+    }
+    case 'board': {
+      rect(ctx, x, y, w, h, '#0d1018'); frame(ctx, x, y, w, h, '#3a4250');
+      for (let i = 0; i < Math.floor(h / 9); i++) {
+        const ry = y + 4 + i * 9, on = ((Math.floor(t * 2) + i) % 7) !== 0;
+        drawText(ctx, ['TOKYO', 'OSAKA', 'SAPPORO', 'NAHA', 'SEOUL'][i % 5], x + 5, ry, on ? '#ffc040' : '#6a5a20', { font: 'small' });
+        drawText(ctx, ['ON TIME', 'BOARDING', 'DELAYED', 'ARRIVED'][(i + Math.floor(t)) % 4], x + w - 5, ry, on ? '#6be585' : '#2a5a38', { align: 'right', font: 'small' });
+      }
+      break;
+    }
+    case 'sign': {
+      rect(ctx, x, y, w, h, p.col || '#1f6f4a'); frame(ctx, x, y, w, h, '#0f3a28');
+      rect(ctx, x + 1, y + 1, w - 2, 2, lighten(p.col || '#1f6f4a', 0.3));
+      drawText(ctx, p.text || 'EXIT', x + w / 2, y + Math.floor((h - 7) / 2), '#f0f6f0', { align: 'center' });
+      if (p.arrow) { ctx.fillStyle = '#f0f6f0'; const ax = p.arrow < 0 ? x + 6 : x + w - 6; ctx.beginPath(); ctx.moveTo(ax + p.arrow * 5, y + h / 2); ctx.lineTo(ax - p.arrow * 2, y + h / 2 - 4); ctx.lineTo(ax - p.arrow * 2, y + h / 2 + 4); ctx.fill(); }
+      break;
+    }
+    case 'vending': {
+      sh();
+      rect(ctx, x, y, w, h, '#c8402c'); rect(ctx, x, y, w, 4, '#e8604c');
+      rect(ctx, x + 2, y + 5, w - 4, h - 20, '#12161f');
+      for (let r2 = 0; r2 < 3; r2++) for (let c2 = 0; c2 < Math.floor((w - 8) / 9); c2++) {
+        const bx = x + 5 + c2 * 9, by = y + 8 + r2 * 10;
+        if (by + 8 > y + h - 15) continue;
+        rect(ctx, bx, by, 6, 8, ['#4a86f7', '#f2c94c', '#6be585', '#f0f0ff', '#e8503a'][(c2 + r2) % 5]);
+        rect(ctx, bx, by, 6, 2, '#ffffff');
+      }
+      rect(ctx, x + 3, y + h - 14, w - 6, 5, '#e8e4dc');
+      rect(ctx, x + 3, y + h - 8, w - 6, 6, '#2a2d33');
+      ctx.globalAlpha = 0.14 + 0.06 * Math.sin(t * 3); rect(ctx, x + 2, y + 5, w - 4, h - 20, '#ffffff'); ctx.globalAlpha = 1;
+      break;
+    }
+    case 'trolley': { sh(); rect(ctx, x, y + 4, w, 4, '#8a8f98'); rect(ctx, x + 1, y + 8, w - 2, h - 12, '#b9bec6'); rect(ctx, x + 2, y, 3, 8, '#8a8f98'); circle(ctx, x + 4, y + h - 2, 3, '#2a2d33'); circle(ctx, x + w - 4, y + h - 2, 3, '#2a2d33'); break; }
+    case 'plant': { sh(); rect(ctx, x + 2, y + h - 9, w - 4, 9, '#8a5f3a'); rect(ctx, x + 2, y + h - 9, w - 4, 2, '#a87a50'); const m = 5; for (let i = 0; i < 7; i++) { const a = i * 0.9, lx = x + w / 2 + Math.cos(a) * m, ly = y + h - 12 + Math.sin(a) * m * 0.7; ellipsePx(ctx, lx, ly, 6, 4, i % 2 ? '#2f8f4a' : '#43a85c'); } break; }
+    case 'gate': {
+      rect(ctx, x, y, w, h, '#1b2230'); rect(ctx, x + 3, y + 3, w - 6, h - 6, '#2f3f5a');
+      rect(ctx, x + 6, y + 6, w - 12, h - 20, '#0d1018');
+      drawText(ctx, p.text || 'GATE 4', x + w / 2, y + h - 12, '#8ad8ff', { align: 'center', font: 'small' });
+      break;
+    }
+    // ---- the second-hand music shop
+    case 'wallguitars': {
+      rect(ctx, x, y, w, h, '#4a3524'); rect(ctx, x, y, w, 3, '#6a4f36');
+      const n = Math.max(1, Math.floor(w / 26));
+      for (let i = 0; i < n; i++) {
+        const gx = x + 8 + i * 26, col = ['#c8402c', '#e8c040', '#2f5a9a', '#f0ece2', '#3f8f6a', '#8a4fd0'][(i + p.x / 7) % 6 | 0];
+        rect(ctx, gx + 5, y + 6, 3, 22, '#3a2a1c');                  // neck
+        ellipsePx(ctx, gx + 6, y + 32, 8, 10, col);
+        ellipsePx(ctx, gx + 6, y + 30, 3, 3, '#2a1f16');
+        rect(ctx, gx + 4, y + 4, 5, 4, '#2a1f16');
+        rect(ctx, gx - 2, y + 40, 16, 6, '#efe6cc');                  // the price tag
+        drawText(ctx, '¥' + (8 + i * 3) + 'K', gx + 6, y + 41, '#8a2a1c', { align: 'center', font: 'small' });
+      }
+      break;
+    }
+    case 'amps': {
+      sh();
+      const n = Math.max(1, Math.floor(w / 28));
+      for (let i = 0; i < n; i++) {
+        const ax = x + i * 28;
+        rect(ctx, ax + 1, y + 2, 26, h - 4, '#241f2e'); rect(ctx, ax + 1, y + 2, 26, 3, '#3f3850');
+        rect(ctx, ax + 4, y + 7, 20, h - 18, '#3a3448');
+        for (let gy = y + 8; gy < y + h - 12; gy += 3) for (let gx = ax + 5; gx < ax + 23; gx += 3) px(ctx, gx, gy, '#262034');
+        rect(ctx, ax + 4, y + h - 9, 20, 5, '#8a8a98');
+        for (let k = 0; k < 4; k++) circle(ctx, ax + 7 + k * 5, y + h - 7, 1, '#e8e4dc');
+        rect(ctx, ax + 6, y + h - 3, 14, 4, '#efe6cc');
+      }
+      break;
+    }
+    case 'shelf': {
+      sh();
+      rect(ctx, x, y, w, h, '#8a6a44'); rect(ctx, x, y, w, 3, '#a88a5e');
+      const rows = Math.max(1, Math.floor(h / 15));
+      for (let r2 = 0; r2 < rows; r2++) {
+        const ry = y + 4 + r2 * 15;
+        rect(ctx, x + 1, ry + 11, w - 2, 3, '#6a5030');
+        for (let i = 0; i < Math.floor((w - 6) / 9); i++) {
+          const bx = x + 4 + i * 9;
+          const c = ['#e8503a', '#4a86f7', '#f2c94c', '#6be585', '#c58bff', '#f0ece2', '#e88a3c'][(i * 3 + r2 * 5 + p.x) % 7];
+          rect(ctx, bx, ry, 7, 11, c); rect(ctx, bx, ry, 7, 2, lighten(c, 0.3));
+          if ((i + r2) % 3 === 0) rect(ctx, bx + 1, ry + 4, 5, 3, '#1b1826');
+        }
+      }
+      break;
+    }
+    case 'crate': { sh(); rect(ctx, x, y, w, h, '#6a4a2e'); rect(ctx, x, y, w, 3, '#8a6440'); for (let i = 0; i < Math.floor((w - 4) / 4); i++) rect(ctx, x + 3 + i * 4, y + 4, 3, h - 8, ['#f0ece2', '#2a2434', '#c8a03a', '#4a86f7'][i % 4]); break; }
+    case 'glasscase': {
+      sh();
+      rect(ctx, x, y, w, h, '#b9bec6'); rect(ctx, x + 2, y + 2, w - 4, h - 4, '#dfe8f2');
+      ctx.globalAlpha = 0.5; rect(ctx, x + 2, y + 2, w - 4, Math.floor(h / 3), '#ffffff'); ctx.globalAlpha = 1;
+      for (let i = 0; i < Math.floor((w - 10) / 12); i++) {
+        const bx = x + 6 + i * 12;
+        rect(ctx, bx, y + h - 14, 9, 9, ['#e8503a', '#f2c94c', '#4a86f7', '#6be585'][i % 4]);
+        rect(ctx, bx + 2, y + h - 12, 5, 3, '#1b1826');
+      }
+      frame(ctx, x, y, w, h, '#8a8f98');
+      break;
+    }
+    case 'pedals': {
+      sh(); rect(ctx, x, y, w, h, '#2a2434'); rect(ctx, x, y, w, 3, '#463c58');
+      for (let i = 0; i < Math.floor((w - 4) / 11); i++) for (let r2 = 0; r2 < Math.max(1, Math.floor(h / 13)); r2++) {
+        const bx = x + 3 + i * 11, by = y + 4 + r2 * 13;
+        if (by + 10 > y + h) break;
+        const c = ['#e8503a', '#f2c94c', '#4a86f7', '#6be585', '#c58bff'][(i + r2) % 5];
+        rect(ctx, bx, by, 9, 10, c); rect(ctx, bx, by, 9, 2, lighten(c, 0.3));
+        circle(ctx, bx + 4, by + 4, 2, '#1b1826'); rect(ctx, bx + 1, by + 7, 7, 2, '#241f2e');
+      }
+      break;
+    }
+    case 'poster': { rect(ctx, x, y, w, h, '#f0ece2'); frame(ctx, x, y, w, h, '#8a8478'); const c = ['#e8503a', '#4a86f7', '#f2c94c'][(p.x / 5 | 0) % 3]; rect(ctx, x + 2, y + 2, w - 4, Math.floor(h * 0.6), c); for (let i = 0; i < 3; i++) rect(ctx, x + 4, y + h - 10 + i * 3, w - 8 - i * 4, 2, '#5a5468'); break; }
+    case 'till': { sh(); rect(ctx, x, y, w, h, '#d8d2c4'); rect(ctx, x, y, w, 4, '#f0ece2'); rect(ctx, x + w - 22, y + 4, 18, 12, '#3a3444'); rect(ctx, x + w - 20, y + 6, 14, 6, '#6be585'); rect(ctx, x + 4, y + 6, 14, 10, '#8a8f98'); break; }
+    // ---- the ramen counter
+    case 'ticketmachine': {
+      sh();
+      rect(ctx, x, y, w, h, '#c03a2c'); rect(ctx, x, y, w, 4, '#e0584a');
+      rect(ctx, x + 3, y + 6, w - 6, h - 26, '#f4f1ea');
+      for (let r2 = 0; r2 < 4; r2++) for (let c2 = 0; c2 < 3; c2++) {
+        const bx = x + 6 + c2 * 13, by = y + 9 + r2 * 10;
+        if (by + 8 > y + h - 22) continue;
+        rect(ctx, bx, by, 11, 8, '#e8e2d4'); frame(ctx, bx, by, 11, 8, '#b0a898');
+        rect(ctx, bx + 1, by + 1, 9, 3, ['#e8503a', '#f2c94c', '#4a86f7', '#6be585'][(r2 + c2) % 4]);
+      }
+      rect(ctx, x + 4, y + h - 18, w - 8, 7, '#2a2d33');
+      drawText(ctx, '¥', x + 8, y + h - 16, '#6be585', { font: 'small' });
+      rect(ctx, x + 6, y + h - 9, 14, 4, '#1b1e26');
+      break;
+    }
+    case 'stools': {
+      for (let i = 0; i < Math.max(1, Math.floor(w / 20)); i++) {
+        const sx = x + 4 + i * 20;
+        ctx.globalAlpha = 0.28; ellipsePx(ctx, sx + 1, y + 10, 8, 4, '#000'); ctx.globalAlpha = 1;
+        rect(ctx, sx - 1, y + 4, 3, 8, '#8a8f98');
+        ellipsePx(ctx, sx, y + 3, 8, 6, '#c8402c'); ellipsePx(ctx, sx, y + 2, 7, 5, '#e05a48');
+      }
+      break;
+    }
+    case 'ramencounter': {
+      sh();
+      rect(ctx, x, y, w, h, '#8a5f3a'); rect(ctx, x, y, w, 4, '#b07f4e');
+      rect(ctx, x, y + h - 4, w, 4, '#5f4028');
+      for (let i = 0; i < Math.floor(w / 26); i++) {
+        const bx = x + 10 + i * 26;
+        ellipsePx(ctx, bx, y + 10, 8, 5, '#f0ece2'); ellipsePx(ctx, bx, y + 9, 6, 4, '#e0a04a');
+        rect(ctx, bx + 5, y + 4, 8, 1, '#c8b090'); rect(ctx, bx + 5, y + 6, 8, 1, '#c8b090');
+        if (i % 2) { rect(ctx, bx - 12, y + 6, 4, 7, '#3f3850'); rect(ctx, bx - 11, y + 7, 2, 5, '#c8402c'); }
+      }
+      break;
+    }
+    case 'kitchen': {
+      rect(ctx, x, y, w, h, '#8a8f98'); rect(ctx, x, y, w, 4, '#b9bec6');
+      for (let i = 0; i < Math.floor(w / 30); i++) {
+        const bx = x + 8 + i * 30;
+        rect(ctx, bx, y + 8, 20, 14, '#3a3444'); rect(ctx, bx + 2, y + 10, 16, 10, '#5a5468');
+        ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 4 + i); ellipsePx(ctx, bx + 10, y + 6, 8, 4, '#cfd6e2'); ctx.globalAlpha = 1;
+      }
+      for (let i = 0; i < Math.floor(w / 16); i++) rect(ctx, x + 4 + i * 16, y + h - 8, 10, 6, '#c8c2b4');
+      break;
+    }
+    case 'water': { sh(); rect(ctx, x, y, w, h, '#b9bec6'); rect(ctx, x + 2, y + 2, w - 4, 6, '#dfe8f2'); for (let i = 0; i < 4; i++) rect(ctx, x + 3 + i * 7, y + 10, 5, 8, '#e8f4ff'); break; }
+    case 'noren': { for (let i = 0; i < Math.floor(w / 10); i++) { const bx = x + i * 10; rect(ctx, bx, y, 9, h, '#2f4a8a'); rect(ctx, bx, y, 9, 2, '#4a6fb0'); if (i % 2) drawText(ctx, 'ラ', bx + 4, y + 6, '#f0ece2', { align: 'center', font: 'small' }); } break; }
+    // ---- the capsule hotel
+    case 'pods': {
+      const cols = Math.max(1, Math.floor(w / 46));
+      for (let i = 0; i < cols; i++) {
+        for (let r2 = 0; r2 < 2; r2++) {
+          const bx = x + i * 46, by = y + r2 * (h / 2);
+          rect(ctx, bx, by, 44, h / 2 - 2, '#d8d2c4');
+          rect(ctx, bx + 3, by + 3, 38, h / 2 - 8, '#1b1e26');
+          rect(ctx, bx + 3, by + 3, 38, 3, '#8a8f98');
+          const lit = ((i + r2 * 3) % 4) !== 0;
+          if (lit) { ctx.globalAlpha = 0.4; rect(ctx, bx + 5, by + 6, 34, h / 2 - 13, '#4a6f96'); ctx.globalAlpha = 1; }
+          rect(ctx, bx + 6, by + h / 2 - 9, 32, 4, '#3f4a5c');
+          drawText(ctx, String(101 + i + r2 * cols), bx + 22, by + h / 2 - 8, '#cfd6e2', { align: 'center', font: 'small' });
+        }
+      }
+      break;
+    }
+    case 'lockers': {
+      for (let i = 0; i < Math.floor(w / 16); i++) for (let r2 = 0; r2 < Math.max(1, Math.floor(h / 22)); r2++) {
+        const bx = x + i * 16, by = y + r2 * 22;
+        rect(ctx, bx, by, 15, 21, '#5f6a78'); rect(ctx, bx + 1, by + 1, 13, 19, '#788292');
+        rect(ctx, bx + 11, by + 9, 2, 4, '#2a2d33'); rect(ctx, bx + 2, by + 2, 11, 2, '#98a2b0');
+      }
+      break;
+    }
+    case 'washbasin': {
+      sh(); rect(ctx, x, y, w, h, '#dfe8f2'); rect(ctx, x, y, w, 3, '#f4f8fc');
+      for (let i = 0; i < Math.floor(w / 26); i++) { const bx = x + 8 + i * 26; ellipsePx(ctx, bx, y + 10, 9, 6, '#b9c6d2'); rect(ctx, bx - 1, y + 2, 3, 5, '#8a95a2'); rect(ctx, bx - 8, y - 14, 18, 14, '#c8d4e0'); rect(ctx, bx - 7, y - 13, 16, 12, '#8ab0d0'); }
+      break;
+    }
+    case 'shoerack': { sh(); rect(ctx, x, y, w, h, '#8a6a44'); for (let r2 = 0; r2 < 2; r2++) { rect(ctx, x + 1, y + 10 + r2 * 12, w - 2, 2, '#6a5030'); for (let i = 0; i < Math.floor((w - 6) / 10); i++) { const bx = x + 4 + i * 10; rect(ctx, bx, y + 3 + r2 * 12, 8, 6, ['#2a2434', '#8a4a2a', '#f0ece2', '#3a3a5a'][(i + r2) % 4]); } } break; }
+    case 'tv': { rect(ctx, x, y, w, h, '#1b1e26'); rect(ctx, x + 2, y + 2, w - 4, h - 8, '#0d1018'); for (let i = 0; i < 20; i++) { const bx = x + 3 + ((i * 17 + Math.floor(t * 30)) % (w - 8)), by = y + 3 + ((i * 11) % (h - 12)); rect(ctx, bx, by, 4, 2, ['#4a86f7', '#e8503a', '#f2c94c'][i % 3]); } break; }
+    case 'futon': { rect(ctx, x, y, w, h, '#e8e2d4'); rect(ctx, x, y, w, 3, '#f4f1ea'); rect(ctx, x + 3, y + 3, w - 6, 8, '#c8d4e0'); break; }
+    // ---- generic
+    case 'table': { sh(); rect(ctx, x, y, w, h, '#a8784a'); rect(ctx, x, y, w, 3, '#c8985e'); rect(ctx, x + 2, y + h - 4, 4, 4, '#6a4a2a'); rect(ctx, x + w - 6, y + h - 4, 4, 4, '#6a4a2a'); break; }
+    case 'bin': { sh(); rect(ctx, x, y, w, h, '#4a5260'); rect(ctx, x - 1, y, w + 2, 4, '#6a7280'); rect(ctx, x + 3, y + 6, w - 6, h - 9, '#3a4250'); break; }
+    case 'pole': { ctx.globalAlpha = 0.28; ellipsePx(ctx, x + w / 2 + 2, y + h + 2, 5, 3, '#000'); ctx.globalAlpha = 1; rect(ctx, x, y, w, h, '#8a8f98'); rect(ctx, x, y, 2, h, '#b9bec6'); break; }
+    case 'display': {
+      // a single thing, out on a stand with a tag on it
+      sh();
+      rect(ctx, x, y + h - 8, w, 8, '#6a5030'); rect(ctx, x, y + h - 8, w, 2, '#8a6a44');
+      rect(ctx, x + 2, y + 2, w - 4, h - 10, p.item && p.item.sold ? '#5a5468' : '#2a2434');
+      rect(ctx, x + 2, y + 2, w - 4, 2, '#463c58');
+      if (p.item && !p.item.sold) {
+        const ic = icon(p.item.icon || 'star');
+        ctx.drawImage(ic, x + w / 2 - ic.width / 2, y + 4, ic.width, ic.height);
+        ctx.globalAlpha = 0.12 + 0.06 * Math.sin(t * 3 + x); circle(ctx, x + w / 2, y + 10, 12, '#ffd24a'); ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case 'rug': { rect(ctx, x, y, w, h, p.col || '#8a3a4a'); frame(ctx, x, y, w, h, darken(p.col || '#8a3a4a', 0.3)); for (let i = 4; i < w - 4; i += 10) rect(ctx, x + i, y + 3, 4, h - 6, lighten(p.col || '#8a3a4a', 0.12)); break; }
+    default: { sh(); rect(ctx, x, y, w, h, '#6a6478'); rect(ctx, x, y, w, 3, '#8a8498'); }
+  }
+  // a price tag on anything for sale
+  if (p.item) {
+    const lab = fmtMoney(p.item.price);
+    const lw = textWidth(lab, { font: 'small' }) + 8;
+    rect(ctx, x + w / 2 - lw / 2, y - 11, lw, 10, p.item.sold ? '#5a5468' : '#f6f2e0');
+    frame(ctx, x + w / 2 - lw / 2, y - 11, lw, 10, '#8a8478');
+    drawText(ctx, p.item.sold ? 'SOLD' : lab, x + w / 2, y - 9, p.item.sold ? '#cfc9e6' : '#8a2a1c', { align: 'center', font: 'small' });
+  }
+}
+
+// ---------- The room itself ----------
+class RoomScene {
+  constructor(def, node, opts = {}) {
+    this.D = def; this.node = node || {}; this.opts = opts;
+    this.t = 0; this.fx = new Particles();
+    this.you = Game.run.members[0];
+    this.msg = null; this.msgT = 0;
+    this.say = null; this.sayT = 0;                       // somebody talking to you
+    this.card = null;                                     // an item you picked up
+    this.props = def.props.map(p => Object.assign({}, p, { x: p.tx * RT, y: p.ty * RT, w: p.tw * RT, h: p.th * RT }));
+    this.wpx = def.w * RT; this.hpx = def.h * RT;
+    this.cam = new WorldCam({ z: def.zoom || 2.6, view: { x: 0, y: 0, w: W, h: H }, bounds: { w: this.wpx, h: this.hpx }, lead: 0.1 });
+    const st = def.start || { tx: def.w / 2, ty: def.h - 2 };
+    this.body = new Walker(st.tx * RT, st.ty * RT, { r: 8, speed: 100, accel: 1000, friction: 1100, spec: this.you.spec, scale: 1.5 });
+    this.input = new WorldInput();
+    this.cam.snapTo(this.body.x, this.body.y);
+    // the walls of the room and everything solid inside it
+    this.solid = (x, y) => {
+      if (x < 8 || y < 8 || x > this.wpx - 8 || y > this.hpx - 8) return true;
+      for (const p of this.props) { if (p.walk || p.hidden) continue; if (x > p.x && x < p.x + p.w && y > p.y && y < p.y + p.h) return true; }
+      return false;
+    };
+    // the people who are here
+    this.npcs = (def.npcs || []).map((n, i) => new Npc({
+      spec: n.spec || randomBugSpec(makeRng(hashStr((node && node.id || def.name) + 'npc' + i))),
+      x: n.route[0].tx * RT, y: n.route[0].ty * RT,
+      route: n.route.map(r => ({ x: r.tx * RT, y: r.ty * RT, wait: r.wait, act: r.act })),
+      speed: n.speed || 44, tag: n.tag, name: n.name, carry: n.carry, scale: n.scale || 1.25,
+    }));
+    this.zoomIn = 0.35;                                   // the camera comes in as you arrive
+    this.cam.z = (def.zoom || 2.6) * 0.72; this.cam.targetZ = def.zoom || 2.6;
+    this.prompt = null;
+    if (def.enter) this.flash(def.enter);
+  }
+  flash(m) { this.msg = m; this.msgT = 3; }
+  speak(who, line) { this.say = { who, line }; this.sayT = 4; Audio.ui('type'); }
+  leave() {
+    if (this.left) return; this.left = true; Game.run.save();
+    Game.go(this.opts.back || (() => new CityScene()), 'iris', { dur: 0.55 });
+  }
+  // ---- the thing in front of you
+  findPrompt() {
+    const b = this.body;
+    let best = null, bd = 30;
+    for (const p of this.props) {
+      if (!p.label && !p.act) continue;
+      const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+      const dx = Math.max(Math.abs(b.x - cx) - p.w / 2, 0), dy = Math.max(Math.abs(b.y - cy) - p.h / 2, 0);
+      const d = Math.hypot(dx, dy);
+      if (d < bd) { bd = d; best = { kind: 'prop', p }; }
+    }
+    for (const n of this.npcs) {
+      const d = Math.hypot(b.x - n.x, b.y - n.y);
+      if (d < bd && n.tag) { bd = d; best = { kind: 'npc', n }; }
+    }
+    return best;
+  }
+  update(dt) {
+    this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.sayT = Math.max(0, this.sayT - dt);
+    if (this.sayT <= 0) this.say = null;
+    this.fx.update(dt);
+    if (!this.card) {
+      const v = this.input.vector({ x: this.body.x, y: this.body.y });
+      this.body.step(dt, v.x, v.y, this.solid);
+    }
+    for (const n of this.npcs) n.update(dt, this.solid);
+    this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
+    this.prompt = this.card ? null : this.findPrompt();
+    if (this.D.tick) this.D.tick(this, dt);
+  }
+  interact() {
+    const P = this.prompt; if (!P) return;
+    if (P.kind === 'npc') { this.speak(P.n.name || 'SOMEBODY', typeof P.n.tag === 'function' ? P.n.tag(this) : P.n.tag); return; }
+    const p = P.p;
+    if (p.act === 'exit') { this.leave(); return; }
+    if (p.item) { this.card = p; Audio.ui('select'); return; }
+    if (this.D.use) this.D.use(this, p);
+  }
+  key(code) {
+    if (this.card) { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.buyCard(); else if (['Escape', 'KeyX'].includes(code)) { this.card = null; Audio.ui('back'); } return; }
+    if (this.say && ['Enter', 'Space', 'KeyZ'].includes(code)) { this.say = null; this.sayT = 0; return; }
+    if (['Enter', 'Space', 'KeyZ'].includes(code)) { this.interact(); return; }
+    if (code === 'Escape') { this.leave(); return; }
+    this.input.key(code);
+  }
+  keyUp(code) { this.input.keyUp(code); }
+  buyCard() {
+    const p = this.card;
+    if (!p || !p.item) { this.card = null; return; }
+    if (this.D.buy) this.D.buy(this, p);
+    this.card = null;
+  }
+  pointerDown(x, y, id) {
+    if (this.card) {
+      const r = this.cardRect();
+      if (x >= r.bx && x < r.bx + r.bw && y >= r.by && y < r.by + r.bh) { this.buyCard(); return; }
+      this.card = null; Audio.ui('back'); return;
+    }
+    if (this.say) { this.say = null; this.sayT = 0; return; }
+    // tapping what you are standing in front of uses it
+    if (this.prompt) {
+      const P = this.prompt;
+      const cx = P.kind === 'npc' ? this.cam.sx(P.n.x) : this.cam.sx(P.p.x + P.p.w / 2);
+      const cy = P.kind === 'npc' ? this.cam.sy(P.n.y) : this.cam.sy(P.p.y + P.p.h / 2);
+      if (Math.hypot(x - cx, y - cy) < 70) { this.interact(); return; }
+    }
+    if (Game.touch) { this.input.down(x, y, id); this.dragId = id; this.dragAt = { x, y }; this.dragMoved = 0; return; }
+    this.input.tapGoal = { x: this.cam.wx(x), y: this.cam.wy(y) };
+  }
+  pointerMove(x, y, id) { if (this.input.move(x, y, id) && this.dragAt) this.dragMoved = Math.max(this.dragMoved, Math.hypot(x - this.dragAt.x, y - this.dragAt.y)); }
+  pointerUp(x, y, id) {
+    if (this.dragId === id) { const moved = this.dragMoved; this.input.up(id); this.dragId = null; if (moved < 6) this.input.tapGoal = { x: this.cam.wx(x), y: this.cam.wy(y) }; return; }
+    this.input.up(id);
+  }
+  click(x, y) { this.pointerDown(x, y, 999); }
+  hover() {}
+  cardRect() { const w = 340, h = 150, x = W / 2 - w / 2, y = H / 2 - h / 2; return { x, y, w, h, bx: x + w - 150, by: y + h - 44, bw: 134, bh: 34 }; }
+  // ---------- drawing ----------
+  draw(ctx) {
+    const D = this.D, t = this.t, cam = this.cam;
+    rect(ctx, 0, 0, W, H, '#05060a');
+    cam.push(ctx);
+    // ---- the floor
+    for (let ty = 0; ty < D.h; ty++) for (let tx = 0; tx < D.w; tx++) {
+      const X = tx * RT, Y = ty * RT;
+      const alt = (tx + ty) % 2;
+      rect(ctx, X, Y, RT, RT, alt ? D.floor : (D.floorAlt || D.floor));
+      ctx.globalAlpha = 0.1; rect(ctx, X, Y, RT, 1, '#ffffff'); rect(ctx, X, Y, 1, RT, '#ffffff'); ctx.globalAlpha = 1;
+      if ((tx * 7 + ty * 13) % 17 === 0) { ctx.globalAlpha = 0.08; rect(ctx, X + 5, Y + 7, 7, 3, '#000'); ctx.globalAlpha = 1; }
+    }
+    if (D.floorArt) D.floorArt(ctx, this);
+    // ---- the walls, with a top and a face like everything outdoors
+    const WT = 20;
+    rect(ctx, -WT, -WT, this.wpx + WT * 2, WT, D.wallTop);
+    rect(ctx, -WT, -WT, this.wpx + WT * 2, 3, lighten(D.wallTop, 0.25));
+    rect(ctx, -WT, -6, this.wpx + WT * 2, 6, D.wall);
+    rect(ctx, -WT, -WT, WT, this.hpx + WT * 2, D.wallTop);
+    rect(ctx, this.wpx, -WT, WT, this.hpx + WT * 2, D.wallTop);
+    rect(ctx, -6, 0, 6, this.hpx, D.wall);
+    rect(ctx, this.wpx, 0, 6, this.hpx, D.wall);
+    rect(ctx, -WT, this.hpx, this.wpx + WT * 2, WT, D.wallTop);
+    rect(ctx, -WT, this.hpx, this.wpx + WT * 2, 6, D.wall);
+    // ---- furniture and people, sorted so the near ones cover the far ones
+    const drawables = [];
+    for (const p of this.props) { if (!p.hidden) drawables.push({ y: p.y + (p.overhead ? -1000 : p.h), d: (c) => drawRoomProp(c, p, t, this) }); }
+    for (const n of this.npcs) drawables.push({ y: n.y, d: (c) => n.draw(c, t) });
+    const b = this.body;
+    drawables.push({ y: b.y, d: (c) => {
+      drawShadow(c, b.x, b.y + 7, 22, 0.34);
+      drawBugAt(c, this.you.spec, b.x, b.y + 9, { pose: b.pose, scale: b.scale, flip: b.flip, bounce: b.moving ? 1 : 0.6 });
+    } });
+    drawables.sort((a, b2) => a.y - b2.y);
+    for (const d of drawables) d.d(ctx);
+    if (D.over) D.over(ctx, this);
+    cam.pop(ctx);
+    // ---- the light in here, and the dark outside it
+    if (D.dark) { ctx.globalAlpha = 0.3; rect(ctx, 0, 0, W, H, D.dark); ctx.globalAlpha = 1; }
+    vignette(ctx, 0.42);
+    // ---- the prompt over whatever you are standing at
+    if (this.prompt) {
+      const P = this.prompt;
+      if (P.kind === 'npc') drawPrompt(ctx, cam, { x: P.n.x - 20, y: P.n.y - 20, w: 40, h: 0 }, t, 'TALK');
+      else drawPrompt(ctx, cam, P.p, t, P.p.item ? (P.p.item.sold ? 'SOLD' : 'LOOK AT IT') : (P.p.label || 'USE'));
+    }
+    this.fx.draw(ctx);
+    // ---- the name of the place, and the way out
+    uiRibbon(ctx, W / 2, 8, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
+    if (D.sub) drawText(ctx, D.sub, W / 2, 38, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
+    drawText(ctx, Game.touch ? 'DRAG TO WALK' : 'ARROWS / WASD', 14, H - 20, '#8a82a8', { font: 'small' });
+    drawText(ctx, fmtMoney(Game.run.money), W - 14, 44, '#ffd24a', { align: 'right', scale: 3 });
+    if (this.msgT > 0) {
+      ctx.globalAlpha = clamp(this.msgT, 0, 1);
+      const w2 = Math.min(W - 40, textWidth(this.msg, { scale: 2 }) + 28);
+      rect(ctx, W / 2 - w2 / 2, 58, w2, 24, '#152a18'); frame(ctx, W / 2 - w2 / 2, 58, w2, 24, '#6be585');
+      drawText(ctx, this.msg, W / 2, 65, '#6be585', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    // ---- somebody talking
+    if (this.say) {
+      const bh = 92, by = H - bh - 10;
+      rect(ctx, 20, by, W - 40, bh, 'rgba(10,8,20,0.9)'); frame(ctx, 20, by, W - 40, bh, '#c8a03a');
+      rect(ctx, 28, by - 10, textWidth(this.say.who, { scale: 2 }) + 16, 18, '#c8a03a');
+      drawText(ctx, this.say.who, 36, by - 5, '#2a1a08', { scale: 2 });
+      drawWrapped(ctx, this.say.line, 34, by + 22, W - 80, 20, '#f2ecd8', { scale: 2 });
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 5);
+      drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W - 40, by + bh - 18, '#cfc9e6', { align: 'right', font: 'small' });
+      ctx.globalAlpha = 1;
+    }
+    // ---- an item in your hands
+    if (this.card) this.drawCard(ctx);
+    this.input.drawStick(ctx);
+  }
+  drawCard(ctx) {
+    const p = this.card, it = p.item, r = this.cardRect();
+    ctx.globalAlpha = 0.65; rect(ctx, 0, 0, W, H, '#05040c'); ctx.globalAlpha = 1;
+    rect(ctx, r.x + 5, r.y + 6, r.w, r.h, 'rgba(6,4,12,0.6)');
+    rect(ctx, r.x, r.y, r.w, r.h, '#241d33'); frame(ctx, r.x, r.y, r.w, r.h, '#c8a03a');
+    rect(ctx, r.x, r.y, r.w, 22, '#c8a03a');
+    drawText(ctx, it.title || 'FOR SALE', r.x + 10, r.y + 7, '#2a1a08', { scale: 2 });
+    if (it.icon) ctx.drawImage(icon(it.icon), r.x + 12, r.y + 34, 34, 30);
+    drawWrapped(ctx, it.desc || '', r.x + 56, r.y + 34, r.w - 70, 16, '#cfc9e6', { scale: 2 });
+    drawText(ctx, fmtMoney(it.price), r.x + 12, r.y + r.h - 34, Game.run.money >= it.price ? '#ffd24a' : '#e0785a', { scale: 4 });
+    uiButton(ctx, r.bx, r.by, r.bw, r.bh, it.sold ? 'SOLD' : 'BUY IT', it.sold || Game.run.money < it.price ? 'disabled' : 'normal', { scale: 3 });
+  }
+}
+
+// ---------- The places, as scenes ----------
+class AirportScene extends RoomScene {
+  constructor() {
+    super(ROOMS.airport, { id: 'narita' }, { back: () => new CrossingScene(() => new CityScene(true)) });
+  }
+}
+// The second-hand shop, stocked from the same list the old counter used: each
+// piece of stock is put out somewhere you can walk up to and pick up.
+class MusicShopScene extends RoomScene {
+  constructor(node) {
+    super(ROOMS.hardoff, node, { back: () => new CityScene() });
+    const n = node || {};
+    if (!n.stock) n.stock = shopStock(n);
+    // where things get put out: in front of the shelves and along the wall
+    const spots = [
+      { tx: 3, ty: 7.4 }, { tx: 6, ty: 7.4 }, { tx: 9, ty: 7.4 }, { tx: 12, ty: 7.4 },
+      { tx: 15, ty: 7.4 }, { tx: 18, ty: 7.4 }, { tx: 3, ty: 12.2 }, { tx: 6, ty: 12.2 },
+      { tx: 16, ty: 12.2 }, { tx: 19, ty: 12.2 }, { tx: 21, ty: 7.4 },
+    ];
+    n.stock.forEach((s, i) => {
+      const sp = spots[i % spots.length];
+      const lab = stockLabel(s);
+      this.props.push({
+        kind: 'display', x: sp.tx * RT, y: sp.ty * RT, w: Math.round(RT * 1.4), h: Math.round(RT * 1.3),
+        label: lab.title, item: { title: lab.title, desc: lab.desc, icon: lab.icon, price: s.price, sold: !!s.sold, stock: s },
+      });
+    });
+  }
+}
+class RamenScene extends RoomScene {
+  constructor(node) { super(ROOMS.ramen, node, { back: () => new CityScene() }); this.ticket = null; this.bowl = null; this.cooking = null; }
+  draw(ctx) {
+    super.draw(ctx);
+    // the ticket in your hand, top left, because it is the whole loop
+    if (this.ticket) {
+      rect(ctx, 14, 74, 150, 30, '#f6f2e0'); frame(ctx, 14, 74, 150, 30, '#8a2a1c');
+      rect(ctx, 14, 74, 150, 3, '#c8402c');
+      drawText(ctx, 'TICKET', 20, 80, '#8a2a1c', { font: 'small' });
+      drawText(ctx, this.ticket.name, 20, 90, '#2a1a08', { scale: 2 });
+    }
+    if (this.cooking != null) {
+      const k = 1 - clamp(this.cooking / 4.5, 0, 1);
+      rect(ctx, W / 2 - 80, 78, 160, 12, '#241d33'); rect(ctx, W / 2 - 80, 78, Math.round(160 * k), 12, '#e8a03a');
+      frame(ctx, W / 2 - 80, 78, 160, 12, '#4a4068');
+      drawText(ctx, 'COOKING', W / 2, 92, '#e8a03a', { align: 'center', font: 'small' });
+    }
+  }
+}
+class CapsuleScene extends RoomScene {
+  constructor(node) { super(ROOMS.capsule, node || { id: 'capsule' }, { back: () => new CityScene() }); }
+}
+
+// ===== js/scenes/busk.js =====
+// ---------- Playing in the street ----------
+// You find somewhere, you put your gear down piece by piece, and then you
+// play there. The camera never leaves the street: the set happens in the
+// exact square of pavement you chose, with the crowd filling in around it.
+'use strict';
+const BUSK_GEAR = [
+  { key: 'case',  name: 'OPEN THE CASE',    hint: 'Nothing happens without somewhere to put the money.' },
+  { key: 'amp',   name: 'STAND THE AMP UP', hint: 'Small, battered, loud enough.' },
+  { key: 'mic',   name: 'SET THE MIC',      hint: 'One stand, borrowed, slightly bent.' },
+  { key: 'rig',   name: 'SET UP YOUR GEAR', hint: 'Whatever it is you play.' },
+  { key: 'sign',  name: 'PUT THE SIGN OUT', hint: 'THE BUG BUSKER ORCHESTRA, in marker pen.' },
+];
+function drawBuskGear(ctx, g, t) {
+  const x = g.x, y = g.y;
+  ctx.globalAlpha = 0.3; ellipsePx(ctx, x + 2, y + 4, 12, 5, '#000'); ctx.globalAlpha = 1;
+  switch (g.key) {
+    case 'case': {
+      rect(ctx, x - 14, y - 6, 28, 14, '#4a3524'); rect(ctx, x - 14, y - 6, 28, 3, '#6a4f36');
+      rect(ctx, x - 11, y - 3, 22, 9, '#8a2a3a');
+      // the coins that have landed in it so far
+      for (let i = 0; i < (g.coins || 0) && i < 14; i++) { const cx = x - 9 + (i * 5) % 19, cy = y + 1 + ((i * 3) % 4); circle(ctx, cx, cy, 2, '#f2c94c'); px(ctx, cx - 1, cy - 1, '#fff2c0'); }
+      break;
+    }
+    case 'amp': {
+      rect(ctx, x - 11, y - 18, 22, 22, '#241f2e'); rect(ctx, x - 11, y - 18, 22, 3, '#3f3850');
+      rect(ctx, x - 8, y - 14, 16, 13, '#3a3448');
+      for (let gy = y - 13; gy < y - 2; gy += 3) for (let gx = x - 7; gx < x + 7; gx += 3) px(ctx, gx, gy, '#262034');
+      rect(ctx, x - 8, y, 16, 3, '#8a8a98');
+      if (g.on) { ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 6); circle(ctx, x + 7, y - 16, 2, '#e8503a'); ctx.globalAlpha = 1; }
+      break;
+    }
+    case 'mic': {
+      rect(ctx, x - 7, y, 14, 3, '#3a3444');
+      rect(ctx, x - 1, y - 26, 2, 26, '#6a6a7a');
+      rect(ctx, x - 4, y - 30, 8, 5, '#2a2434'); ellipsePx(ctx, x, y - 31, 4, 4, '#8a8a98');
+      break;
+    }
+    case 'rig': {
+      const k = (Game.run && Game.run.members[0] && Game.run.members[0].instrument) || 'guitar';
+      if (k === 'drums') {
+        ellipsePx(ctx, x, y - 8, 15, 11, '#c8402c'); ellipsePx(ctx, x, y - 10, 13, 9, '#e8e2d4');
+        rect(ctx, x - 18, y - 16, 3, 16, '#8a8a98'); ellipsePx(ctx, x - 17, y - 18, 8, 3, '#e0b83c');
+        rect(ctx, x + 15, y - 14, 3, 14, '#8a8a98');
+      } else if (k === 'piano') {
+        rect(ctx, x - 20, y - 10, 40, 12, '#241f2e'); rect(ctx, x - 18, y - 9, 36, 6, '#f0ece2');
+        for (let i = 0; i < 9; i++) rect(ctx, x - 16 + i * 4, y - 9, 2, 4, '#1b1826');
+        rect(ctx, x - 16, y + 2, 4, 8, '#8a8a98'); rect(ctx, x + 12, y + 2, 4, 8, '#8a8a98');
+      } else {
+        rect(ctx, x - 3, y - 30, 4, 24, '#4a3524');
+        ellipsePx(ctx, x, y - 4, 10, 12, '#c8402c'); ellipsePx(ctx, x, y - 6, 4, 4, '#2a1f16');
+        rect(ctx, x - 5, y - 33, 7, 5, '#2a1f16');
+      }
+      break;
+    }
+    case 'sign': {
+      rect(ctx, x - 16, y - 20, 32, 18, '#f0ece2'); frame(ctx, x - 16, y - 20, 32, 18, '#8a7a5e');
+      for (let i = 0; i < 3; i++) rect(ctx, x - 13 + (i % 2) * 2, y - 16 + i * 5, 26 - i * 5, 2, '#3a3444');
+      rect(ctx, x - 1, y - 2, 2, 4, '#8a7a5e');
+      break;
+    }
+  }
+}
+class BuskScene {
+  constructor(spot, back) {
+    const r = Game.run;
+    this.t = 0; this.phase = 'setup'; this.phaseT = 0;
+    this.spot = spot;                                  // {x, y} in map pixels
+    this.backTo = back || (() => new CityScene());
+    this.sf = buildSF(); this.grid = tileGrid();
+    this.you = r.members[0];
+    this.cam = new WorldCam({ z: 3, view: { x: 0, y: 0, w: W, h: H }, bounds: { w: MAPW, h: MAPH }, lead: 0.08 });
+    this.body = new Walker(spot.x, spot.y, { r: 8, speed: 100, accel: 1000, friction: 1100, spec: this.you.spec, scale: 1.5 });
+    this.input = new WorldInput();
+    this.cam.snapTo(this.body.x, this.body.y);
+    this.solid = (x, y) => !tileWalkable(this.grid, Math.floor(x / TILE), Math.floor(y / TILE));
+    this.gear = []; this.next = 0;
+    this.msg = null; this.msgT = 0;
+    this.fx = new Particles();
+    this.crowd = [];
+    this.watchers = 0; this.tips = 0;
+    this.startBtn = null;
+    this.flash('FIND A SPOT AND PUT YOUR GEAR DOWN.');
+  }
+  flash(m) { this.msg = m; this.msgT = 3; }
+  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(this.backTo, 'fade', { dur: 0.5 }); }
+  // ---- setup
+  placeNext() {
+    if (this.next >= BUSK_GEAR.length) return;
+    const g = BUSK_GEAR[this.next];
+    // in front of you if there is room, otherwise wherever there is
+    const dir = this.body.facing;
+    const tries = [[dir.dx * 18, dir.dy * 16], [16, 0], [-16, 0], [0, 16], [0, -16], [14, 14], [-14, 14], [-14, -14], [14, -14], [0, 0]];
+    let gx = null, gy = null;
+    for (const [ox, oy] of tries) {
+      const px2 = clamp(this.body.x + ox, 20, MAPW - 20), py2 = clamp(this.body.y + oy, 20, MAPH - 20);
+      if (this.solid(px2, py2)) continue;
+      if (this.gear.some(o => Math.hypot(o.x - px2, o.y - py2) < 13)) continue;
+      gx = px2; gy = py2; break;
+    }
+    if (gx == null) { this.flash('NO ROOM. MOVE ALONG A BIT.'); Audio.ui('error'); return; }
+    this.gear.push({ key: g.key, x: gx, y: gy, t: 0, coins: 0, on: true });
+    this.next++;
+    Audio.ui('select'); Game.shake.hit(2, 0.1);
+    this.fx.burst(this.cam.sx(gx), this.cam.sy(gy), 8, { color: ['#cfc6ae', '#fff'], speed: 50, life: 0.4, kind: 'px', size: 2, gravity: 160 });
+    this.flash(this.next < BUSK_GEAR.length ? BUSK_GEAR[this.next].name : 'THAT IS EVERYTHING. PLAY WHEN YOU ARE READY.');
+  }
+  canStart() { return this.gear.length >= 3; }
+  startSet() {
+    if (!this.canStart()) { this.flash('PUT MORE OF IT DOWN FIRST.'); Audio.ui('error'); return; }
+    const r = Game.run;
+    Audio.init(); Audio.setStageReverb(false);
+    // the band stands round the gear
+    const anchor = this.gear.find(g => g.key === 'rig') || this.gear[0];
+    this.anchor = anchor;
+    this.mates = r.members.slice(1, 4).map((m, i) => ({ m, x: anchor.x + (i - 1) * 26 - 8, y: anchor.y - 6 + (i % 2) * 8 }));
+    // the set itself, on whatever the band plays
+    const tune = r.lastTune && TUNES[r.lastTune] ? r.lastTune : Object.keys(TUNES)[0];
+    const song = songFromTune(tune, { bpm: 112 });
+    const instr = gearInstrument(this.you.instrument, this.you.quality || 1);
+    const sections = [{ instrument: this.you.instrument, instr, startBar: 0, endBar: song.bars }];
+    const notes = chartFromMelody(song, sections, clamp(1 + r.day, 1, 4), makeRng(Date.now() & 0xffff), { starRate: 0.12, bombMult: 0.6 });
+    this.mods = collectMods(r, { difficulty: clamp(1 + r.day, 1, 4), fx: { shake: Game.shake }, windowMult: 1.2 });
+    this.rhythm = new RhythmGame(song, sections, notes, this.mods, {
+      onJudge: (n, j) => { if (j === 'perfect' || j === 'great') this.tipDrop(j === 'perfect' ? 2 : 1); },
+    });
+    const start = Audio.now() + 0.6 + song.leadIn;
+    this.rhythm.begin(start);
+    this.backing = new Backing(song, start - song.leadIn, () => ({ drums: true, bass: true, pad: false }));
+    this.song = song;
+    this.S = new ScoreState(r, { mods: this.mods, instrument: this.you.instrument, genre: song.genre, performers: r.members.length, band: r.members });
+    // the street keeps the top of the frame; the play surface takes the rest
+    this.playTop = H - (Game.touch ? 300 : 210);
+    this.cam.view = { x: 0, y: 0, w: W, h: this.playTop };
+    this.phase = 'play'; this.phaseT = 0;
+    this.pads = Game.touch ? buildPads(instr, { x: 4, y: H - 132, w: W - 8, h: 128 }, false) : [];
+    this.padPointers = new Map();
+    // the crowd that will gather, generated once and revealed as it arrives
+    this.pool = makeBugCrowd(180, hashStr('busk' + Math.round(this.spot.x) + Math.round(this.spot.y)), { glowRate: 0.3, cols: ['#2f2743', '#3a3050', '#262038', '#43385c', '#1f1a2e'] });
+    this.crowdN = 0;
+  }
+  tipDrop(n) {
+    const c = this.gear.find(g => g.key === 'case');
+    this.tips += n * 0.25 * (this.mods.tipMult || 1);
+    if (c) { c.coins = (c.coins || 0) + 1; }
+    if (c && Math.random() < 0.5) this.fx.add({ x: this.cam.sx(c.x), y: this.cam.sy(c.y) - 30, vx: (Math.random() - 0.5) * 30, vy: -40, life: 0.6, color: '#f2c94c', kind: 'star', size: 2, gravity: 320 });
+  }
+  finish() {
+    const r = Game.run;
+    this.backing.stop();
+    const res = this.rhythm.results();
+    const total = this.S.finish({ combo: this.rhythm.combo, maxCombo: res.maxCombo, misses: res.miss, watchers: this.crowdN, hype: this.rhythm.hype, acc: res.acc });
+    const pay = Math.round((total * 0.5 + this.tips * 4) * 10) / 10;
+    this.pay = Math.max(1, Math.round(pay));
+    r.money += this.pay;
+    r.today.earned = (r.today.earned || 0) + this.pay;
+    r.today.gigs = (r.today.gigs || 0) + 1;
+    r.today.bestCombo = Math.max(r.today.bestCombo || 0, res.maxCombo);
+    r.today.perfects = (r.today.perfects || 0) + res.perfect;
+    if (res.acc > 0.85) r.gratitude = (r.gratitude || 0) + 1;
+    checkGoals(r); r.save();
+    this.acc = res.acc; this.phase = 'tally'; this.phaseT = 0;
+    Audio.ui('fanfare');
+  }
+  update(dt) {
+    this.t += dt; this.phaseT += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt);
+    for (const g of this.gear) g.t += dt;
+    if (this.phase === 'setup') {
+      const v = this.input.vector({ x: this.body.x, y: this.body.y });
+      this.body.step(dt, v.x, v.y, this.solid);
+      this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
+      return;
+    }
+    if (this.phase === 'play') {
+      this.backing.update(); this.rhythm.update(dt);
+      this.cam.follow(dt, this.anchor.x, this.anchor.y + 4, 0, 0);
+      // the crowd builds while you are going well and drifts off when you are not
+      const want = clamp(Math.round(6 + this.rhythm.hype * 0.9 + (this.rhythm.combo || 0) * 0.5), 0, this.pool.length);
+      if (this.crowdN < want && Math.random() < dt * 6) this.crowdN++;
+      else if (this.crowdN > want && Math.random() < dt * 1.2) this.crowdN--;
+      this.layout();
+      if (this.rhythm.finished) this.finish();
+      return;
+    }
+    if (this.phase === 'tally') { this.layout(); if (this.phaseT > 6) this.leave(); }
+  }
+  layout() {
+    const a = this.anchor;
+    this.shown = layoutCrowdArc(this.pool.slice(0, this.crowdN), a.x, a.y, { rows: 7, spread: 120, depth: 62, near: 24, far: 10, gap: 22 });
+  }
+  key(code) {
+    if (this.phase === 'setup') {
+      if (['Enter', 'Space', 'KeyZ'].includes(code)) { this.placeNext(); return; }
+      if (code === 'KeyP' && this.canStart()) { this.startSet(); return; }
+      if (code === 'Escape') { this.leave(); return; }
+      this.input.key(code); return;
+    }
+    if (this.phase === 'play') { this.rhythm.keyDown(code); return; }
+    if (['Enter', 'Space', 'KeyZ', 'Escape'].includes(code)) this.leave();
+  }
+  keyUp(code) { if (this.phase === 'play') this.rhythm.keyUp(code); else this.input.keyUp(code); }
+  padAt(x, y) { return this.pads ? this.pads.find(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) : null; }
+  pointerDown(x, y, id) {
+    if (this.phase === 'setup') {
+      if (this.startBtn && this.startBtn.hit(x, y) && this.canStart()) { this.startSet(); return; }
+      if (this.placeBtn && this.placeBtn.hit(x, y)) { this.placeNext(); return; }
+      if (this.leaveBtn && this.leaveBtn.hit(x, y)) { this.leave(); return; }
+      if (Game.touch) { this.input.down(x, y, id); this.dragId = id; this.dragAt = { x, y }; this.dragMoved = 0; return; }
+      this.input.tapGoal = { x: this.cam.wx(x), y: this.cam.wy(y) };
+      return;
+    }
+    if (this.phase === 'play') {
+      if (this.rhythm.instrument.view === 'kit') { kitPointerDown(this, x, y, id); return; }
+      const p = this.padAt(x, y); if (p) { this.padPointers.set(id, p.code); this.rhythm.keyDown(p.code); }
+      return;
+    }
+    this.leave();
+  }
+  pointerMove(x, y, id) {
+    if (this.phase === 'setup') { if (this.input.move(x, y, id) && this.dragAt) this.dragMoved = Math.max(this.dragMoved, Math.hypot(x - this.dragAt.x, y - this.dragAt.y)); return; }
+    if (this.phase !== 'play') return;
+    if (this.rhythm.instrument.view === 'kit') { kitPointerMove(this, x, y, id); return; }
+    const prev = this.padPointers.get(id); if (prev === undefined) return;
+    const pad = this.padAt(x, y); const next = pad ? pad.code : null;
+    if (next === prev) return; this.rhythm.keyUp(prev);
+    if (next) { this.padPointers.set(id, next); this.rhythm.keyDown(next); } else this.padPointers.delete(id);
+  }
+  pointerUp(x, y, id) {
+    if (this.phase === 'setup') { if (this.dragId === id) { const moved = this.dragMoved; this.input.up(id); this.dragId = null; if (moved < 6) this.input.tapGoal = { x: this.cam.wx(x), y: this.cam.wy(y) }; return; } this.input.up(id); return; }
+    if (this.phase === 'play' && this.rhythm.instrument.view === 'kit') kitPointerUp(this, id);
+    const c = this.padPointers && this.padPointers.get(id);
+    if (c !== undefined) { this.padPointers.delete(id); this.rhythm.keyUp(c); }
+  }
+  click(x, y) { this.pointerDown(x, y, 999); }
+  hover(x, y) { for (const b of [this.startBtn, this.placeBtn, this.leaveBtn]) if (b) b.hover(x, y); }
+  // ---------- drawing ----------
+  draw(ctx) {
+    const cam = this.cam, t = this.t, r = Game.run;
+    rect(ctx, 0, 0, W, H, '#1b2230');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y), Math.round(MAPW * cam.z), Math.round(MAPH * cam.z));
+    // everything on the street, sorted so near things cover far ones
+    const items = [];
+    for (const g of this.gear) items.push({ y: g.y, d: () => { const s = { x: cam.sx(g.x), y: cam.sy(g.y) }; ctx.save(); ctx.translate(s.x, s.y); ctx.scale(cam.z / 1.45, cam.z / 1.45); drawBuskGear(ctx, { key: g.key, x: 0, y: 0, coins: g.coins, on: g.on }, t); ctx.restore(); } });
+    if (this.shown) for (const b of this.shown) items.push({ y: b.y, d: () => drawBugSilhouette(ctx, b, cam.sx(b.x), cam.sy(b.y), b.s * (cam.z / 2.2), t, this.phase === 'tally' ? 'flat' : 'happy', b.s > 20 ? 1 : 0) });
+    if (this.mates) for (const m of this.mates) items.push({ y: m.y, d: () => {
+      const s = { x: cam.sx(m.x), y: cam.sy(m.y) };
+      drawShadow(ctx, s.x, s.y + 6, 20, 0.3);
+      drawBugAt(ctx, m.m.spec, s.x, s.y + 8, { pose: this.phase === 'play' ? (Math.floor(t * 6) % 2 ? 'play' : 'play2') : 'idle', scale: 1.2, instrument: m.m.instrument !== 'drums' && m.m.instrument !== 'piano' ? m.m.instrument : null });
+    } });
+    const b = this.body;
+    items.push({ y: b.y, d: () => {
+      const s = { x: cam.sx(b.x), y: cam.sy(b.y) };
+      drawShadow(ctx, s.x, s.y + 7, 24, 0.34);
+      const pose = this.phase === 'play' ? (Math.floor(t * 7) % 2 ? 'play' : 'play2') : b.pose;
+      drawBugAt(ctx, this.you.spec, s.x, s.y + 9, { pose, scale: 1.6, flip: b.flip, instrument: this.you.instrument !== 'drums' && this.you.instrument !== 'piano' ? this.you.instrument : null });
+    } });
+    items.sort((p, q) => p.y - q.y);
+    for (const it of items) it.d();
+    this.fx.draw(ctx);
+    if (this.phase === 'setup') this.drawSetup(ctx);
+    else if (this.phase === 'play') this.drawPlay(ctx);
+    else this.drawTally(ctx);
+    if (this.msgT > 0 && this.phase !== 'tally') {
+      ctx.globalAlpha = clamp(this.msgT, 0, 1);
+      const w2 = Math.min(W - 40, textWidth(this.msg, { scale: 2 }) + 28);
+      rect(ctx, W / 2 - w2 / 2, 14, w2, 24, '#152a18'); frame(ctx, W / 2 - w2 / 2, 14, w2, 24, '#6be585');
+      drawText(ctx, this.msg, W / 2, 21, '#6be585', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    this.input.drawStick(ctx);
+  }
+  drawSetup(ctx) {
+    // the checklist of what is still in the bag
+    const bx = 14, by = 60;
+    rect(ctx, bx, by, 226, 24 + BUSK_GEAR.length * 20, 'rgba(10,8,20,0.82)');
+    frame(ctx, bx, by, 226, 24 + BUSK_GEAR.length * 20, '#c8a03a');
+    drawText(ctx, 'PLACE TOOLS', bx + 10, by + 7, '#ffd24a', { scale: 2 });
+    BUSK_GEAR.forEach((g, i) => {
+      const y = by + 24 + i * 20, done = i < this.next, now = i === this.next;
+      rect(ctx, bx + 10, y + 2, 10, 10, done ? '#6be585' : now ? '#ffd24a' : '#2a2438');
+      if (done) { line(ctx, bx + 12, y + 7, bx + 14, y + 10, '#0f1a0f'); line(ctx, bx + 14, y + 10, bx + 18, y + 4, '#0f1a0f'); }
+      drawText(ctx, g.name, bx + 26, y + 3, done ? '#6a7a68' : now ? '#fff4d8' : '#8a82a8', { font: 'small' });
+    });
+    if (this.next < BUSK_GEAR.length) drawText(ctx, BUSK_GEAR[this.next].hint, bx + 10, by + 30 + BUSK_GEAR.length * 20 - 10, '#8a82a8', { font: 'small' });
+    this.placeBtn = this.placeBtn || new Btn(W - 400, H - 60, 180, 44, 'PUT IT DOWN', () => this.placeNext(), { scale: 3 });
+    this.startBtn = this.startBtn || new Btn(W - 208, H - 60, 190, 44, 'START THE SET', () => this.startSet(), { scale: 3, color: UI.gold, hi: UI.goldHi, lo: UI.goldLo, ol: UI.goldOl });
+    this.leaveBtn = this.leaveBtn || new Btn(14, H - 60, 120, 44, 'PACK UP', () => this.leave(), { scale: 3, color: UI.red, hi: UI.redHi, lo: UI.redLo, ol: '#4a1410' });
+    this.placeBtn.draw(ctx, this.next >= BUSK_GEAR.length ? 'disabled' : undefined);
+    this.startBtn.draw(ctx, this.canStart() ? undefined : 'disabled');
+    this.leaveBtn.draw(ctx);
+  }
+  drawPlay(ctx) {
+    const L = { rhythmY: this.playTop, rhythmH: Game.touch ? 172 : 200, padY: H - 128, padH: 124 };
+    // the play surface sits over the bottom of the street; the street stays put
+    ctx.globalAlpha = 0.72; rect(ctx, 0, L.rhythmY - 6, W, H - L.rhythmY + 6, '#080614'); ctx.globalAlpha = 1;
+    rect(ctx, 0, L.rhythmY - 6, W, 2, '#c8a03a');
+    this.rhythm.draw(ctx, { x: 0, y: L.rhythmY, w: W, h: L.rhythmH, touch: Game.touch, pads: this.pads, overlay: true,
+      kit: this.rhythm.instrument.view === 'kit' ? { cx: W / 2, baseY: H - 60, width: W, zoom: 1 } : null });
+    if (Game.touch) drawPadStrip(ctx, L, this.pads, this.rhythm.keysDown);
+    // takings and the size of the crowd
+    rect(ctx, W - 186, 12, 172, 44, 'rgba(10,8,20,0.78)'); frame(ctx, W - 186, 12, 172, 44, '#3a3560');
+    ctx.drawImage(icon('heart'), W - 180, 18, 12, 10); drawText(ctx, String(this.crowdN), W - 164, 19, '#cfc9e6', { scale: 2 });
+    ctx.drawImage(icon('coin'), W - 180, 36, 13, 12); drawText(ctx, fmtMoney(this.tips), W - 162, 37, '#ffd24a', { scale: 2 });
+  }
+  drawTally(ctx) {
+    ctx.globalAlpha = 0.6; rect(ctx, 0, 0, W, H, '#05040c'); ctx.globalAlpha = 1;
+    const acc = Math.round((this.acc || 0) * 100);
+    drawText(ctx, 'THAT IS THE SET', W / 2, 120, '#fff4d8', { align: 'center', scale: 5, outline: '#2a1a08' });
+    drawText(ctx, acc + '%', W / 2, 190, acc > 80 ? '#6be585' : '#ffd24a', { align: 'center', scale: 8 });
+    drawText(ctx, String(this.crowdN) + ' STOPPED TO LISTEN', W / 2, 280, '#cfc9e6', { align: 'center', scale: 2 });
+    drawText(ctx, 'THE CASE HAS ' + fmtMoney(this.pay || 0) + ' IN IT', W / 2, 314, '#ffd24a', { align: 'center', scale: 3 });
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 5);
+    drawText(ctx, Game.touch ? 'TAP' : 'ENTER', W / 2, H - 70, '#cfc9e6', { align: 'center', scale: 2 });
+    ctx.globalAlpha = 1;
+  }
+}
+
 // ===== js/scenes/place.js =====
 // ---------- Places you go inside ----------
 // Inside a building the camera stays where it is: straight down, the same as
@@ -10244,6 +11694,21 @@ class PhoneScene {
     drawText(ctx, 'TOKYO', S.x + 12, top + 11, '#e8f0fa', { font: 'small' });
     drawText(ctx, (r && r.pos ? String(r.pos).toUpperCase() : ''), S.x + S.w - 12, top + 11, '#8ad8ff', { align: 'right', font: 'small' });
     for (let i = 0; i < 2; i++) { rect(ctx, S.x + S.w - 24, top + 34 + i * 20, 18, 18, 'rgba(12,16,24,0.8)'); drawText(ctx, i ? '-' : '+', S.x + S.w - 15, top + 39 + i * 20, '#e8f0fa', { align: 'center', scale: 2 }); }
+    // ---- what is on. Every event and every stage in the city, listed the way
+    // a maps app lists what is near you, nearest first.
+    const near = NODES.filter(n => n.type === 'event' || n.type === 'venue' || n.type === 'mystery')
+      .map(n => ({ n, d: r && r.tile ? Math.hypot(n.x - (r.tile.tx + 0.5) * TILE, n.y - (r.tile.ty + 0.5) * TILE) : 0 }))
+      .sort((a, b) => a.d - b.d).slice(0, 3);
+    const lh = 16, ly = S.y + S.h - 24 - near.length * lh;
+    rect(ctx, S.x + 6, ly - 12, S.w - 12, near.length * lh + 12, 'rgba(12,16,24,0.85)');
+    drawText(ctx, 'WHAT IS ON', S.x + 12, ly - 9, '#6be585', { font: 'small' });
+    near.forEach((e, i) => {
+      const y = ly + 3 + i * lh;
+      const col = PIN_COLOR[e.n.type] || '#e0523c';
+      rect(ctx, S.x + 12, y + 1, 5, 5, col);
+      drawText(ctx, e.n.type === 'mystery' ? '???' : e.n.name, S.x + 22, y, '#e8f0fa', { font: 'small' });
+      drawText(ctx, Math.round(e.d / TILE) + ' BLK', S.x + S.w - 12, y, '#8ad8ff', { align: 'right', font: 'small' });
+    });
     rect(ctx, S.x + 6, S.y + S.h - 24, S.w - 12, 18, 'rgba(12,16,24,0.8)');
     drawText(ctx, 'STAMINA ' + (r ? r.stamina : 0) + '  DAY ' + ((r ? r.day : 0) + 1) + '/5', S.x + 12, S.y + S.h - 19, '#cfd6e2', { font: 'small' });
   }
@@ -11869,7 +13334,7 @@ class FlightScene {
       else if (this.lineT > 4.4 && this.li >= this.lines.length - 1) this.leave();
     }
   }
-  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
+  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new AirportScene(), 'fade', { dur: 0.7 }); }
   advance() {
     if (this.phase === 'board') { this.phase = 'window'; this.phaseT = 0; return; }
     if (this.li < this.lines.length - 1) { this.li++; this.lineT = 0; return; }
@@ -12112,7 +13577,7 @@ const AWNING_COLS = ['#d8483c', '#2f7fc0', '#e0a02a', '#3f9a5a', '#8a4fd0', '#d8
 let _sfCache = null;
 // How close the map sits to your eye. The whole city at 1:1 was a diagram you
 // squinted at; half again as big is a place.
-const MAP_Z = 1.5;
+const MAP_Z = 2.2;
 const MAP_VW = () => MAPW * MAP_Z, MAP_VH = () => MAPH * MAP_Z;
 // ---------- Ground tiles ----------
 // Only the ground is tiled now. Roads, pavements and buildings are drawn over
@@ -12172,6 +13637,98 @@ function cityTile(kind, variant, mask) {
     }
     return P.toCanvas();
   });
+}
+// ---------- The big egg is a beetle ----------
+// Seen from the air the stadium is a rhinoceros beetle: the bowl is the wing
+// case, split down the middle by the roof seam; the entrance hall is the
+// thorax with the horn of the main canopy over the doors; six ramps come off
+// it like legs; two lighting masts stand where the antennae would be. It is
+// still a stadium — that is the joke and the point.
+function drawBeetleStadium(x, cx, cy) {
+  const R = 190, W2 = 150;                       // how big the shell is
+  // ---- the plaza it stands in
+  ellipsePx(x, cx, cy + 10, R + 70, W2 + 62, '#9aa1ab');
+  for (let i = 0; i < 700; i++) { const a = (i * 2.399), r2 = Math.sqrt(i / 700) * (R + 66); const px2 = cx + Math.cos(a) * r2, py2 = cy + 10 + Math.sin(a) * r2 * 0.78; if ((i % 7) === 0) rect(x, px2, py2, 2, 2, '#8a919b'); }
+  ellipsePx(x, cx, cy + 10, R + 52, W2 + 46, '#b6bcc4');
+  // paths radiating out to the streets
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI * (0.18 + i * 0.22);
+    x.save(); x.translate(cx, cy + 10); x.rotate(a);
+    rect(x, -10, 0, 20, R + 78, '#cfd4da'); rect(x, -10, 0, 2, R + 78, '#e0e4ea');
+    x.restore();
+  }
+  // ---- six legs, angled off the body, which are the entrance ramps
+  for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+    const ay = cy - 60 + i * 66, len = 120 + i * 18, ang = side * (0.5 + i * 0.16);
+    x.save(); x.translate(cx + side * (R * 0.62), ay); x.rotate(ang);
+    rect(x, 0, -13, len, 26, '#4a5260'); rect(x, 0, -13, len, 4, '#6a7280');
+    for (let k = 10; k < len - 8; k += 16) rect(x, k, -9, 8, 18, '#5f6a78');
+    rect(x, len - 26, -18, 26, 36, '#39414e');            // the foot
+    rect(x, len - 26, -18, 26, 4, '#5a6270');
+    x.restore();
+  }
+  // ---- the shell: two wing cases, meeting down a seam, narrower at the top
+  // the way a beetle's are, with the bowl of the stadium open between them
+  ellipsePx(x, cx + 8, cy + 14, R + 4, W2 + 4, '#1c212b');            // the shadow under the whole thing
+  for (const side of [-1, 1]) {
+    const wx = cx + side * R * 0.44;
+    x.save();
+    x.translate(wx, cy + 6); x.rotate(side * 0.09);
+    // the case itself: a rounded shell, wider at the bottom
+    ellipsePx(x, 0, 0, R * 0.56, W2 * 0.98, '#28303c');
+    ellipsePx(x, 0, -2, R * 0.52, W2 * 0.94, '#48566a');
+    ellipsePx(x, side * -R * 0.06, -W2 * 0.22, R * 0.4, W2 * 0.6, '#5a6c82');
+    // the ribs, running down the length of it
+    x.globalAlpha = 0.4;
+    for (let i = -4; i <= 4; i++) {
+      const rx = i * R * 0.1;
+      ellipseRingPx(x, rx * 0.4, 0, Math.abs(R * 0.5 - Math.abs(rx) * 0.7), W2 * 0.9, '#323b49');
+    }
+    x.globalAlpha = 1;
+    // the outer rim, catching the light
+    x.globalAlpha = 0.55; ellipseRingPx(x, 0, -3, R * 0.52, W2 * 0.94, '#8a9ab0'); x.globalAlpha = 1;
+    // a few pinpricks of light along the roof edge
+    for (let i = 0; i < 14; i++) { const a = i * 0.45; rect(x, Math.cos(a) * R * 0.5, Math.sin(a) * W2 * 0.9, 2, 2, '#ffe9a8'); }
+    x.restore();
+  }
+  // the seam between them, lit down its length
+  rect(x, cx - 5, cy - W2 * 0.92, 10, W2 * 1.9, '#1e242e');
+  rect(x, cx - 1, cy - W2 * 0.86, 2, W2 * 1.78, '#8ad8ff');
+  ellipsePx(x, cx, cy - W2 * 0.92, 7, 5, '#39414e');
+  // ---- the bowl: the open middle, where the pitch is
+  ellipsePx(x, cx, cy + 12, R * 0.46, W2 * 0.56, '#12161f');
+  ellipsePx(x, cx, cy + 12, R * 0.42, W2 * 0.5, '#1b2230');
+  // tiers of seats round it
+  for (let i = 0; i < 5; i++) { x.globalAlpha = 0.65; ellipseRingPx(x, cx, cy + 12, R * (0.42 - i * 0.03), W2 * (0.5 - i * 0.035), i % 2 ? '#8a3a2c' : '#2f4a8a'); x.globalAlpha = 1; }
+  ellipsePx(x, cx, cy + 12, R * 0.28, W2 * 0.33, '#2f7a4a');
+  for (let i = 0; i < 8; i++) { x.globalAlpha = 0.16; rect(x, cx - R * 0.26 + i * (R * 0.52 / 8), cy + 12 - W2 * 0.31, R * 0.26 / 8, W2 * 0.62, '#ffffff'); x.globalAlpha = 1; }
+  ellipsePx(x, cx, cy + 12, R * 0.12, W2 * 0.13, '#e8e4f0');          // the stage in the middle
+  x.globalAlpha = 0.3; ellipsePx(x, cx, cy + 12, R * 0.2, W2 * 0.22, '#cfe4ff'); x.globalAlpha = 1;
+  // ---- the thorax: the entrance hall at the north end
+  ellipsePx(x, cx, cy - W2 - 30, 86, 46, '#2f3a48');
+  ellipsePx(x, cx, cy - W2 - 32, 78, 40, '#4a5768');
+  rect(x, cx - 60, cy - W2 - 36, 120, 8, '#5f6e82');
+  for (let i = 0; i < 7; i++) rect(x, cx - 52 + i * 17, cy - W2 - 18, 11, 16, '#ffd24a');   // the doors, lit
+  // the horn over the doors
+  x.fillStyle = '#5f6e82';
+  x.beginPath();
+  x.moveTo(cx - 16, cy - W2 - 52); x.lineTo(cx + 16, cy - W2 - 52);
+  x.lineTo(cx + 8, cy - W2 - 118); x.lineTo(cx + 22, cy - W2 - 132);
+  x.lineTo(cx, cy - W2 - 126); x.lineTo(cx - 22, cy - W2 - 132);
+  x.lineTo(cx - 8, cy - W2 - 118); x.fill();
+  rect(x, cx - 14, cy - W2 - 52, 28, 5, '#8a98ac');
+  // ---- the antennae: two lighting masts
+  for (const side of [-1, 1]) {
+    const mx = cx + side * 72, my = cy - W2 - 60;
+    x.save(); x.translate(mx, my); x.rotate(side * 0.34);
+    rect(x, -3, -96, 6, 96, '#6a7280'); rect(x, -3, -96, 2, 96, '#98a2b0');
+    rect(x, -16, -110, 32, 16, '#39414e');
+    for (let i = 0; i < 4; i++) rect(x, -13 + i * 8, -107, 5, 10, '#fff2c0');
+    x.restore();
+  }
+  // ---- the name, on the plaza
+  x.globalAlpha = 0.5; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 28, '#ffffff', { align: 'center', scale: 2 }); x.globalAlpha = 1;
+  x.globalAlpha = 0.9; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 27, '#26301f', { align: 'center', scale: 2 }); x.globalAlpha = 1;
 }
 // ---------- A building ----------
 // Roof at the top, front wall with windows below it, a door with an awning
@@ -12448,9 +14005,16 @@ function buildSF() {
     }
   }
   // ---- landmarks that are bigger than one tile
-  x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
-  x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
-  circle(x, 1350, 195, 24, '#d8d2c0'); circle(x, 1350, 195, 20, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338, 186, 24, 12);
+  // these were drawn against the old sketch size, so they scale with it
+  const LS = MAP_SCALE / 1.5;
+  x.strokeStyle = '#c8432a'; x.lineWidth = 9 * LS; x.beginPath(); x.moveTo(225 * LS, 132 * LS); x.lineTo(90 * LS, 30 * LS); x.stroke();
+  x.strokeStyle = '#9aa0b0'; x.lineWidth = 8 * LS; x.beginPath(); x.moveTo(1342 * LS, 705 * LS); x.lineTo(1500 * LS, 645 * LS); x.stroke();
+  circle(x, 1350 * LS, 195 * LS, 24 * LS, '#d8d2c0'); circle(x, 1350 * LS, 195 * LS, 20 * LS, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338 * LS, 186 * LS, 24 * LS, 12 * LS);
+  // ---- the stadium, which is a beetle
+  {
+    const dome = NODES.find(n => n.id === 'dome');
+    if (dome) drawBeetleStadium(x, dome.x, dome.y + 30);
+  }
   // ---- labels last, so they sit on top of the tiles
   x.save();
   for (const st of STREETS) {
@@ -12627,7 +14191,7 @@ function drawMascotSmall(ctx, x, y, kind, ci, sc) {
   ctx.drawImage(c, Math.round(x - 18 * sc), Math.round(y - 24 * sc), w, h);
   ctx.imageSmoothingEnabled = sm;
 }
-const PIN_COLOR = { place: '#2f9a8a', venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
+const PIN_COLOR = { home: '#d8b83c', place: '#2f9a8a', venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
   // A question mark does not sit still. It bobs, and it throws a little light,
@@ -12668,38 +14232,60 @@ class CityScene {
   constructor(arrive) {
     const r = Game.run; this.t = 0; this.sf = buildSF(); this.G = this.sf.graph;
     this.arriveT = (arrive || Game.run.today && Game.run.today.gigs === 0 && Game.run.today.tiles === 0) ? 3.4 : 0; this.travel = null; this.msg = null; this.msgT = 0;
-    this.cam = { x: 0, y: 0 };
-    const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 34; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
     // the pavements: office workers, school kids, somebody in a mascot suit,
     // a dog on a lead, a courier going too fast. Every one of them bobs.
+    // Everybody out here is going somewhere in particular. A commuter walks
+    // between a station and an office; a shopper does the shops; a tourist
+    // works through the landmarks; a courier never stops. When they arrive
+    // they stand about for a bit and then pick the next place.
     this.people = [];
-    for (let i = 0; i < 96; i++) {
+    const byType = (t) => NODES.filter(n => n.type === t).map(n => n.id).filter(id => this.G[id]);
+    const PURPOSE = {
+      commuter: { pool: byType('inside').concat(byType('venue')), wait: [2, 6], sp: 0.026, carry: 0.5 },
+      shopper:  { pool: byType('shop').concat(byType('place'), byType('food')), wait: [4, 10], sp: 0.018, carry: 0.8 },
+      tourist:  { pool: byType('event').concat(byType('rest'), byType('venue')), wait: [5, 12], sp: 0.014, carry: 0.3 },
+      diner:    { pool: byType('food').concat(byType('home')), wait: [6, 14], sp: 0.02, carry: 0.2 },
+      courier:  { pool: Object.keys(this.G), wait: [0.2, 1], sp: 0.05, carry: 1 },
+    };
+    this.purposes = PURPOSE;
+    const kinds = ['commuter', 'commuter', 'shopper', 'tourist', 'diner', 'courier'];
+    for (let i = 0; i < 110; i++) {
       const e = rr.pick(EDGES);
       const roll = rr();
-      const kind = roll < 0.06 ? 'mascot' : roll < 0.14 ? 'dog' : roll < 0.22 ? 'kid' : 'walker';
-      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.032) * (kind === 'dog' ? 1.5 : 1),
+      const kind = roll < 0.05 ? 'mascot' : roll < 0.11 ? 'dog' : roll < 0.2 ? 'kid' : 'walker';
+      const purpose = kind === 'walker' || kind === 'kid' ? rr.pick(kinds) : 'courier';
+      const P = PURPOSE[purpose];
+      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: P.sp * rr.range(0.8, 1.25) * (kind === 'dog' ? 1.4 : 1),
         col: rr.pick(NPC_PALETTES), hair: rr.pick(['#3a3040', '#241a2e', '#6a4a30', '#8a2a4a', '#c8a03a']),
-        kind, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(0.3), side: rr.sign(), lane: rr.int(0, 1) });
+        kind, purpose, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(P.carry), side: rr.sign(), lane: rr.int(0, 1),
+        goal: P.pool.length ? rr.pick(P.pool) : null, wait: 0 });
     }
     // blossom on the wind, right across the viewport
     this.petals = [];
     for (let i = 0; i < 70; i++) this.petals.push({ x: rr.range(0, W), y: rr.range(26, H), sp: rr.range(14, 34), sw: rr.range(0.6, 1.6), ph: rr.range(0, 6.3), s: rr.int(2, 3) });
     this.fx = new Particles(); this.sel = 0;
+    this.you = (Game.run.members && Game.run.members[0]) || null;
     this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
     const r0 = Game.run;
     if (!r0.tile || !tileWalkable(this.grid, r0.tile.tx, r0.tile.ty)) { const h = NODES.find(n => n.id === r0.pos) || NODES[0]; r0.tile = { tx: h.tx, ty: h.ty }; }
     this.tile = { tx: r0.tile.tx, ty: r0.tile.ty };
     this.pos = { x: (this.tile.tx + 0.5) * TILE, y: (this.tile.ty + 0.5) * TILE };
-    this.path = [];            // tiles queued by a drag
-    this.walking = null;       // {from, to, t}
+    // ---- You walk the city yourself now. Eight directions, acceleration, a
+    // slide along walls, and a camera that runs a little ahead of you.
+    this.cam = new WorldCam({ z: MAP_Z, view: { x: 0, y: 26, w: W, h: H - 60 }, bounds: { w: MAPW, h: MAPH } });
+    this.body = new Walker(this.pos.x, this.pos.y, { r: 8, speed: 104, accel: 900, friction: 1000, spec: this.you ? this.you.spec : null, scale: 1.45 });
+    this.input = new WorldInput();
+    this.cam.snapTo(this.body.x, this.body.y);
+    this.walkDist = 0; this.tileDist = 0;
+    this.solid = (x, y) => !tileWalkable(this.grid, Math.floor(x / TILE), Math.floor(y / TILE));
     this.facing = 1;
     this.refresh();
     this.buttons = [];
   }
-  centerOn(p, snap) { const tx = clamp(p.x * MAP_Z - W / 2, 0, MAP_VW() - W), ty = clamp(p.y * MAP_Z - (H - 60) / 2 - 26, 0, MAP_VH() - (H - 60)); if (snap) { this.cam.x = tx; this.cam.y = ty; } this.target = { x: tx, y: ty }; }
+  centerOn(p, snap) { if (!this.cam) return; if (snap) this.cam.snapTo(p.x, p.y); }
   get here() { return this.G[Game.run.pos]; }
   refresh() { this.reach = NODES.filter(n => this.canEnter(n)); this.sel = 0; this.centerOn(this.pos); }
   nodeAtTile(tx, ty) { return NODES.find(n => n.tx === tx && n.ty === ty && this.canEnter(n)); }
@@ -12708,9 +14294,31 @@ class CityScene {
   canEnter(n) { if (n.id === 'ggb' && Game.run.day < 4) return false; return true; }
   update(dt) {
     const r = Game.run; this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.arriveT = Math.max(0, this.arriveT - dt); this.goalPop = Math.max(0, (this.goalPop || 0) - dt);
-    this.cam.x = lerp(this.cam.x, this.target.x, Math.min(1, dt * 4)); this.cam.y = lerp(this.cam.y, this.target.y, Math.min(1, dt * 4));
+    this.walkStep(dt);
     for (const c of this.cars) { c.k += c.sp * dt; if (c.k > 1) { c.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; c.a = e[0]; c.b = e[1]; } }
-    for (const p of this.people) { p.k += p.sp * dt; if (p.k > 1) { p.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; } }
+    for (const p of this.people) {
+      if (p.wait > 0) { p.wait -= dt; continue; }
+      p.k += p.sp * dt;
+      if (p.k <= 1) continue;
+      // arrived at the end of this street: turn toward wherever they are going
+      p.k = 0; p.a = p.b;
+      const here = this.G[p.a];
+      if (!here) { const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; continue; }
+      if (p.goal === p.a) {
+        // they are there. Stand about, then pick somewhere else to be.
+        const P = this.purposes[p.purpose] || this.purposes.courier;
+        p.wait = P.wait[0] + Math.random() * (P.wait[1] - P.wait[0]);
+        p.goal = P.pool.length ? P.pool[Math.floor(Math.random() * P.pool.length)] : null;
+      }
+      const g = p.goal && this.G[p.goal];
+      const links = here.links || [];
+      if (!links.length) { const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; continue; }
+      if (!g) { p.b = links[Math.floor(Math.random() * links.length)]; continue; }
+      // greedy, which is how most people navigate a city anyway
+      let best = links[0], bd = 1e9;
+      for (const l of links) { const n2 = this.G[l]; if (!n2) continue; const d = Math.hypot(n2.x - g.x, n2.y - g.y) + Math.random() * 40; if (d < bd) { bd = d; best = l; } }
+      p.b = best;
+    }
     // petals cross the viewport regardless of where the camera is, because
     // the wind does not care which street you are looking at
     for (const pt of this.petals) {
@@ -12721,50 +14329,64 @@ class CityScene {
     const W_ = WEATHERS[r.weather] || WEATHERS.clear;
     if (r.weather === 'rain' && Math.random() < dt * 40) this.fx.add({ x: Math.random() * W, y: -4, vx: -20, vy: 260, life: 1.4, color: '#9ec8ee', kind: 'px', size: 1, gravity: 0 });
     if (r.weather === 'fog' && Math.random() < dt * 1.6) this.fx.add({ x: -40, y: 30 + Math.random() * (H - 80), vx: 26, vy: 0, life: 22, kind: 'fog', color: '#e8ecf4', size: 22, grow: 16, alpha: 0.3, gravity: 0 });
-    this.stepWalk(dt);
   }
-  // ---- tile walking: one step at a time, stamina paid on arrival
-  stepWalk(dt) {
+  // ---- Walking.
+  // Not a route you draw and then watch: you hold a direction and you go.
+  // Stamina is spent by the metre rather than by the square, so crossing a
+  // wide street costs what it looks like it should.
+  walkStep(dt) {
     const r = Game.run;
-    if (!this.walking && this.path.length) {
-      const next = this.path[0];
-      const cost = tileCost(this.grid, next.tx, next.ty);
-      if (r.stamina < cost) { this.path.length = 0; this.flash('TOO TIRED'); Audio.ui('error'); return; }
-      this.walking = { from: { x: this.pos.x, y: this.pos.y }, to: { x: (next.tx + 0.5) * TILE, y: (next.ty + 0.5) * TILE }, t: 0, cost };
-      this.facing = this.walking.to.x >= this.walking.from.x ? 1 : -1;
+    if (this.arriveT > 1.4) { this.cam.follow(dt, this.body.x, this.body.y, 0, 0); return; }
+    const v = this.input.vector({ x: this.body.x, y: this.body.y });
+    const tired = r.stamina <= 0;
+    if (tired) { this.body.speed = 58; } else this.body.speed = 104;
+    const moved = this.body.step(dt, v.x, v.y, this.solid);
+    if (moved > 0) {
+      this.walkDist += moved; this.tileDist += moved;
+      // a block of walking is a block on the step counter
+      while (this.tileDist >= TILE) { this.tileDist -= TILE; r.today.tiles = (r.today.tiles || 0) + 1; const gh = checkGoals(r); if (gh) this.goalDone(gh); }
+      // and a stamina point every couple of blocks
+      while (this.walkDist >= TILE * 2.4) {
+        this.walkDist -= TILE * 2.4;
+        if (r.stamina > 0) { r.stamina = Math.max(0, r.stamina - 1); if (r.stamina === 0) this.flash('YOU ARE WALKING ON EMPTY'); }
+      }
+      // dust under the feet, in step
+      if (Math.floor(this.body.walkT * 7) !== this._lastStep) {
+        this._lastStep = Math.floor(this.body.walkT * 7);
+        if (this._lastStep % 2 === 0) drawDust(this.fx, this.cam.sx(this.body.x), this.cam.sy(this.body.y) + 6, 2, '#cfc6ae');
+      }
     }
-    if (!this.walking) return;
-    const wk = this.walking;
-    wk.t += dt * 4.4;
-    const k = clamp(wk.t, 0, 1);
-    this.pos.x = lerp(wk.from.x, wk.to.x, k);
-    this.pos.y = lerp(wk.from.y, wk.to.y, k) - Math.sin(k * Math.PI) * 3;   // a little hop per tile
-    this.centerOn(this.pos);
-    if (k >= 1) {
-      const t = this.path.shift();
-      this.tile = { tx: t.tx, ty: t.ty }; r.tile = { tx: t.tx, ty: t.ty };
-      r.stamina = Math.max(0, r.stamina - wk.cost);
-      r.today.tiles = (r.today.tiles || 0) + 1;
-      const gh = checkGoals(r); if (gh) this.goalDone(gh);
-      this.walking = null; this.stepT = (this.stepT || 0) + 1;
-      if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x * MAP_Z - this.cam.x, this.pos.y * MAP_Z - this.cam.y + 26 + 6, 3, '#cfc6ae');
-      const n = this.nodeAtTile(t.tx, t.ty);
-      if (n) { this.path.length = 0; r.pos = n.id; this.arrive(n); return; }
-      if (r.stamina <= 0) { this.path.length = 0; this.flash('OUT OF STAMINA'); }
+    this.facing = this.body.flip ? -1 : 1;
+    this.pos.x = this.body.x; this.pos.y = this.body.y;
+    const tx = Math.floor(this.body.x / TILE), ty = Math.floor(this.body.y / TILE);
+    if (tx !== this.tile.tx || ty !== this.tile.ty) { this.tile = { tx, ty }; r.tile = { tx, ty }; }
+    this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
+    // what you are standing in front of
+    this.atNode = null;
+    let bd = 34;
+    for (const n of this.reach) {
+      const d = Math.hypot(n.x - this.body.x, n.y - this.body.y);
+      if (d < bd) { bd = d; this.atNode = n; }
     }
+    if (this.atNode !== this._lastAt) { this._lastAt = this.atNode; if (this.atNode) Audio.ui('move'); }
+  }
+  enterHere() {
+    const n = this.atNode; if (!n) return;
+    Game.run.pos = n.id; this.arrive(n);
   }
   arrive(n) {
     const r = Game.run; r.save();
     const done = r.doneNodes || (r.doneNodes = {});
     switch (n.type) {
       case 'venue': Game.go(() => new GigScene(n), 'curtain', { label: n.name }); break;
-      case 'shop': Game.go(() => new ShopScene(n), 'slideL'); break;
-      case 'food': Game.go(() => new FoodScene(n), 'slideL'); break;
+      case 'shop': Game.go(() => new MusicShopScene(n), 'iris', { dur: 0.5 }); break;
+      case 'food': Game.go(() => new RamenScene(n), 'iris', { dur: 0.5 }); break;
       case 'recruit': Game.go(() => new RecruitScene(n), 'iris'); break;
       case 'event': Game.go(() => new EventScene(n), 'iris'); break;
       case 'mystery': Game.go(() => new MysteryScene(n), 'iris'); break;
       case 'inside': Game.go(() => new InteriorScene(n), 'iris'); break;
       case 'place': Game.go(() => new PlaceScene(n), 'iris'); break;
+      case 'home': Game.go(() => new CapsuleScene(n), 'iris', { dur: 0.5 }); break;
       case 'rest': Game.go(() => new RestScene(n), 'fade'); break;
       case 'pickup': {
         if (done[n.id] === r.day) { this.flash('NOTHING LEFT HERE'); break; }
@@ -12781,100 +14403,80 @@ class CityScene {
   }
   goalDone(g) { this.flash(GOALS[g.key].name + '  ' + goalRewardText(g)); Audio.ui('fanfare'); this.goalPop = 1.6; }
   flash(msg) { this.msg = msg; this.msgT = 2.2; this.fx.burst(W / 2, 120, 14, { color: ['#ffd24a', '#fff'], speed: 90, life: 0.6, kind: 'star', size: 2, gravity: 120 }); }
+  // the GO button points you at the nearest door and starts you walking
   go(n) {
-    const r = Game.run; if (this.walking || this.path.length || !n) return;
-    const route = tileRoute(this.grid, this.tile.tx, this.tile.ty, n.tx, n.ty);
-    if (!route || !route.length) { this.flash('NO WAY THROUGH'); Audio.ui('error'); return; }
-    const need = this.staminaFor(route);
-    if (need > r.stamina) { this.flash('TOO FAR - ' + need + ' STAMINA'); Audio.ui('error'); return; }
-    this.path = route; Audio.ui('select');
+    if (!n) return;
+    if (Math.hypot(n.x - this.body.x, n.y - this.body.y) < 34) { Game.run.pos = n.id; this.arrive(n); return; }
+    this.input.tapGoal = { x: n.x, y: n.y }; Audio.ui('select');
   }
-  // Drag a path by hand: extend tile by tile from wherever the finger is.
-  extendPath(tx, ty) {
-    const r = Game.run;
-    if (!tileWalkable(this.grid, tx, ty)) return;
-    const tail = this.path.length ? this.path[this.path.length - 1] : this.tile;
-    if (tail.tx === tx && tail.ty === ty) return;
-    // stepping back onto the previous tile rubs the last step out
-    if (this.path.length > 1) { const prev = this.path[this.path.length - 2]; if (prev.tx === tx && prev.ty === ty) { this.path.pop(); return; } }
-    if (this.path.length === 1 && this.tile.tx === tx && this.tile.ty === ty) { this.path.pop(); return; }
-    const d = Math.abs(tail.tx - tx) + Math.abs(tail.ty - ty);
-    const seg = d === 1 ? [{ tx, ty }] : tileRoute(this.grid, tail.tx, tail.ty, tx, ty, 900);
-    if (!seg || seg.length > 14) return;
-    for (const st of seg) {
-      if (this.staminaFor(this.path) + tileCost(this.grid, st.tx, st.ty) > r.stamina) { this.pathFull = 0.5; return; }
-      this.path.push(st);
-      if (this.nodeAtTile(st.tx, st.ty)) return;    // a path always ends at a door
-    }
+  // ---- Somewhere to play.
+  // Anywhere you can stand that is not a carriageway and is not somebody
+  // else's doorway. The city is full of corners; that is the whole point.
+  busk() {
+    const tx = Math.floor(this.body.x / TILE), ty = Math.floor(this.body.y / TILE);
+    const k = this.sf.tiles.kind[ty * GW + tx];
+    if (k === T_ROAD || k === T_BIGROAD) { this.flash('NOT IN THE ROAD.'); Audio.ui('error'); return; }
+    if (!tileWalkable(this.grid, tx, ty)) { this.flash('YOU CANNOT SET UP THERE.'); Audio.ui('error'); return; }
+    if (this.atNode) { this.flash('TOO CLOSE TO ' + this.atNode.name + '. WALK ON A BIT.'); Audio.ui('error'); return; }
+    if (Game.run.stamina < 10) { this.flash('TOO TIRED TO CARRY IT ALL OUT.'); Audio.ui('error'); return; }
+    const spot = { x: this.body.x, y: this.body.y };
+    Game.run.save();
+    Game.go(() => new BuskScene(spot, () => new CityScene()), 'fade', { dur: 0.5 });
   }
   endDay() { const r = Game.run; r.nightPending = true; r.save(); Game.go(() => new NightScene(), 'fade', { dur: 0.6 }); }
-  step(dx, dy) {
-    const r = Game.run; if (this.walking || this.path.length) return;
-    const tx = this.tile.tx + dx, ty = this.tile.ty + dy;
-    if (!tileWalkable(this.grid, tx, ty)) { Audio.ui('error'); return; }
-    if (r.stamina < tileCost(this.grid, tx, ty)) { this.flash('OUT OF STAMINA'); Audio.ui('error'); return; }
-    this.path = [{ tx, ty }];
-  }
   key(code) {
-    if (code === 'ArrowLeft' || code === 'KeyA') this.step(-1, 0);
-    else if (code === 'ArrowRight' || code === 'KeyD') this.step(1, 0);
-    else if (code === 'ArrowUp' || code === 'KeyW') this.step(0, -1);
-    else if (code === 'ArrowDown' || code === 'KeyS') this.step(0, 1);
-    else if (['Enter', 'Space', 'KeyZ'].includes(code)) { const n = this.nodeAtTile(this.tile.tx, this.tile.ty) || this.nearestNode(); if (n) this.go(n); }
-    else if (code === 'Tab' || code === 'KeyB') Game.setScene(new BandScene());
-    else if (code === 'KeyN') this.endDay();
-    else if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); }
+    if (['Enter', 'Space', 'KeyZ'].includes(code)) { if (this.atNode) this.enterHere(); return; }
+    if (code === 'Tab' || code === 'KeyB') { Game.setScene(new BandScene()); return; }
+    if (code === 'KeyN') { this.endDay(); return; }
+    if (code === 'KeyT') { this.busk(); return; }
+    if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); return; }
+    this.input.key(code);
   }
-  nearestNode() { let best = null, bd = 1e9; for (const n of this.reach) { const d = Math.hypot(n.tx - this.tile.tx, n.ty - this.tile.ty); if (d < bd) { bd = d; best = n; } } return bd < 14 ? best : null; }
-  screen(n) { return { x: n.x * MAP_Z - this.cam.x, y: n.y * MAP_Z - this.cam.y + 26 }; }
-  tileAt(sx, sy) { return { tx: Math.floor((sx + this.cam.x) / MAP_Z / TILE), ty: Math.floor((sy - 26 + this.cam.y) / MAP_Z / TILE) }; }
-  tileScreen(t) { return { x: (t.tx + 0.5) * TILE * MAP_Z - this.cam.x, y: (t.ty + 0.5) * TILE * MAP_Z - this.cam.y + 26 }; }
+  keyUp(code) { this.input.keyUp(code); }
+  nearestNode() { let best = null, bd = 1e9; for (const n of this.reach) { const d = Math.hypot(n.x - this.body.x, n.y - this.body.y); if (d < bd) { bd = d; best = n; } } return bd < 340 ? best : null; }
+  screen(n) { return { x: this.cam.sx(n.x), y: this.cam.sy(n.y) }; }
+  tileAt(sx, sy) { return { tx: Math.floor(this.cam.wx(sx) / TILE), ty: Math.floor(this.cam.wy(sy) / TILE) }; }
+  tileScreen(t) { return { x: this.cam.sx((t.tx + 0.5) * TILE), y: this.cam.sy((t.ty + 0.5) * TILE) }; }
   tap(x, y) {
     for (const b of this.buttons) if (b.hit(x, y)) { Audio.ui('select'); b.onTap(); return; }
+    // tapping the door you are standing at goes in; anywhere else walks there
+    if (this.atNode) { const s = this.screen(this.atNode); if (Math.hypot(x - s.x, y - (s.y - 12)) < 34) { this.enterHere(); return; } }
     let best = null, bd = 1e9;
-    for (const n of this.reach) { const s = this.screen(n); const d = Math.hypot(x - s.x, y - (s.y - 10)); if (d < 26 && d < bd) { best = n; bd = d; } }
-    if (best) { this.sel = this.reach.indexOf(best); this.go(best); return; }
-    const t = this.tileAt(x, y);
-    if (tileWalkable(this.grid, t.tx, t.ty)) { const route = tileRoute(this.grid, this.tile.tx, this.tile.ty, t.tx, t.ty);
-      if (route && this.staminaFor(route) <= Game.run.stamina) { this.path = route; Audio.ui('move'); } else { this.flash('TOO FAR'); Audio.ui('error'); } }
+    for (const n of this.reach) { const s = this.screen(n); const d = Math.hypot(x - s.x, y - (s.y - 12)); if (d < 26 && d < bd) { best = n; bd = d; } }
+    const wx = this.cam.wx(x), wy = this.cam.wy(y);
+    if (best) { this.sel = this.reach.indexOf(best); this.input.tapGoal = { x: best.x, y: best.y }; Audio.ui('move'); return; }
+    if (y > 26 && y < H - 34) { this.input.tapGoal = { x: wx, y: wy }; Audio.ui('move'); }
   }
   pointerDown(x, y, id) {
-    if (this.walking || y < 26 || y > H - 34) { this.drag = { x, y, cx: this.cam.x, cy: this.cam.y, moved: 0, id, pan: true }; return; }
-    const t = this.tileAt(x, y);
-    // starting the drag on yourself means "draw me a route"
-    const onSelf = Math.abs(t.tx - this.tile.tx) <= 1 && Math.abs(t.ty - this.tile.ty) <= 1;
-    this.drag = { x, y, cx: this.cam.x, cy: this.cam.y, moved: 0, id, pan: !onSelf, draw: onSelf };
-    if (onSelf) { this.path = []; Audio.ui('move'); }
+    for (const b of this.buttons) if (b.hit(x, y)) { Audio.ui('select'); b.onTap(); return; }
+    if (this.atNode) { const s = this.screen(this.atNode); if (Math.hypot(x - s.x, y - (s.y - 12)) < 34) { this.enterHere(); return; } }
+    // on a phone the thumb is the stick, wherever it lands in the world view
+    if (Game.touch && y > 26 && y < H - 34) { this.input.down(x, y, id); this.dragId = id; this.dragMoved = 0; this.dragAt = { x, y }; return; }
+    this.tap(x, y);
   }
   pointerMove(x, y, id) {
-    if (!this.drag || this.drag.id !== id) return;
-    const dx = x - this.drag.x, dy = y - this.drag.y;
-    this.drag.moved = Math.max(this.drag.moved, Math.hypot(dx, dy));
-    if (this.drag.draw) { const t = this.tileAt(x, y); this.extendPath(t.tx, t.ty); return; }
-    if (this.drag.moved > 5) { this.cam.x = clamp(this.drag.cx - dx, 0, MAP_VW() - W); this.cam.y = clamp(this.drag.cy - dy, 0, MAP_VH() - (H - 60)); this.target = { x: this.cam.x, y: this.cam.y }; }
+    if (this.input.move(x, y, id)) { if (this.dragAt) this.dragMoved = Math.max(this.dragMoved, Math.hypot(x - this.dragAt.x, y - this.dragAt.y)); return; }
   }
   pointerUp(x, y, id) {
-    if (!this.drag || this.drag.id !== id) return;
-    const d = this.drag; this.drag = null;
-    if (d.draw) { if (this.path.length) Audio.ui('select'); else if (d.moved <= 5) this.tap(x, y); return; }
-    if (d.moved <= 5 && x >= 0) this.tap(x, y);
+    if (this.dragId === id) { const moved = this.dragMoved; this.input.up(id); this.dragId = null; if (moved < 6) this.tap(x, y); return; }
+    this.input.up(id);
   }
-  hover(x, y) { this.reach.forEach((n, i) => { const s = this.screen(n); if (Math.hypot(x - s.x, y - (s.y - 10)) < 20) this.sel = i; }); }
+  hover(x, y) { this.reach.forEach((n, i) => { const s = this.screen(n); if (Math.hypot(x - s.x, y - (s.y - 12)) < 20) this.sel = i; }); }
   edgePos(a, b, k) { const na = this.G[a], nb = this.G[b]; if (!na || !nb) return { x: 0, y: 0 }; return { x: lerp(na.x, nb.x, k), y: lerp(na.y, nb.y, k) }; }
   draw(ctx) {
     const r = Game.run, cam = this.cam;
     rect(ctx, 0, 0, W, H, '#2a3340');
     ctx.save(); ctx.beginPath(); ctx.rect(0, 26, W, H - 60); ctx.clip();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + 26, Math.round(MAP_VW()), Math.round(MAP_VH()));
+    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + cam.view.y, Math.round(MAPW * cam.z), Math.round(MAPH * cam.z));
     // water shimmer
-    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx * MAP_Z - cam.x, y: wy * MAP_Z - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 13, 3, MAP_C.waterDk); }
+    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: cam.sx(wx), y: cam.sy(wy) }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 13, 3, MAP_C.waterDk); }
     // cars + people on roads
     for (const c of this.cars) {
       const p = this.edgePos(c.a, c.b, c.k), na = this.G[c.a], nb = this.G[c.b];
       const len = Math.hypot(nb.x - na.x, nb.y - na.y) || 1;
       const nx = -(nb.y - na.y) / len, ny = (nb.x - na.x) / len;
-      const s = { x: (p.x + nx * 3.5) * MAP_Z - cam.x, y: (p.y + ny * 3.5) * MAP_Z - cam.y + 26 };
+      const s = { x: cam.sx(p.x + nx * 3.5), y: cam.sy(p.y + ny * 3.5) };
       if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue;
       const dir = (nb.x - na.x) >= 0 ? 1 : -1;
       ctx.globalAlpha = 0.28; ellipsePx(ctx, s.x, s.y + 4, 14, 5, '#06100c'); ctx.globalAlpha = 1;
@@ -12887,7 +14489,7 @@ class CityScene {
       const len = Math.hypot(nb.x - na.x, nb.y - na.y) || 1;
       const nx = -(nb.y - na.y) / len, ny = (nb.x - na.x) / len;
       const off = p2.side * (10 + p2.lane * 3);
-      const s = { x: Math.round((p.x + nx * off) * MAP_Z - cam.x), y: Math.round((p.y + ny * off) * MAP_Z - cam.y + 26) };
+      const s = { x: cam.sx(p.x + nx * off), y: cam.sy(p.y + ny * off) };
       if (s.x < -8 || s.x > W + 8 || s.y < 20 || s.y > H) continue;
       const bob = Math.sin(this.t * 7 + p2.ph) > 0 ? 1 : 0;
       const y2 = s.y - bob;
@@ -12911,48 +14513,18 @@ class CityScene {
       if (p2.bag) rect(ctx, s.x + 4, y2, 2, 3, '#c8402c');
       if (p2.kind === 'kid') rect(ctx, s.x - 3, y2 - 7, 7, 1, '#e8c040');
     }
-    // ---- the route you drew, as a continuous ribbon with chevrons
-    if (this.path.length) {
-      const pts = [this.tileScreen(this.tile)].concat(this.path.map(t => this.tileScreen(t)));
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(13,58,104,0.45)'; ctx.lineWidth = 13;
-      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-      ctx.strokeStyle = '#3d8fe0'; ctx.lineWidth = 9;
-      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-      ctx.lineWidth = 1;
-      // chevrons flowing along it
-      for (let i = 1; i < pts.length; i++) {
-        const a2 = pts[i - 1], b2 = pts[i], ang = Math.atan2(b2.y - a2.y, b2.x - a2.x);
-        const k = ((this.t * 1.6 + i * 0.34) % 1);
-        const mx = lerp(a2.x, b2.x, k), my = lerp(a2.y, b2.y, k);
-        ctx.save(); ctx.translate(mx, my); ctx.rotate(ang);
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, -4); ctx.lineTo(-1, 0); ctx.lineTo(-3, 4); ctx.fill(); ctx.restore();
-      }
-      // the destination flag and what the walk will cost
-      const end = pts[pts.length - 1], cost = this.staminaFor(this.path);
-      circle(ctx, end.x, end.y, 7, '#fff'); circle(ctx, end.x, end.y, 5, '#1b63b8');
-      const cw = textWidth(String(cost), { scale: 2 }) + 24;
-      rect(ctx, end.x - cw / 2, end.y - 36, cw, 18, '#1b63b8'); frame(ctx, end.x - cw / 2, end.y - 36, cw, 18, '#0d3a68');
-      rect(ctx, end.x - cw / 2 + 1, end.y - 35, cw - 2, 1, '#5ba0e8');
-      ctx.drawImage(icon('fire'), end.x - cw / 2 + 4, end.y - 34, 10, 13);
-      drawText(ctx, String(cost), end.x + 7, end.y - 31, '#fff', { align: 'center', scale: 2 });
-    }
-    // where you could still step, while you are drawing
-    if (this.drag && this.drag.draw) {
-      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
-        const tx = this.tile.tx + dx, ty = this.tile.ty + dy;
-        if (!tileWalkable(this.grid, tx, ty)) continue;
-        const c = this.tileScreen({ tx, ty });
-        ctx.globalAlpha = 0.16; rect(ctx, c.x - 10, c.y - 10, 20, 20, '#2a7ad0'); ctx.globalAlpha = 1;
-        ctx.globalAlpha = 0.3; frame(ctx, c.x - 10, c.y - 10, 20, 20, '#fff'); ctx.globalAlpha = 1;
-      }
+    // ---- where you told yourself to go, if you tapped somewhere
+    if (this.input.tapGoal) {
+      const g = this.input.tapGoal, gx = cam.sx(g.x), gy = cam.sy(g.y);
+      const k = (this.t * 2) % 1;
+      ctx.globalAlpha = 0.6 - k * 0.5; ringPx(ctx, gx, gy, 6 + k * 14, '#8ad8ff'); ctx.globalAlpha = 1;
+      rect(ctx, gx - 1, gy - 8, 2, 8, '#8ad8ff'); rect(ctx, gx - 6, gy - 12, 12, 6, '#8ad8ff');
     }
     // ---- pins. Distance now reads as walking cost, not a ticket price.
     const done = r.doneNodes || {};
     for (const n of NODES) {
       const s2 = this.screen(n); if (s2.x < -40 || s2.x > W + 40 || s2.y < 0 || s2.y > H + 40) continue;
-      const near = Math.abs(n.tx - this.tile.tx) + Math.abs(n.ty - this.tile.ty) < 9;
+      const near = this.atNode === n || Math.hypot(n.x - this.body.x, n.y - this.body.y) < 150;
       if (n.id === 'ggb' && r.day < 4) { drawPin(ctx, s2.x, s2.y, n, { done: true }); ctx.drawImage(icon('lock'), s2.x - 5, s2.y - 28, 11, 10); continue; }
       const spent = n.type === 'pickup' && done[n.id] === r.day;
       if (near && !spent) { const pulse = 16 + Math.sin(this.t * 5 + n.tx) * 3; ctx.globalAlpha = 0.2; circle(ctx, s2.x, s2.y - 14, pulse, '#8ab8e8'); ctx.globalAlpha = 1; }
@@ -12964,8 +14536,8 @@ class CityScene {
       }
     }
     // ---- the band, walking the streets on foot
-    const ps = { x: this.pos.x * MAP_Z - cam.x, y: this.pos.y * MAP_Z - cam.y + 26 };
-    const moving = !!this.walking, phase = this.t * 7;
+    const ps = { x: cam.sx(this.body.x), y: cam.sy(this.body.y) };
+    const moving = this.body.moving, phase = this.body.walkT * 7;
     const dirX = this.facing;
     r.members.slice(1, 4).forEach((m, i) => {
       const lag = (i + 1) * 15;
@@ -13077,6 +14649,8 @@ class CityScene {
       new Btn(W - 104, H - 28, 96, 24, 'BAND', () => Game.go(() => new BandScene(), 'slideL'), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }),
       new Btn(W - 212, H - 28, 102, 24, r.stamina > 6 ? 'END DAY' : 'REST', () => this.endDay(), { color: '#8a6a3a', hi: '#b08a50', lo: '#5a4020', ol: '#3a2810' }),
       new Btn(W - 318, H - 28, 100, 24, 'GO', () => this.go(this.reach[this.sel]), { color: UI.green }),
+      // you do not need anybody's permission to play in the street
+      new Btn(W - 452, H - 28, 128, 24, 'PLACE TOOLS', () => this.busk(), { color: '#8a4fd0', hi: '#b98ce8', lo: '#5a2f90', ol: '#33165a' }),
     ];
     for (const b of this.buttons) b.draw(ctx);
   }
@@ -14310,7 +15884,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 240; this.staminaMax = 240; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
     // what is bolted to the instrument, what it is painted, and how much the
     // city owes you back
     this.skins = {}; this.ownedSkins = []; this.gearMods = []; this.gratitude = 0;
@@ -14323,13 +15897,13 @@ class RunState {
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
-    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
+    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 240; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
     s.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; s.goals = rollGoals(s);
     return s;
   }
   newDay() {
     const bonus = collectMods(this).tickets || 0;
-    this.staminaMax = 46 + bonus * 6; this.stamina = this.staminaMax;
+    this.staminaMax = 240 + bonus * 30; this.stamina = this.staminaMax;
     this.tickets = 7 + bonus; this.doneNodes = {};
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 };
     this.goals = rollGoals(this);
@@ -14376,7 +15950,7 @@ class RunState {
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }

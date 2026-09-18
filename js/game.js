@@ -12,7 +12,7 @@ class RunState {
     this.money = 6; this.day = 0; this.members = []; this.charms = []; this.charmSlots = CHARM_SLOTS_BASE; this.vouchers = []; this.perks = {}; this.consumables = []; this.spareInstruments = [];
     this.buffs = {}; this.karma = 0; this.pendingGig = null; this.stats = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, bestPayout: 0 };
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; this.goals = [];
-    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 46; this.staminaMax = 46; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
+    this.pos = 'shimokita'; this.tickets = 7; this.stamina = 240; this.staminaMax = 240; this.tile = null; this.weather = 'clear'; this.doneNodes = {}; this.hero = 'buzz'; this.nightPending = false; this.seenEvents = []; this.seenMysteries = []; this.contacts = []; this.usedContacts = []; this.log = [];
     // what is bolted to the instrument, what it is painted, and how much the
     // city owes you back
     this.skins = {}; this.ownedSkins = []; this.gearMods = []; this.gratitude = 0;
@@ -25,13 +25,13 @@ class RunState {
     s.money = c.money; if (c.charm) s.addCharm(c.charm);
     s.stats.charSkill = c.stats;
     s.consumables.push('bread');
-    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 46; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
+    s.pos = 'shimokita'; s.tickets = 7; s.stamina = s.staminaMax = 240; s.tile = null; s.weather = 'clear'; s.doneNodes = {};
     s.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }; s.goals = rollGoals(s);
     return s;
   }
   newDay() {
     const bonus = collectMods(this).tickets || 0;
-    this.staminaMax = 46 + bonus * 6; this.stamina = this.staminaMax;
+    this.staminaMax = 240 + bonus * 30; this.stamina = this.staminaMax;
     this.tickets = 7 + bonus; this.doneNodes = {};
     this.today = { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 };
     this.goals = rollGoals(this);
@@ -78,7 +78,7 @@ class RunState {
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 46, staminaMax: d.staminaMax || 46, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }

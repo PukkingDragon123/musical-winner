@@ -22,7 +22,7 @@ const AWNING_COLS = ['#d8483c', '#2f7fc0', '#e0a02a', '#3f9a5a', '#8a4fd0', '#d8
 let _sfCache = null;
 // How close the map sits to your eye. The whole city at 1:1 was a diagram you
 // squinted at; half again as big is a place.
-const MAP_Z = 1.5;
+const MAP_Z = 2.2;
 const MAP_VW = () => MAPW * MAP_Z, MAP_VH = () => MAPH * MAP_Z;
 // ---------- Ground tiles ----------
 // Only the ground is tiled now. Roads, pavements and buildings are drawn over
@@ -82,6 +82,98 @@ function cityTile(kind, variant, mask) {
     }
     return P.toCanvas();
   });
+}
+// ---------- The big egg is a beetle ----------
+// Seen from the air the stadium is a rhinoceros beetle: the bowl is the wing
+// case, split down the middle by the roof seam; the entrance hall is the
+// thorax with the horn of the main canopy over the doors; six ramps come off
+// it like legs; two lighting masts stand where the antennae would be. It is
+// still a stadium — that is the joke and the point.
+function drawBeetleStadium(x, cx, cy) {
+  const R = 190, W2 = 150;                       // how big the shell is
+  // ---- the plaza it stands in
+  ellipsePx(x, cx, cy + 10, R + 70, W2 + 62, '#9aa1ab');
+  for (let i = 0; i < 700; i++) { const a = (i * 2.399), r2 = Math.sqrt(i / 700) * (R + 66); const px2 = cx + Math.cos(a) * r2, py2 = cy + 10 + Math.sin(a) * r2 * 0.78; if ((i % 7) === 0) rect(x, px2, py2, 2, 2, '#8a919b'); }
+  ellipsePx(x, cx, cy + 10, R + 52, W2 + 46, '#b6bcc4');
+  // paths radiating out to the streets
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI * (0.18 + i * 0.22);
+    x.save(); x.translate(cx, cy + 10); x.rotate(a);
+    rect(x, -10, 0, 20, R + 78, '#cfd4da'); rect(x, -10, 0, 2, R + 78, '#e0e4ea');
+    x.restore();
+  }
+  // ---- six legs, angled off the body, which are the entrance ramps
+  for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+    const ay = cy - 60 + i * 66, len = 120 + i * 18, ang = side * (0.5 + i * 0.16);
+    x.save(); x.translate(cx + side * (R * 0.62), ay); x.rotate(ang);
+    rect(x, 0, -13, len, 26, '#4a5260'); rect(x, 0, -13, len, 4, '#6a7280');
+    for (let k = 10; k < len - 8; k += 16) rect(x, k, -9, 8, 18, '#5f6a78');
+    rect(x, len - 26, -18, 26, 36, '#39414e');            // the foot
+    rect(x, len - 26, -18, 26, 4, '#5a6270');
+    x.restore();
+  }
+  // ---- the shell: two wing cases, meeting down a seam, narrower at the top
+  // the way a beetle's are, with the bowl of the stadium open between them
+  ellipsePx(x, cx + 8, cy + 14, R + 4, W2 + 4, '#1c212b');            // the shadow under the whole thing
+  for (const side of [-1, 1]) {
+    const wx = cx + side * R * 0.44;
+    x.save();
+    x.translate(wx, cy + 6); x.rotate(side * 0.09);
+    // the case itself: a rounded shell, wider at the bottom
+    ellipsePx(x, 0, 0, R * 0.56, W2 * 0.98, '#28303c');
+    ellipsePx(x, 0, -2, R * 0.52, W2 * 0.94, '#48566a');
+    ellipsePx(x, side * -R * 0.06, -W2 * 0.22, R * 0.4, W2 * 0.6, '#5a6c82');
+    // the ribs, running down the length of it
+    x.globalAlpha = 0.4;
+    for (let i = -4; i <= 4; i++) {
+      const rx = i * R * 0.1;
+      ellipseRingPx(x, rx * 0.4, 0, Math.abs(R * 0.5 - Math.abs(rx) * 0.7), W2 * 0.9, '#323b49');
+    }
+    x.globalAlpha = 1;
+    // the outer rim, catching the light
+    x.globalAlpha = 0.55; ellipseRingPx(x, 0, -3, R * 0.52, W2 * 0.94, '#8a9ab0'); x.globalAlpha = 1;
+    // a few pinpricks of light along the roof edge
+    for (let i = 0; i < 14; i++) { const a = i * 0.45; rect(x, Math.cos(a) * R * 0.5, Math.sin(a) * W2 * 0.9, 2, 2, '#ffe9a8'); }
+    x.restore();
+  }
+  // the seam between them, lit down its length
+  rect(x, cx - 5, cy - W2 * 0.92, 10, W2 * 1.9, '#1e242e');
+  rect(x, cx - 1, cy - W2 * 0.86, 2, W2 * 1.78, '#8ad8ff');
+  ellipsePx(x, cx, cy - W2 * 0.92, 7, 5, '#39414e');
+  // ---- the bowl: the open middle, where the pitch is
+  ellipsePx(x, cx, cy + 12, R * 0.46, W2 * 0.56, '#12161f');
+  ellipsePx(x, cx, cy + 12, R * 0.42, W2 * 0.5, '#1b2230');
+  // tiers of seats round it
+  for (let i = 0; i < 5; i++) { x.globalAlpha = 0.65; ellipseRingPx(x, cx, cy + 12, R * (0.42 - i * 0.03), W2 * (0.5 - i * 0.035), i % 2 ? '#8a3a2c' : '#2f4a8a'); x.globalAlpha = 1; }
+  ellipsePx(x, cx, cy + 12, R * 0.28, W2 * 0.33, '#2f7a4a');
+  for (let i = 0; i < 8; i++) { x.globalAlpha = 0.16; rect(x, cx - R * 0.26 + i * (R * 0.52 / 8), cy + 12 - W2 * 0.31, R * 0.26 / 8, W2 * 0.62, '#ffffff'); x.globalAlpha = 1; }
+  ellipsePx(x, cx, cy + 12, R * 0.12, W2 * 0.13, '#e8e4f0');          // the stage in the middle
+  x.globalAlpha = 0.3; ellipsePx(x, cx, cy + 12, R * 0.2, W2 * 0.22, '#cfe4ff'); x.globalAlpha = 1;
+  // ---- the thorax: the entrance hall at the north end
+  ellipsePx(x, cx, cy - W2 - 30, 86, 46, '#2f3a48');
+  ellipsePx(x, cx, cy - W2 - 32, 78, 40, '#4a5768');
+  rect(x, cx - 60, cy - W2 - 36, 120, 8, '#5f6e82');
+  for (let i = 0; i < 7; i++) rect(x, cx - 52 + i * 17, cy - W2 - 18, 11, 16, '#ffd24a');   // the doors, lit
+  // the horn over the doors
+  x.fillStyle = '#5f6e82';
+  x.beginPath();
+  x.moveTo(cx - 16, cy - W2 - 52); x.lineTo(cx + 16, cy - W2 - 52);
+  x.lineTo(cx + 8, cy - W2 - 118); x.lineTo(cx + 22, cy - W2 - 132);
+  x.lineTo(cx, cy - W2 - 126); x.lineTo(cx - 22, cy - W2 - 132);
+  x.lineTo(cx - 8, cy - W2 - 118); x.fill();
+  rect(x, cx - 14, cy - W2 - 52, 28, 5, '#8a98ac');
+  // ---- the antennae: two lighting masts
+  for (const side of [-1, 1]) {
+    const mx = cx + side * 72, my = cy - W2 - 60;
+    x.save(); x.translate(mx, my); x.rotate(side * 0.34);
+    rect(x, -3, -96, 6, 96, '#6a7280'); rect(x, -3, -96, 2, 96, '#98a2b0');
+    rect(x, -16, -110, 32, 16, '#39414e');
+    for (let i = 0; i < 4; i++) rect(x, -13 + i * 8, -107, 5, 10, '#fff2c0');
+    x.restore();
+  }
+  // ---- the name, on the plaza
+  x.globalAlpha = 0.5; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 28, '#ffffff', { align: 'center', scale: 2 }); x.globalAlpha = 1;
+  x.globalAlpha = 0.9; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 27, '#26301f', { align: 'center', scale: 2 }); x.globalAlpha = 1;
 }
 // ---------- A building ----------
 // Roof at the top, front wall with windows below it, a door with an awning
@@ -358,9 +450,16 @@ function buildSF() {
     }
   }
   // ---- landmarks that are bigger than one tile
-  x.strokeStyle = '#c8432a'; x.lineWidth = 9; x.beginPath(); x.moveTo(225, 132); x.lineTo(90, 30); x.stroke();
-  x.strokeStyle = '#9aa0b0'; x.lineWidth = 8; x.beginPath(); x.moveTo(1342, 705); x.lineTo(1500, 645); x.stroke();
-  circle(x, 1350, 195, 24, '#d8d2c0'); circle(x, 1350, 195, 20, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338, 186, 24, 12);
+  // these were drawn against the old sketch size, so they scale with it
+  const LS = MAP_SCALE / 1.5;
+  x.strokeStyle = '#c8432a'; x.lineWidth = 9 * LS; x.beginPath(); x.moveTo(225 * LS, 132 * LS); x.lineTo(90 * LS, 30 * LS); x.stroke();
+  x.strokeStyle = '#9aa0b0'; x.lineWidth = 8 * LS; x.beginPath(); x.moveTo(1342 * LS, 705 * LS); x.lineTo(1500 * LS, 645 * LS); x.stroke();
+  circle(x, 1350 * LS, 195 * LS, 24 * LS, '#d8d2c0'); circle(x, 1350 * LS, 195 * LS, 20 * LS, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338 * LS, 186 * LS, 24 * LS, 12 * LS);
+  // ---- the stadium, which is a beetle
+  {
+    const dome = NODES.find(n => n.id === 'dome');
+    if (dome) drawBeetleStadium(x, dome.x, dome.y + 30);
+  }
   // ---- labels last, so they sit on top of the tiles
   x.save();
   for (const st of STREETS) {
@@ -537,7 +636,7 @@ function drawMascotSmall(ctx, x, y, kind, ci, sc) {
   ctx.drawImage(c, Math.round(x - 18 * sc), Math.round(y - 24 * sc), w, h);
   ctx.imageSmoothingEnabled = sm;
 }
-const PIN_COLOR = { place: '#2f9a8a', venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
+const PIN_COLOR = { home: '#d8b83c', place: '#2f9a8a', venue: '#e0523c', shop: '#3f7fd0', food: '#e09030', recruit: '#9b59d0', event: '#2fa36b', rest: '#3fa8b8', pickup: '#d9a520', mystery: '#8a4fd0', inside: '#2f7a86', home: '#666' };
 function drawPin(ctx, x, y, node, opts = {}) {
   const col = opts.done ? '#9a9a94' : (PIN_COLOR[node.type] || '#e0523c'), big = opts.sel ? 1 : 0;
   // A question mark does not sit still. It bobs, and it throws a little light,
@@ -578,38 +677,60 @@ class CityScene {
   constructor(arrive) {
     const r = Game.run; this.t = 0; this.sf = buildSF(); this.G = this.sf.graph;
     this.arriveT = (arrive || Game.run.today && Game.run.today.gigs === 0 && Game.run.today.tiles === 0) ? 3.4 : 0; this.travel = null; this.msg = null; this.msgT = 0;
-    this.cam = { x: 0, y: 0 };
-    const here = this.G[r.pos] || this.G.ggb; this.centerOn(here, true);
     this.cars = []; const rr = makeRng(9);
     for (let i = 0; i < 34; i++) { const e = rr.pick(EDGES); this.cars.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.05, 0.12), seed: rr.int(1, 9999), dir: rr.sign() }); }
     // the pavements: office workers, school kids, somebody in a mascot suit,
     // a dog on a lead, a courier going too fast. Every one of them bobs.
+    // Everybody out here is going somewhere in particular. A commuter walks
+    // between a station and an office; a shopper does the shops; a tourist
+    // works through the landmarks; a courier never stops. When they arrive
+    // they stand about for a bit and then pick the next place.
     this.people = [];
-    for (let i = 0; i < 96; i++) {
+    const byType = (t) => NODES.filter(n => n.type === t).map(n => n.id).filter(id => this.G[id]);
+    const PURPOSE = {
+      commuter: { pool: byType('inside').concat(byType('venue')), wait: [2, 6], sp: 0.026, carry: 0.5 },
+      shopper:  { pool: byType('shop').concat(byType('place'), byType('food')), wait: [4, 10], sp: 0.018, carry: 0.8 },
+      tourist:  { pool: byType('event').concat(byType('rest'), byType('venue')), wait: [5, 12], sp: 0.014, carry: 0.3 },
+      diner:    { pool: byType('food').concat(byType('home')), wait: [6, 14], sp: 0.02, carry: 0.2 },
+      courier:  { pool: Object.keys(this.G), wait: [0.2, 1], sp: 0.05, carry: 1 },
+    };
+    this.purposes = PURPOSE;
+    const kinds = ['commuter', 'commuter', 'shopper', 'tourist', 'diner', 'courier'];
+    for (let i = 0; i < 110; i++) {
       const e = rr.pick(EDGES);
       const roll = rr();
-      const kind = roll < 0.06 ? 'mascot' : roll < 0.14 ? 'dog' : roll < 0.22 ? 'kid' : 'walker';
-      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: rr.range(0.012, 0.032) * (kind === 'dog' ? 1.5 : 1),
+      const kind = roll < 0.05 ? 'mascot' : roll < 0.11 ? 'dog' : roll < 0.2 ? 'kid' : 'walker';
+      const purpose = kind === 'walker' || kind === 'kid' ? rr.pick(kinds) : 'courier';
+      const P = PURPOSE[purpose];
+      this.people.push({ a: e[0], b: e[1], k: rr.range(0, 1), sp: P.sp * rr.range(0.8, 1.25) * (kind === 'dog' ? 1.4 : 1),
         col: rr.pick(NPC_PALETTES), hair: rr.pick(['#3a3040', '#241a2e', '#6a4a30', '#8a2a4a', '#c8a03a']),
-        kind, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(0.3), side: rr.sign(), lane: rr.int(0, 1) });
+        kind, purpose, mc: rr.int(0, 5), ph: rr.range(0, 6.3), bag: rr.chance(P.carry), side: rr.sign(), lane: rr.int(0, 1),
+        goal: P.pool.length ? rr.pick(P.pool) : null, wait: 0 });
     }
     // blossom on the wind, right across the viewport
     this.petals = [];
     for (let i = 0; i < 70; i++) this.petals.push({ x: rr.range(0, W), y: rr.range(26, H), sp: rr.range(14, 34), sw: rr.range(0.6, 1.6), ph: rr.range(0, 6.3), s: rr.int(2, 3) });
     this.fx = new Particles(); this.sel = 0;
+    this.you = (Game.run.members && Game.run.members[0]) || null;
     this.grid = tileGrid();
     for (const n of NODES) { const g = this.G[n.id]; if (g) { g.tx = n.tx; g.ty = n.ty; } }
     const r0 = Game.run;
     if (!r0.tile || !tileWalkable(this.grid, r0.tile.tx, r0.tile.ty)) { const h = NODES.find(n => n.id === r0.pos) || NODES[0]; r0.tile = { tx: h.tx, ty: h.ty }; }
     this.tile = { tx: r0.tile.tx, ty: r0.tile.ty };
     this.pos = { x: (this.tile.tx + 0.5) * TILE, y: (this.tile.ty + 0.5) * TILE };
-    this.path = [];            // tiles queued by a drag
-    this.walking = null;       // {from, to, t}
+    // ---- You walk the city yourself now. Eight directions, acceleration, a
+    // slide along walls, and a camera that runs a little ahead of you.
+    this.cam = new WorldCam({ z: MAP_Z, view: { x: 0, y: 26, w: W, h: H - 60 }, bounds: { w: MAPW, h: MAPH } });
+    this.body = new Walker(this.pos.x, this.pos.y, { r: 8, speed: 104, accel: 900, friction: 1000, spec: this.you ? this.you.spec : null, scale: 1.45 });
+    this.input = new WorldInput();
+    this.cam.snapTo(this.body.x, this.body.y);
+    this.walkDist = 0; this.tileDist = 0;
+    this.solid = (x, y) => !tileWalkable(this.grid, Math.floor(x / TILE), Math.floor(y / TILE));
     this.facing = 1;
     this.refresh();
     this.buttons = [];
   }
-  centerOn(p, snap) { const tx = clamp(p.x * MAP_Z - W / 2, 0, MAP_VW() - W), ty = clamp(p.y * MAP_Z - (H - 60) / 2 - 26, 0, MAP_VH() - (H - 60)); if (snap) { this.cam.x = tx; this.cam.y = ty; } this.target = { x: tx, y: ty }; }
+  centerOn(p, snap) { if (!this.cam) return; if (snap) this.cam.snapTo(p.x, p.y); }
   get here() { return this.G[Game.run.pos]; }
   refresh() { this.reach = NODES.filter(n => this.canEnter(n)); this.sel = 0; this.centerOn(this.pos); }
   nodeAtTile(tx, ty) { return NODES.find(n => n.tx === tx && n.ty === ty && this.canEnter(n)); }
@@ -618,9 +739,31 @@ class CityScene {
   canEnter(n) { if (n.id === 'ggb' && Game.run.day < 4) return false; return true; }
   update(dt) {
     const r = Game.run; this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.arriveT = Math.max(0, this.arriveT - dt); this.goalPop = Math.max(0, (this.goalPop || 0) - dt);
-    this.cam.x = lerp(this.cam.x, this.target.x, Math.min(1, dt * 4)); this.cam.y = lerp(this.cam.y, this.target.y, Math.min(1, dt * 4));
+    this.walkStep(dt);
     for (const c of this.cars) { c.k += c.sp * dt; if (c.k > 1) { c.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; c.a = e[0]; c.b = e[1]; } }
-    for (const p of this.people) { p.k += p.sp * dt; if (p.k > 1) { p.k = 0; const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; } }
+    for (const p of this.people) {
+      if (p.wait > 0) { p.wait -= dt; continue; }
+      p.k += p.sp * dt;
+      if (p.k <= 1) continue;
+      // arrived at the end of this street: turn toward wherever they are going
+      p.k = 0; p.a = p.b;
+      const here = this.G[p.a];
+      if (!here) { const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; continue; }
+      if (p.goal === p.a) {
+        // they are there. Stand about, then pick somewhere else to be.
+        const P = this.purposes[p.purpose] || this.purposes.courier;
+        p.wait = P.wait[0] + Math.random() * (P.wait[1] - P.wait[0]);
+        p.goal = P.pool.length ? P.pool[Math.floor(Math.random() * P.pool.length)] : null;
+      }
+      const g = p.goal && this.G[p.goal];
+      const links = here.links || [];
+      if (!links.length) { const e = EDGES[Math.floor(Math.random() * EDGES.length)]; p.a = e[0]; p.b = e[1]; continue; }
+      if (!g) { p.b = links[Math.floor(Math.random() * links.length)]; continue; }
+      // greedy, which is how most people navigate a city anyway
+      let best = links[0], bd = 1e9;
+      for (const l of links) { const n2 = this.G[l]; if (!n2) continue; const d = Math.hypot(n2.x - g.x, n2.y - g.y) + Math.random() * 40; if (d < bd) { bd = d; best = l; } }
+      p.b = best;
+    }
     // petals cross the viewport regardless of where the camera is, because
     // the wind does not care which street you are looking at
     for (const pt of this.petals) {
@@ -631,50 +774,64 @@ class CityScene {
     const W_ = WEATHERS[r.weather] || WEATHERS.clear;
     if (r.weather === 'rain' && Math.random() < dt * 40) this.fx.add({ x: Math.random() * W, y: -4, vx: -20, vy: 260, life: 1.4, color: '#9ec8ee', kind: 'px', size: 1, gravity: 0 });
     if (r.weather === 'fog' && Math.random() < dt * 1.6) this.fx.add({ x: -40, y: 30 + Math.random() * (H - 80), vx: 26, vy: 0, life: 22, kind: 'fog', color: '#e8ecf4', size: 22, grow: 16, alpha: 0.3, gravity: 0 });
-    this.stepWalk(dt);
   }
-  // ---- tile walking: one step at a time, stamina paid on arrival
-  stepWalk(dt) {
+  // ---- Walking.
+  // Not a route you draw and then watch: you hold a direction and you go.
+  // Stamina is spent by the metre rather than by the square, so crossing a
+  // wide street costs what it looks like it should.
+  walkStep(dt) {
     const r = Game.run;
-    if (!this.walking && this.path.length) {
-      const next = this.path[0];
-      const cost = tileCost(this.grid, next.tx, next.ty);
-      if (r.stamina < cost) { this.path.length = 0; this.flash('TOO TIRED'); Audio.ui('error'); return; }
-      this.walking = { from: { x: this.pos.x, y: this.pos.y }, to: { x: (next.tx + 0.5) * TILE, y: (next.ty + 0.5) * TILE }, t: 0, cost };
-      this.facing = this.walking.to.x >= this.walking.from.x ? 1 : -1;
+    if (this.arriveT > 1.4) { this.cam.follow(dt, this.body.x, this.body.y, 0, 0); return; }
+    const v = this.input.vector({ x: this.body.x, y: this.body.y });
+    const tired = r.stamina <= 0;
+    if (tired) { this.body.speed = 58; } else this.body.speed = 104;
+    const moved = this.body.step(dt, v.x, v.y, this.solid);
+    if (moved > 0) {
+      this.walkDist += moved; this.tileDist += moved;
+      // a block of walking is a block on the step counter
+      while (this.tileDist >= TILE) { this.tileDist -= TILE; r.today.tiles = (r.today.tiles || 0) + 1; const gh = checkGoals(r); if (gh) this.goalDone(gh); }
+      // and a stamina point every couple of blocks
+      while (this.walkDist >= TILE * 2.4) {
+        this.walkDist -= TILE * 2.4;
+        if (r.stamina > 0) { r.stamina = Math.max(0, r.stamina - 1); if (r.stamina === 0) this.flash('YOU ARE WALKING ON EMPTY'); }
+      }
+      // dust under the feet, in step
+      if (Math.floor(this.body.walkT * 7) !== this._lastStep) {
+        this._lastStep = Math.floor(this.body.walkT * 7);
+        if (this._lastStep % 2 === 0) drawDust(this.fx, this.cam.sx(this.body.x), this.cam.sy(this.body.y) + 6, 2, '#cfc6ae');
+      }
     }
-    if (!this.walking) return;
-    const wk = this.walking;
-    wk.t += dt * 4.4;
-    const k = clamp(wk.t, 0, 1);
-    this.pos.x = lerp(wk.from.x, wk.to.x, k);
-    this.pos.y = lerp(wk.from.y, wk.to.y, k) - Math.sin(k * Math.PI) * 3;   // a little hop per tile
-    this.centerOn(this.pos);
-    if (k >= 1) {
-      const t = this.path.shift();
-      this.tile = { tx: t.tx, ty: t.ty }; r.tile = { tx: t.tx, ty: t.ty };
-      r.stamina = Math.max(0, r.stamina - wk.cost);
-      r.today.tiles = (r.today.tiles || 0) + 1;
-      const gh = checkGoals(r); if (gh) this.goalDone(gh);
-      this.walking = null; this.stepT = (this.stepT || 0) + 1;
-      if (this.stepT % 2 === 0) drawDust(this.fx, this.pos.x * MAP_Z - this.cam.x, this.pos.y * MAP_Z - this.cam.y + 26 + 6, 3, '#cfc6ae');
-      const n = this.nodeAtTile(t.tx, t.ty);
-      if (n) { this.path.length = 0; r.pos = n.id; this.arrive(n); return; }
-      if (r.stamina <= 0) { this.path.length = 0; this.flash('OUT OF STAMINA'); }
+    this.facing = this.body.flip ? -1 : 1;
+    this.pos.x = this.body.x; this.pos.y = this.body.y;
+    const tx = Math.floor(this.body.x / TILE), ty = Math.floor(this.body.y / TILE);
+    if (tx !== this.tile.tx || ty !== this.tile.ty) { this.tile = { tx, ty }; r.tile = { tx, ty }; }
+    this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
+    // what you are standing in front of
+    this.atNode = null;
+    let bd = 34;
+    for (const n of this.reach) {
+      const d = Math.hypot(n.x - this.body.x, n.y - this.body.y);
+      if (d < bd) { bd = d; this.atNode = n; }
     }
+    if (this.atNode !== this._lastAt) { this._lastAt = this.atNode; if (this.atNode) Audio.ui('move'); }
+  }
+  enterHere() {
+    const n = this.atNode; if (!n) return;
+    Game.run.pos = n.id; this.arrive(n);
   }
   arrive(n) {
     const r = Game.run; r.save();
     const done = r.doneNodes || (r.doneNodes = {});
     switch (n.type) {
       case 'venue': Game.go(() => new GigScene(n), 'curtain', { label: n.name }); break;
-      case 'shop': Game.go(() => new ShopScene(n), 'slideL'); break;
-      case 'food': Game.go(() => new FoodScene(n), 'slideL'); break;
+      case 'shop': Game.go(() => new MusicShopScene(n), 'iris', { dur: 0.5 }); break;
+      case 'food': Game.go(() => new RamenScene(n), 'iris', { dur: 0.5 }); break;
       case 'recruit': Game.go(() => new RecruitScene(n), 'iris'); break;
       case 'event': Game.go(() => new EventScene(n), 'iris'); break;
       case 'mystery': Game.go(() => new MysteryScene(n), 'iris'); break;
       case 'inside': Game.go(() => new InteriorScene(n), 'iris'); break;
       case 'place': Game.go(() => new PlaceScene(n), 'iris'); break;
+      case 'home': Game.go(() => new CapsuleScene(n), 'iris', { dur: 0.5 }); break;
       case 'rest': Game.go(() => new RestScene(n), 'fade'); break;
       case 'pickup': {
         if (done[n.id] === r.day) { this.flash('NOTHING LEFT HERE'); break; }
@@ -691,100 +848,80 @@ class CityScene {
   }
   goalDone(g) { this.flash(GOALS[g.key].name + '  ' + goalRewardText(g)); Audio.ui('fanfare'); this.goalPop = 1.6; }
   flash(msg) { this.msg = msg; this.msgT = 2.2; this.fx.burst(W / 2, 120, 14, { color: ['#ffd24a', '#fff'], speed: 90, life: 0.6, kind: 'star', size: 2, gravity: 120 }); }
+  // the GO button points you at the nearest door and starts you walking
   go(n) {
-    const r = Game.run; if (this.walking || this.path.length || !n) return;
-    const route = tileRoute(this.grid, this.tile.tx, this.tile.ty, n.tx, n.ty);
-    if (!route || !route.length) { this.flash('NO WAY THROUGH'); Audio.ui('error'); return; }
-    const need = this.staminaFor(route);
-    if (need > r.stamina) { this.flash('TOO FAR - ' + need + ' STAMINA'); Audio.ui('error'); return; }
-    this.path = route; Audio.ui('select');
+    if (!n) return;
+    if (Math.hypot(n.x - this.body.x, n.y - this.body.y) < 34) { Game.run.pos = n.id; this.arrive(n); return; }
+    this.input.tapGoal = { x: n.x, y: n.y }; Audio.ui('select');
   }
-  // Drag a path by hand: extend tile by tile from wherever the finger is.
-  extendPath(tx, ty) {
-    const r = Game.run;
-    if (!tileWalkable(this.grid, tx, ty)) return;
-    const tail = this.path.length ? this.path[this.path.length - 1] : this.tile;
-    if (tail.tx === tx && tail.ty === ty) return;
-    // stepping back onto the previous tile rubs the last step out
-    if (this.path.length > 1) { const prev = this.path[this.path.length - 2]; if (prev.tx === tx && prev.ty === ty) { this.path.pop(); return; } }
-    if (this.path.length === 1 && this.tile.tx === tx && this.tile.ty === ty) { this.path.pop(); return; }
-    const d = Math.abs(tail.tx - tx) + Math.abs(tail.ty - ty);
-    const seg = d === 1 ? [{ tx, ty }] : tileRoute(this.grid, tail.tx, tail.ty, tx, ty, 900);
-    if (!seg || seg.length > 14) return;
-    for (const st of seg) {
-      if (this.staminaFor(this.path) + tileCost(this.grid, st.tx, st.ty) > r.stamina) { this.pathFull = 0.5; return; }
-      this.path.push(st);
-      if (this.nodeAtTile(st.tx, st.ty)) return;    // a path always ends at a door
-    }
+  // ---- Somewhere to play.
+  // Anywhere you can stand that is not a carriageway and is not somebody
+  // else's doorway. The city is full of corners; that is the whole point.
+  busk() {
+    const tx = Math.floor(this.body.x / TILE), ty = Math.floor(this.body.y / TILE);
+    const k = this.sf.tiles.kind[ty * GW + tx];
+    if (k === T_ROAD || k === T_BIGROAD) { this.flash('NOT IN THE ROAD.'); Audio.ui('error'); return; }
+    if (!tileWalkable(this.grid, tx, ty)) { this.flash('YOU CANNOT SET UP THERE.'); Audio.ui('error'); return; }
+    if (this.atNode) { this.flash('TOO CLOSE TO ' + this.atNode.name + '. WALK ON A BIT.'); Audio.ui('error'); return; }
+    if (Game.run.stamina < 10) { this.flash('TOO TIRED TO CARRY IT ALL OUT.'); Audio.ui('error'); return; }
+    const spot = { x: this.body.x, y: this.body.y };
+    Game.run.save();
+    Game.go(() => new BuskScene(spot, () => new CityScene()), 'fade', { dur: 0.5 });
   }
   endDay() { const r = Game.run; r.nightPending = true; r.save(); Game.go(() => new NightScene(), 'fade', { dur: 0.6 }); }
-  step(dx, dy) {
-    const r = Game.run; if (this.walking || this.path.length) return;
-    const tx = this.tile.tx + dx, ty = this.tile.ty + dy;
-    if (!tileWalkable(this.grid, tx, ty)) { Audio.ui('error'); return; }
-    if (r.stamina < tileCost(this.grid, tx, ty)) { this.flash('OUT OF STAMINA'); Audio.ui('error'); return; }
-    this.path = [{ tx, ty }];
-  }
   key(code) {
-    if (code === 'ArrowLeft' || code === 'KeyA') this.step(-1, 0);
-    else if (code === 'ArrowRight' || code === 'KeyD') this.step(1, 0);
-    else if (code === 'ArrowUp' || code === 'KeyW') this.step(0, -1);
-    else if (code === 'ArrowDown' || code === 'KeyS') this.step(0, 1);
-    else if (['Enter', 'Space', 'KeyZ'].includes(code)) { const n = this.nodeAtTile(this.tile.tx, this.tile.ty) || this.nearestNode(); if (n) this.go(n); }
-    else if (code === 'Tab' || code === 'KeyB') Game.setScene(new BandScene());
-    else if (code === 'KeyN') this.endDay();
-    else if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); }
+    if (['Enter', 'Space', 'KeyZ'].includes(code)) { if (this.atNode) this.enterHere(); return; }
+    if (code === 'Tab' || code === 'KeyB') { Game.setScene(new BandScene()); return; }
+    if (code === 'KeyN') { this.endDay(); return; }
+    if (code === 'KeyT') { this.busk(); return; }
+    if (code === 'Escape') { Game.run.save(); Game.setScene(new TitleScene()); return; }
+    this.input.key(code);
   }
-  nearestNode() { let best = null, bd = 1e9; for (const n of this.reach) { const d = Math.hypot(n.tx - this.tile.tx, n.ty - this.tile.ty); if (d < bd) { bd = d; best = n; } } return bd < 14 ? best : null; }
-  screen(n) { return { x: n.x * MAP_Z - this.cam.x, y: n.y * MAP_Z - this.cam.y + 26 }; }
-  tileAt(sx, sy) { return { tx: Math.floor((sx + this.cam.x) / MAP_Z / TILE), ty: Math.floor((sy - 26 + this.cam.y) / MAP_Z / TILE) }; }
-  tileScreen(t) { return { x: (t.tx + 0.5) * TILE * MAP_Z - this.cam.x, y: (t.ty + 0.5) * TILE * MAP_Z - this.cam.y + 26 }; }
+  keyUp(code) { this.input.keyUp(code); }
+  nearestNode() { let best = null, bd = 1e9; for (const n of this.reach) { const d = Math.hypot(n.x - this.body.x, n.y - this.body.y); if (d < bd) { bd = d; best = n; } } return bd < 340 ? best : null; }
+  screen(n) { return { x: this.cam.sx(n.x), y: this.cam.sy(n.y) }; }
+  tileAt(sx, sy) { return { tx: Math.floor(this.cam.wx(sx) / TILE), ty: Math.floor(this.cam.wy(sy) / TILE) }; }
+  tileScreen(t) { return { x: this.cam.sx((t.tx + 0.5) * TILE), y: this.cam.sy((t.ty + 0.5) * TILE) }; }
   tap(x, y) {
     for (const b of this.buttons) if (b.hit(x, y)) { Audio.ui('select'); b.onTap(); return; }
+    // tapping the door you are standing at goes in; anywhere else walks there
+    if (this.atNode) { const s = this.screen(this.atNode); if (Math.hypot(x - s.x, y - (s.y - 12)) < 34) { this.enterHere(); return; } }
     let best = null, bd = 1e9;
-    for (const n of this.reach) { const s = this.screen(n); const d = Math.hypot(x - s.x, y - (s.y - 10)); if (d < 26 && d < bd) { best = n; bd = d; } }
-    if (best) { this.sel = this.reach.indexOf(best); this.go(best); return; }
-    const t = this.tileAt(x, y);
-    if (tileWalkable(this.grid, t.tx, t.ty)) { const route = tileRoute(this.grid, this.tile.tx, this.tile.ty, t.tx, t.ty);
-      if (route && this.staminaFor(route) <= Game.run.stamina) { this.path = route; Audio.ui('move'); } else { this.flash('TOO FAR'); Audio.ui('error'); } }
+    for (const n of this.reach) { const s = this.screen(n); const d = Math.hypot(x - s.x, y - (s.y - 12)); if (d < 26 && d < bd) { best = n; bd = d; } }
+    const wx = this.cam.wx(x), wy = this.cam.wy(y);
+    if (best) { this.sel = this.reach.indexOf(best); this.input.tapGoal = { x: best.x, y: best.y }; Audio.ui('move'); return; }
+    if (y > 26 && y < H - 34) { this.input.tapGoal = { x: wx, y: wy }; Audio.ui('move'); }
   }
   pointerDown(x, y, id) {
-    if (this.walking || y < 26 || y > H - 34) { this.drag = { x, y, cx: this.cam.x, cy: this.cam.y, moved: 0, id, pan: true }; return; }
-    const t = this.tileAt(x, y);
-    // starting the drag on yourself means "draw me a route"
-    const onSelf = Math.abs(t.tx - this.tile.tx) <= 1 && Math.abs(t.ty - this.tile.ty) <= 1;
-    this.drag = { x, y, cx: this.cam.x, cy: this.cam.y, moved: 0, id, pan: !onSelf, draw: onSelf };
-    if (onSelf) { this.path = []; Audio.ui('move'); }
+    for (const b of this.buttons) if (b.hit(x, y)) { Audio.ui('select'); b.onTap(); return; }
+    if (this.atNode) { const s = this.screen(this.atNode); if (Math.hypot(x - s.x, y - (s.y - 12)) < 34) { this.enterHere(); return; } }
+    // on a phone the thumb is the stick, wherever it lands in the world view
+    if (Game.touch && y > 26 && y < H - 34) { this.input.down(x, y, id); this.dragId = id; this.dragMoved = 0; this.dragAt = { x, y }; return; }
+    this.tap(x, y);
   }
   pointerMove(x, y, id) {
-    if (!this.drag || this.drag.id !== id) return;
-    const dx = x - this.drag.x, dy = y - this.drag.y;
-    this.drag.moved = Math.max(this.drag.moved, Math.hypot(dx, dy));
-    if (this.drag.draw) { const t = this.tileAt(x, y); this.extendPath(t.tx, t.ty); return; }
-    if (this.drag.moved > 5) { this.cam.x = clamp(this.drag.cx - dx, 0, MAP_VW() - W); this.cam.y = clamp(this.drag.cy - dy, 0, MAP_VH() - (H - 60)); this.target = { x: this.cam.x, y: this.cam.y }; }
+    if (this.input.move(x, y, id)) { if (this.dragAt) this.dragMoved = Math.max(this.dragMoved, Math.hypot(x - this.dragAt.x, y - this.dragAt.y)); return; }
   }
   pointerUp(x, y, id) {
-    if (!this.drag || this.drag.id !== id) return;
-    const d = this.drag; this.drag = null;
-    if (d.draw) { if (this.path.length) Audio.ui('select'); else if (d.moved <= 5) this.tap(x, y); return; }
-    if (d.moved <= 5 && x >= 0) this.tap(x, y);
+    if (this.dragId === id) { const moved = this.dragMoved; this.input.up(id); this.dragId = null; if (moved < 6) this.tap(x, y); return; }
+    this.input.up(id);
   }
-  hover(x, y) { this.reach.forEach((n, i) => { const s = this.screen(n); if (Math.hypot(x - s.x, y - (s.y - 10)) < 20) this.sel = i; }); }
+  hover(x, y) { this.reach.forEach((n, i) => { const s = this.screen(n); if (Math.hypot(x - s.x, y - (s.y - 12)) < 20) this.sel = i; }); }
   edgePos(a, b, k) { const na = this.G[a], nb = this.G[b]; if (!na || !nb) return { x: 0, y: 0 }; return { x: lerp(na.x, nb.x, k), y: lerp(na.y, nb.y, k) }; }
   draw(ctx) {
     const r = Game.run, cam = this.cam;
     rect(ctx, 0, 0, W, H, '#2a3340');
     ctx.save(); ctx.beginPath(); ctx.rect(0, 26, W, H - 60); ctx.clip();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + 26, Math.round(MAP_VW()), Math.round(MAP_VH()));
+    ctx.drawImage(this.sf.canvas, -Math.round(cam.x), -Math.round(cam.y) + cam.view.y, Math.round(MAPW * cam.z), Math.round(MAPH * cam.z));
     // water shimmer
-    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: wx * MAP_Z - cam.x, y: wy * MAP_Z - cam.y + 26 }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 13, 3, MAP_C.waterDk); }
+    for (let i = 0; i < 60; i++) { const wx = 1245 + (i * 53) % 240, wy = (i * 79 + Math.floor(this.t * 8)) % MAPH; const s = { x: cam.sx(wx), y: cam.sy(wy) }; if (s.x > -10 && s.x < W && s.y > 26 && s.y < H) rect(ctx, s.x, s.y, 13, 3, MAP_C.waterDk); }
     // cars + people on roads
     for (const c of this.cars) {
       const p = this.edgePos(c.a, c.b, c.k), na = this.G[c.a], nb = this.G[c.b];
       const len = Math.hypot(nb.x - na.x, nb.y - na.y) || 1;
       const nx = -(nb.y - na.y) / len, ny = (nb.x - na.x) / len;
-      const s = { x: (p.x + nx * 3.5) * MAP_Z - cam.x, y: (p.y + ny * 3.5) * MAP_Z - cam.y + 26 };
+      const s = { x: cam.sx(p.x + nx * 3.5), y: cam.sy(p.y + ny * 3.5) };
       if (s.x < -20 || s.x > W + 20 || s.y < 10 || s.y > H) continue;
       const dir = (nb.x - na.x) >= 0 ? 1 : -1;
       ctx.globalAlpha = 0.28; ellipsePx(ctx, s.x, s.y + 4, 14, 5, '#06100c'); ctx.globalAlpha = 1;
@@ -797,7 +934,7 @@ class CityScene {
       const len = Math.hypot(nb.x - na.x, nb.y - na.y) || 1;
       const nx = -(nb.y - na.y) / len, ny = (nb.x - na.x) / len;
       const off = p2.side * (10 + p2.lane * 3);
-      const s = { x: Math.round((p.x + nx * off) * MAP_Z - cam.x), y: Math.round((p.y + ny * off) * MAP_Z - cam.y + 26) };
+      const s = { x: cam.sx(p.x + nx * off), y: cam.sy(p.y + ny * off) };
       if (s.x < -8 || s.x > W + 8 || s.y < 20 || s.y > H) continue;
       const bob = Math.sin(this.t * 7 + p2.ph) > 0 ? 1 : 0;
       const y2 = s.y - bob;
@@ -821,48 +958,18 @@ class CityScene {
       if (p2.bag) rect(ctx, s.x + 4, y2, 2, 3, '#c8402c');
       if (p2.kind === 'kid') rect(ctx, s.x - 3, y2 - 7, 7, 1, '#e8c040');
     }
-    // ---- the route you drew, as a continuous ribbon with chevrons
-    if (this.path.length) {
-      const pts = [this.tileScreen(this.tile)].concat(this.path.map(t => this.tileScreen(t)));
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(13,58,104,0.45)'; ctx.lineWidth = 13;
-      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-      ctx.strokeStyle = '#3d8fe0'; ctx.lineWidth = 9;
-      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-      ctx.lineWidth = 1;
-      // chevrons flowing along it
-      for (let i = 1; i < pts.length; i++) {
-        const a2 = pts[i - 1], b2 = pts[i], ang = Math.atan2(b2.y - a2.y, b2.x - a2.x);
-        const k = ((this.t * 1.6 + i * 0.34) % 1);
-        const mx = lerp(a2.x, b2.x, k), my = lerp(a2.y, b2.y, k);
-        ctx.save(); ctx.translate(mx, my); ctx.rotate(ang);
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, -4); ctx.lineTo(-1, 0); ctx.lineTo(-3, 4); ctx.fill(); ctx.restore();
-      }
-      // the destination flag and what the walk will cost
-      const end = pts[pts.length - 1], cost = this.staminaFor(this.path);
-      circle(ctx, end.x, end.y, 7, '#fff'); circle(ctx, end.x, end.y, 5, '#1b63b8');
-      const cw = textWidth(String(cost), { scale: 2 }) + 24;
-      rect(ctx, end.x - cw / 2, end.y - 36, cw, 18, '#1b63b8'); frame(ctx, end.x - cw / 2, end.y - 36, cw, 18, '#0d3a68');
-      rect(ctx, end.x - cw / 2 + 1, end.y - 35, cw - 2, 1, '#5ba0e8');
-      ctx.drawImage(icon('fire'), end.x - cw / 2 + 4, end.y - 34, 10, 13);
-      drawText(ctx, String(cost), end.x + 7, end.y - 31, '#fff', { align: 'center', scale: 2 });
-    }
-    // where you could still step, while you are drawing
-    if (this.drag && this.drag.draw) {
-      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
-        const tx = this.tile.tx + dx, ty = this.tile.ty + dy;
-        if (!tileWalkable(this.grid, tx, ty)) continue;
-        const c = this.tileScreen({ tx, ty });
-        ctx.globalAlpha = 0.16; rect(ctx, c.x - 10, c.y - 10, 20, 20, '#2a7ad0'); ctx.globalAlpha = 1;
-        ctx.globalAlpha = 0.3; frame(ctx, c.x - 10, c.y - 10, 20, 20, '#fff'); ctx.globalAlpha = 1;
-      }
+    // ---- where you told yourself to go, if you tapped somewhere
+    if (this.input.tapGoal) {
+      const g = this.input.tapGoal, gx = cam.sx(g.x), gy = cam.sy(g.y);
+      const k = (this.t * 2) % 1;
+      ctx.globalAlpha = 0.6 - k * 0.5; ringPx(ctx, gx, gy, 6 + k * 14, '#8ad8ff'); ctx.globalAlpha = 1;
+      rect(ctx, gx - 1, gy - 8, 2, 8, '#8ad8ff'); rect(ctx, gx - 6, gy - 12, 12, 6, '#8ad8ff');
     }
     // ---- pins. Distance now reads as walking cost, not a ticket price.
     const done = r.doneNodes || {};
     for (const n of NODES) {
       const s2 = this.screen(n); if (s2.x < -40 || s2.x > W + 40 || s2.y < 0 || s2.y > H + 40) continue;
-      const near = Math.abs(n.tx - this.tile.tx) + Math.abs(n.ty - this.tile.ty) < 9;
+      const near = this.atNode === n || Math.hypot(n.x - this.body.x, n.y - this.body.y) < 150;
       if (n.id === 'ggb' && r.day < 4) { drawPin(ctx, s2.x, s2.y, n, { done: true }); ctx.drawImage(icon('lock'), s2.x - 5, s2.y - 28, 11, 10); continue; }
       const spent = n.type === 'pickup' && done[n.id] === r.day;
       if (near && !spent) { const pulse = 16 + Math.sin(this.t * 5 + n.tx) * 3; ctx.globalAlpha = 0.2; circle(ctx, s2.x, s2.y - 14, pulse, '#8ab8e8'); ctx.globalAlpha = 1; }
@@ -874,8 +981,8 @@ class CityScene {
       }
     }
     // ---- the band, walking the streets on foot
-    const ps = { x: this.pos.x * MAP_Z - cam.x, y: this.pos.y * MAP_Z - cam.y + 26 };
-    const moving = !!this.walking, phase = this.t * 7;
+    const ps = { x: cam.sx(this.body.x), y: cam.sy(this.body.y) };
+    const moving = this.body.moving, phase = this.body.walkT * 7;
     const dirX = this.facing;
     r.members.slice(1, 4).forEach((m, i) => {
       const lag = (i + 1) * 15;
@@ -987,6 +1094,8 @@ class CityScene {
       new Btn(W - 104, H - 28, 96, 24, 'BAND', () => Game.go(() => new BandScene(), 'slideL'), { color: '#4d86c6', hi: '#86b6e8', lo: '#2f5a8a', ol: '#1a3050' }),
       new Btn(W - 212, H - 28, 102, 24, r.stamina > 6 ? 'END DAY' : 'REST', () => this.endDay(), { color: '#8a6a3a', hi: '#b08a50', lo: '#5a4020', ol: '#3a2810' }),
       new Btn(W - 318, H - 28, 100, 24, 'GO', () => this.go(this.reach[this.sel]), { color: UI.green }),
+      // you do not need anybody's permission to play in the street
+      new Btn(W - 452, H - 28, 128, 24, 'PLACE TOOLS', () => this.busk(), { color: '#8a4fd0', hi: '#b98ce8', lo: '#5a2f90', ol: '#33165a' }),
     ];
     for (const b of this.buttons) b.draw(ctx);
   }

@@ -246,6 +246,21 @@ class PhoneScene {
     drawText(ctx, 'TOKYO', S.x + 12, top + 11, '#e8f0fa', { font: 'small' });
     drawText(ctx, (r && r.pos ? String(r.pos).toUpperCase() : ''), S.x + S.w - 12, top + 11, '#8ad8ff', { align: 'right', font: 'small' });
     for (let i = 0; i < 2; i++) { rect(ctx, S.x + S.w - 24, top + 34 + i * 20, 18, 18, 'rgba(12,16,24,0.8)'); drawText(ctx, i ? '-' : '+', S.x + S.w - 15, top + 39 + i * 20, '#e8f0fa', { align: 'center', scale: 2 }); }
+    // ---- what is on. Every event and every stage in the city, listed the way
+    // a maps app lists what is near you, nearest first.
+    const near = NODES.filter(n => n.type === 'event' || n.type === 'venue' || n.type === 'mystery')
+      .map(n => ({ n, d: r && r.tile ? Math.hypot(n.x - (r.tile.tx + 0.5) * TILE, n.y - (r.tile.ty + 0.5) * TILE) : 0 }))
+      .sort((a, b) => a.d - b.d).slice(0, 3);
+    const lh = 16, ly = S.y + S.h - 24 - near.length * lh;
+    rect(ctx, S.x + 6, ly - 12, S.w - 12, near.length * lh + 12, 'rgba(12,16,24,0.85)');
+    drawText(ctx, 'WHAT IS ON', S.x + 12, ly - 9, '#6be585', { font: 'small' });
+    near.forEach((e, i) => {
+      const y = ly + 3 + i * lh;
+      const col = PIN_COLOR[e.n.type] || '#e0523c';
+      rect(ctx, S.x + 12, y + 1, 5, 5, col);
+      drawText(ctx, e.n.type === 'mystery' ? '???' : e.n.name, S.x + 22, y, '#e8f0fa', { font: 'small' });
+      drawText(ctx, Math.round(e.d / TILE) + ' BLK', S.x + S.w - 12, y, '#8ad8ff', { align: 'right', font: 'small' });
+    });
     rect(ctx, S.x + 6, S.y + S.h - 24, S.w - 12, 18, 'rgba(12,16,24,0.8)');
     drawText(ctx, 'STAMINA ' + (r ? r.stamina : 0) + '  DAY ' + ((r ? r.day : 0) + 1) + '/5', S.x + 12, S.y + S.h - 19, '#cfd6e2', { font: 'small' });
   }

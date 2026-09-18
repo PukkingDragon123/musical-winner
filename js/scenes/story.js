@@ -701,7 +701,7 @@ class FlightScene {
       else if (this.lineT > 4.4 && this.li >= this.lines.length - 1) this.leave();
     }
   }
-  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new CrossingScene(() => new CityScene(true)), 'fade', { dur: 0.7 }); }
+  leave() { if (this.left) return; this.left = true; Game.run.save(); Game.go(() => new AirportScene(), 'fade', { dur: 0.7 }); }
   advance() {
     if (this.phase === 'board') { this.phase = 'window'; this.phaseT = 0; return; }
     if (this.li < this.lines.length - 1) { this.li++; this.lineT = 0; return; }
