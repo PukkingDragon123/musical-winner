@@ -237,6 +237,155 @@ function drawRoomProp(ctx, p, t, room) {
     case 'table': { sh(); rect(ctx, x, y, w, h, '#a8784a'); rect(ctx, x, y, w, 3, '#c8985e'); rect(ctx, x + 2, y + h - 4, 4, 4, '#6a4a2a'); rect(ctx, x + w - 6, y + h - 4, 4, 4, '#6a4a2a'); break; }
     case 'bin': { sh(); rect(ctx, x, y, w, h, '#4a5260'); rect(ctx, x - 1, y, w + 2, 4, '#6a7280'); rect(ctx, x + 3, y + 6, w - 6, h - 9, '#3a4250'); break; }
     case 'pole': { ctx.globalAlpha = 0.28; ellipsePx(ctx, x + w / 2 + 2, y + h + 2, 5, 3, '#000'); ctx.globalAlpha = 1; rect(ctx, x, y, w, h, '#8a8f98'); rect(ctx, x, y, 2, h, '#b9bec6'); break; }
+    // ---- the railway
+    case 'farside': {
+      rect(ctx, x, y, w, h, '#232936');
+      rect(ctx, x, y + h - 8, w, 8, '#161b25');
+      for (let i = 0; i < w; i += 18) { rect(ctx, x + i, y, 1, h - 8, '#1b2129'); }
+      for (let r2 = 0; r2 * 14 < h - 10; r2++) rect(ctx, x, y + r2 * 14, w, 1, '#1b2129');
+      // the lit adverts on the far wall, facing a platform you will never stand on
+      for (let i = 0; i < Math.floor(w / 150); i++) {
+        const ax = x + 30 + i * 150;
+        rect(ctx, ax, y + 10, 104, 40, '#f4f1ea'); frame(ctx, ax, y + 10, 104, 40, '#6a7280');
+        rect(ctx, ax + 3, y + 13, 98, 20, ['#e8503a', '#4a86f7', '#f2c94c', '#6be585'][i % 4]);
+        drawKana(ctx, ax + 6, y + 36, 8, 8, '#2a2434', i + 1);
+        ctx.globalAlpha = 0.12; rect(ctx, ax, y + 50, 104, 10, '#ffffff'); ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case 'track': {
+      rect(ctx, x, y, w, h, '#2a2d33');
+      rect(ctx, x, y + 4, w, 3, '#8a8f98'); rect(ctx, x, y + h - 9, w, 3, '#8a8f98');
+      for (let i = 0; i < w; i += 14) rect(ctx, x + i, y + 2, 9, h - 6, '#4a3a2a');
+      for (let i = 0; i < w; i += 3) rect(ctx, x + i, y + h - 4, 2, 3, '#3a3f46');
+      break;
+    }
+    case 'platedge': {
+      rect(ctx, x, y, w, h, '#c8c2b4');
+      rect(ctx, x, y, w, 4, '#e8e2d4');
+      rect(ctx, x, y + h - 7, w, 7, '#f0c020');                      // the yellow line
+      for (let i = 0; i < w; i += 5) rect(ctx, x + i, y + h - 6, 3, 5, '#d8a818');
+      break;
+    }
+    case 'queue': {
+      for (let i = 0; i < Math.max(1, Math.floor(w / 26)); i++) {
+        const qx = x + i * 26;
+        rect(ctx, qx, y, 22, 3, '#f0c020'); rect(ctx, qx + 6, y + 5, 10, 3, '#f0c020');
+        ctx.fillStyle = '#f0c020'; ctx.beginPath(); ctx.moveTo(qx + 11, y + 14); ctx.lineTo(qx + 5, y + 8); ctx.lineTo(qx + 17, y + 8); ctx.fill();
+      }
+      break;
+    }
+    case 'jposter': {
+      sh();
+      rect(ctx, x, y, w, h, '#f4f1ea'); frame(ctx, x, y, w, h, '#8a8478');
+      const c = ['#e8503a', '#4a86f7', '#f2c94c', '#6be585', '#c58bff'][(p.tx + p.ty) % 5];
+      rect(ctx, x + 2, y + 2, w - 4, Math.floor(h * 0.52), c);
+      ctx.globalAlpha = 0.5; ellipsePx(ctx, x + w * 0.5, y + h * 0.28, w * 0.24, h * 0.18, '#ffffff'); ctx.globalAlpha = 1;
+      drawKana(ctx, x + 4, y + Math.floor(h * 0.6), Math.max(2, Math.floor((w - 8) / 9)), 7, '#2a2434', p.tx + p.ty);
+      drawKana(ctx, x + 4, y + Math.floor(h * 0.6) + 10, Math.max(2, Math.floor((w - 14) / 9)), 5, '#6a6478', p.tx + 3);
+      break;
+    }
+    case 'signboard': {
+      rect(ctx, x, y, w, h, '#1b2230'); frame(ctx, x, y, w, h, '#3f4a5c');
+      rect(ctx, x + 2, y + 2, w - 4, h - 4, '#0d1018');
+      drawKana(ctx, x + 6, y + 5, Math.max(2, Math.floor((w - 12) / 11)), 9, '#6be585', p.tx);
+      drawKana(ctx, x + 6, y + h - 12, Math.max(3, Math.floor((w - 12) / 8)), 6, '#8ad8ff', p.ty);
+      break;
+    }
+    case 'ledstrip': {
+      rect(ctx, x, y, w, h, '#0d1018'); frame(ctx, x, y, w, h, '#2a3040');
+      const off = Math.floor(t * 26) % (w + 60);
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, w - 4, h - 4); ctx.clip();
+      drawKana(ctx, x + w - off, y + 3, 10, Math.max(4, h - 8), '#f2a03a', p.tx);
+      ctx.restore();
+      break;
+    }
+    case 'mascot': {
+      sh();
+      rect(ctx, x + w / 2 - 2, y + h - 10, 4, 10, '#8a8478');
+      const mc = ['#ffd24a', '#8ad8ff', '#ff9ab0', '#8fd88a'][(p.tx + p.ty) % 4];
+      ellipsePx(ctx, x + w / 2, y + h - 22, w * 0.42, h * 0.34, mc);
+      ellipsePx(ctx, x + w / 2 - w * 0.26, y + h - 34, w * 0.15, h * 0.11, mc);
+      ellipsePx(ctx, x + w / 2 + w * 0.26, y + h - 34, w * 0.15, h * 0.11, mc);
+      rect(ctx, x + w / 2 - 6, y + h - 26, 3, 3, '#241a2e'); rect(ctx, x + w / 2 + 3, y + h - 26, 3, 3, '#241a2e');
+      rect(ctx, x + w / 2 - 2, y + h - 20, 4, 2, '#241a2e');
+      rect(ctx, x + w / 2 - 10, y + h - 17, 4, 2, '#ff9ab0'); rect(ctx, x + w / 2 + 6, y + h - 17, 4, 2, '#ff9ab0');
+      break;
+    }
+    case 'shiba': {
+      const bob = Math.sin(t * 3 + p.tx) > 0 ? 1 : 0;
+      ctx.globalAlpha = 0.3; ellipsePx(ctx, x + w / 2, y + h - 2, 9, 3, '#000'); ctx.globalAlpha = 1;
+      ellipsePx(ctx, x + w / 2, y + h - 9 - bob, 11, 7, '#d8964a');
+      ellipsePx(ctx, x + w / 2, y + h - 11 - bob, 8, 5, '#e8b070');
+      ellipsePx(ctx, x + w / 2 + 9, y + h - 14 - bob, 6, 5, '#d8964a');
+      rect(ctx, x + w / 2 + 6, y + h - 19 - bob, 3, 4, '#d8964a'); rect(ctx, x + w / 2 + 11, y + h - 19 - bob, 3, 4, '#d8964a');
+      rect(ctx, x + w / 2 + 11, y + h - 15 - bob, 2, 2, '#241a2e');
+      rect(ctx, x + w / 2 + 13, y + h - 13 - bob, 3, 2, '#2a1f16');
+      rect(ctx, x + w / 2 - 12, y + h - 15 - bob, 5, 3, '#e8b070');
+      break;
+    }
+    case 'seatbench': {
+      sh();
+      rect(ctx, x, y, w, h, '#2f4a68'); rect(ctx, x, y, w, 4, '#4a6f96');
+      for (let i = 0; i < Math.floor(w / 18); i++) rect(ctx, x + 2 + i * 18, y + 5, 15, h - 9, '#3a5f86');
+      rect(ctx, x, y + h - 3, w, 3, '#24384f');
+      break;
+    }
+    case 'straps': {
+      for (let i = 0; i < Math.floor(w / 16); i++) {
+        const sx = x + 8 + i * 16, sw = Math.sin(t * 1.6 + i * 0.7) * 2;
+        rect(ctx, sx + sw, y, 2, 12, '#8a8478');
+        rect(ctx, sx - 3 + sw, y + 12, 8, 7, '#2a2d33');
+        rect(ctx, sx - 2 + sw, y + 13, 6, 5, '#4a5260');
+      }
+      break;
+    }
+    case 'trainwin': {
+      rect(ctx, x, y, w, h, '#1b2230');
+      rect(ctx, x + 2, y + 2, w - 4, h - 4, '#3f6f9e');
+      // the city going past at speed
+      const sp = (p.speed != null ? p.speed : 1);
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, w - 4, h - 4); ctx.clip();
+      for (let i = 0; i < 26; i++) {
+        const bx = x + ((i * 47 - Math.floor(t * 260 * sp)) % (w + 60)) - 30;
+        const bh = 6 + (i * 13) % Math.max(6, h - 8);
+        rect(ctx, bx, y + h - 2 - bh, 12, bh, i % 3 ? '#2f4a6a' : '#27405c');
+        if (i % 2) rect(ctx, bx + 2, y + h - bh, 3, 3, '#ffd88a');
+      }
+      ctx.restore();
+      frame(ctx, x, y, w, h, '#6a7280');
+      break;
+    }
+    case 'routemap': {
+      rect(ctx, x, y, w, h, '#f4f1ea'); frame(ctx, x, y, w, h, '#8a8478');
+      const yy = y + Math.floor(h * 0.55);
+      rect(ctx, x + 6, yy, w - 12, 3, '#2f7a4a');
+      for (let i = 0; i < Math.floor((w - 12) / 14); i++) { const sx = x + 8 + i * 14; circle(ctx, sx, yy + 1, 3, '#f4f1ea'); ringPx(ctx, sx, yy + 1, 3, '#2f7a4a'); }
+      drawKana(ctx, x + 5, y + 4, Math.max(2, Math.floor((w - 10) / 9)), 6, '#2a2434', p.tx);
+      break;
+    }
+    case 'doors': {
+      rect(ctx, x, y, w, h, '#8a8f98');
+      const open = p.open ? clamp(p.open, 0, 1) : 0;
+      const half = Math.round((w / 2) * (1 - open));
+      rect(ctx, x, y, half, h, '#c8ccd4'); rect(ctx, x + w - half, y, half, h, '#c8ccd4');
+      rect(ctx, x, y, half, 3, '#e4e8ee'); rect(ctx, x + w - half, y, half, 3, '#e4e8ee');
+      rect(ctx, x + half - 2, y, 2, h, '#6a7280'); rect(ctx, x + w - half, y, 2, h, '#6a7280');
+      if (open > 0.1) { rect(ctx, x + half, y + 2, w - half * 2, h - 4, '#1b2230'); }
+      break;
+    }
+    case 'kiosk': {
+      sh();
+      rect(ctx, x, y, w, h, '#2f5a9a'); rect(ctx, x, y, w, 5, '#4a7fc0');
+      rect(ctx, x + 3, y + 7, w - 6, h - 16, '#f4f1ea');
+      for (let i = 0; i < Math.floor((w - 10) / 11); i++) for (let r2 = 0; r2 < Math.max(1, Math.floor((h - 20) / 10)); r2++) {
+        const bx = x + 6 + i * 11, by = y + 10 + r2 * 10;
+        rect(ctx, bx, by, 8, 8, ['#e8503a', '#f2c94c', '#6be585', '#4a86f7'][(i + r2) % 4]);
+      }
+      rect(ctx, x, y + h - 8, w, 8, '#1f3f6a');
+      drawKana(ctx, x + 4, y + h - 7, Math.max(2, Math.floor((w - 8) / 8)), 5, '#cfe4ff', p.tx);
+      break;
+    }
     case 'display': {
       // a single thing, out on a stand with a tag on it
       sh();
@@ -329,7 +478,9 @@ class RoomScene {
       this.body.step(dt, v.x, v.y, this.solid);
     }
     for (const n of this.npcs) n.update(dt, this.solid);
-    this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
+    const aim = this.camAim && this.camAim(dt);
+    if (aim) { this.cam.follow(dt, aim.x, aim.y, 0, 0); this.cam.follow(dt, aim.x, aim.y, 0, 0); }
+    else this.cam.follow(dt, this.body.x, this.body.y, this.body.vx, this.body.vy);
     this.prompt = this.card ? null : this.findPrompt();
     if (this.D.tick) this.D.tick(this, dt);
   }
@@ -429,10 +580,12 @@ class RoomScene {
     }
     this.fx.draw(ctx);
     // ---- the name of the place, and the way out
-    uiRibbon(ctx, W / 2, 8, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
-    if (D.sub) drawText(ctx, D.sub, W / 2, 38, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
-    drawText(ctx, Game.touch ? 'DRAG TO WALK' : 'ARROWS / WASD', 14, H - 20, '#8a82a8', { font: 'small' });
-    drawText(ctx, fmtMoney(Game.run.money), W - 14, 44, '#ffd24a', { align: 'right', scale: 3 });
+    if (!this.noChrome) {
+      uiRibbon(ctx, W / 2, 8, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
+      if (D.sub) drawText(ctx, D.sub, W / 2, 38, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
+      drawText(ctx, Game.touch ? 'DRAG TO WALK' : 'ARROWS / WASD', 14, H - 20, '#8a82a8', { font: 'small' });
+      drawText(ctx, fmtMoney(Game.run.money), W - 14, 44, '#ffd24a', { align: 'right', scale: 3 });
+    }
     if (this.msgT > 0) {
       ctx.globalAlpha = clamp(this.msgT, 0, 1);
       const w2 = Math.min(W - 40, textWidth(this.msg, { scale: 2 }) + 28);
@@ -472,7 +625,7 @@ class RoomScene {
 // ---------- The places, as scenes ----------
 class AirportScene extends RoomScene {
   constructor() {
-    super(ROOMS.airport, { id: 'narita' }, { back: () => new CrossingScene(() => new CityScene(true)) });
+    super(ROOMS.airport, { id: 'narita' }, { back: () => new PlatformScene('narita') });
   }
 }
 // The second-hand shop, stocked from the same list the old counter used: each
@@ -519,4 +672,228 @@ class RamenScene extends RoomScene {
 }
 class CapsuleScene extends RoomScene {
   constructor(node) { super(ROOMS.capsule, node || { id: 'capsule' }, { back: () => new CityScene() }); }
+}
+
+// ---------- Signage you cannot read ----------
+// Everything on the wall is in a language you do not have. These are not real
+// characters and are not meant to be: they are the shape of a sign you are
+// standing in front of at speed, which is exactly how it feels.
+function drawKana(ctx, x, y, n, s, col, seed) {
+  const r = makeRng((seed || 0) * 7919 + n * 31 + 5);
+  for (let i = 0; i < n; i++) {
+    const gx = Math.round(x + i * (s + Math.round(s * 0.35)));
+    const strokes = r.int(2, 4);
+    for (let k = 0; k < strokes; k++) {
+      const kind = r.int(0, 4);
+      if (kind === 0) rect(ctx, gx, Math.round(y + r.int(0, s - 2)), s, Math.max(1, Math.round(s / 6)), col);         // a horizontal
+      else if (kind === 1) rect(ctx, Math.round(gx + r.int(0, s - 2)), y, Math.max(1, Math.round(s / 6)), s, col);     // a vertical
+      else if (kind === 2) { const w = Math.round(s * 0.6); rect(ctx, gx + Math.round(s * 0.2), Math.round(y + s * 0.2), w, Math.max(1, Math.round(s / 6)), col); rect(ctx, gx + Math.round(s * 0.2), Math.round(y + s * 0.2), Math.max(1, Math.round(s / 6)), Math.round(s * 0.6), col); }
+      else if (kind === 3) { for (let j = 0; j < 3; j++) rect(ctx, Math.round(gx + j * s / 3), Math.round(y + s * 0.3 + j * s * 0.2), Math.max(1, Math.round(s / 5)), Math.max(1, Math.round(s / 5)), col); }
+      else { rect(ctx, gx + 1, Math.round(y + s * 0.5), s - 2, Math.max(1, Math.round(s / 6)), col); rect(ctx, Math.round(gx + s * 0.45), y + 1, Math.max(1, Math.round(s / 6)), s - 2, col); }
+    }
+  }
+}
+
+// ---------- The train itself ----------
+// Drawn side-on over the track: underframe, body, a colour band, windows
+// between every pair of doors, and doors that actually slide.
+const TRAIN_DOORS = [132, 300, 468, 636, 804, 972];
+function drawTrainSide(ctx, ox, t, open) {
+  const L = 1104, y0 = 3 * RT - 14, bh = 86;
+  ctx.globalAlpha = 0.34; rect(ctx, ox + 4, y0 + bh - 4, L, 10, '#000'); ctx.globalAlpha = 1;
+  // underframe and bogies
+  rect(ctx, ox, y0 + bh - 14, L, 14, '#1b1f26');
+  for (let i = 0; i < 8; i++) { const bx = ox + 60 + i * 140; rect(ctx, bx, y0 + bh - 12, 54, 12, '#2a2f38'); circle(ctx, bx + 12, y0 + bh - 4, 5, '#12151a'); circle(ctx, bx + 42, y0 + bh - 4, 5, '#12151a'); }
+  // the body
+  rect(ctx, ox, y0, L, bh - 12, '#dfe4ea');
+  rect(ctx, ox, y0, L, 6, '#f4f7fa');
+  rect(ctx, ox, y0 + 12, L, 7, '#1f6f4a');                       // the green line
+  rect(ctx, ox, y0 + 19, L, 3, '#f0c020');                       // and the yellow one
+  rect(ctx, ox, y0 + bh - 18, L, 6, '#b4bcc6');
+  // roof gear
+  for (let i = 0; i < 12; i++) rect(ctx, ox + 40 + i * 92, y0 - 4, 26, 5, '#98a2b0');
+  // windows, skipping the doorways
+  for (let x = 30; x < L - 30; x += 46) {
+    let near = false;
+    for (const d of TRAIN_DOORS) if (Math.abs(x + 18 - d) < 44) near = true;
+    if (near) continue;
+    rect(ctx, ox + x, y0 + 26, 36, 30, '#1b2230');
+    rect(ctx, ox + x + 2, y0 + 28, 32, 26, '#2f4a6a');
+    // somebody's head against the glass
+    if ((x / 46 | 0) % 3 !== 2) { const hx = ox + x + 10 + ((x * 7) % 14); ellipsePx(ctx, hx, y0 + 46, 8, 7, '#241d33'); ellipsePx(ctx, hx, y0 + 40, 6, 5, '#2e2542'); }
+    ctx.globalAlpha = 0.18; rect(ctx, ox + x + 3, y0 + 29, 30, 8, '#ffffff'); ctx.globalAlpha = 1;
+  }
+  // doors
+  for (const d of TRAIN_DOORS) {
+    const dx = ox + d - 34, dw = 68;
+    rect(ctx, dx - 3, y0 + 22, dw + 6, 52, '#8a939e');
+    const half = Math.round((dw / 2) * (1 - clamp(open, 0, 1)));
+    rect(ctx, dx, y0 + 24, dw, 48, '#141922');                   // the dark of the inside
+    if (open > 0.15) { ctx.globalAlpha = 0.5; rect(ctx, dx + 4, y0 + 28, dw - 8, 40, '#3a4a66'); ctx.globalAlpha = 1; }
+    rect(ctx, dx, y0 + 22, half, 52, '#eef2f6'); rect(ctx, dx + dw - half, y0 + 22, half, 52, '#eef2f6');
+    rect(ctx, dx, y0 + 22, half, 3, '#ffffff'); rect(ctx, dx + dw - half, y0 + 22, half, 3, '#ffffff');
+    if (half > 8) { rect(ctx, dx + 4, y0 + 30, half - 8, 26, '#2f4a6a'); rect(ctx, dx + dw - half + 4, y0 + 30, half - 8, 26, '#2f4a6a'); }
+    rect(ctx, dx + half - 2, y0 + 22, 2, 52, '#6a7280'); rect(ctx, dx + dw - half, y0 + 22, 2, 52, '#6a7280');
+    // the little lamp over the door
+    circle(ctx, dx + dw / 2, y0 + 16, 3, open > 0.5 ? '#6be585' : '#e8503a');
+  }
+  // the destination blind, unreadable
+  rect(ctx, ox + 470, y0 + 24, 96, 16, '#0d1018');
+  drawKana(ctx, ox + 476, y0 + 27, 7, 10, '#f2a03a', 3);
+}
+
+// ---------- Platforms ----------
+// Narita: you wait, the train comes in, you step over the yellow line.
+// Ueno: you are already off, and the train leaves without you.
+class PlatformScene extends RoomScene {
+  constructor(which) {
+    const ueno = which === 'ueno';
+    super(ueno ? ROOMS.ueno : ROOMS.platform, { id: which },
+      { back: ueno ? () => new CrossingScene(() => new CityScene(true)) : () => new AirportScene() });
+    this.ueno = ueno;
+    // the train's position along the platform, in pixels, and how open it is
+    this.trainX = ueno ? 0 : 1560;
+    this.open = ueno ? 1 : 0;
+    this.phase = ueno ? 'leaving' : 'coming';
+    this.wait = ueno ? 2.6 : 3.4;
+    this.cine = 1.1;                                      // letterbox on arrival
+    this.boardLine = () => this.ueno
+      ? 'One line you can read: UENO. Everything under it is weather and apology.'
+      : 'A column of shapes, a column of shapes, and 14:06. You can read 14:06.';
+    this.rumble = 0;
+    this.hold = ueno ? 3.2 : 0;          // at Ueno the camera watches it leave
+  }
+  // while the train is doing something, the camera watches the train
+  camAim() {
+    if (this.phase === 'coming' || (this.phase === 'stopped' && this.hold > 0)) {
+      this.cam.targetZ = 2.45;
+      return { x: clamp(this.body.x, 300, this.wpx - 300), y: 4.3 * RT };
+    }
+    if (this.phase === 'leaving') { this.cam.targetZ = 2.45; return { x: clamp(this.body.x, 300, this.wpx - 300), y: 4.6 * RT }; }
+    this.cam.targetZ = this.D.zoom;
+    return null;
+  }
+  update(dt) {
+    super.update(dt);
+    this.cine = Math.max(0, this.cine - dt);
+    this.hold = Math.max(0, this.hold - dt);
+    this.noChrome = this.phase === 'coming' || this.hold > 0 || this.phase === 'leaving';
+    if (this.phase === 'coming') {
+      this.wait -= dt;
+      if (this.wait <= 0) {
+        this.trainX = Math.max(0, this.trainX - (120 + this.trainX * 1.5) * dt);
+        this.rumble = clamp(this.trainX / 400, 0, 1);
+        if (this.trainX < 1.5) { this.trainX = 0; this.phase = 'stopped'; this.wait = 0.5; this.hold = 2.2; this.flash('DOORS OPENING. MIND THE GAP YOU CANNOT READ ABOUT.'); Audio.ui('select'); }
+      }
+    } else if (this.phase === 'stopped') {
+      this.wait -= dt;
+      if (this.wait <= 0) this.open = Math.min(1, this.open + dt * 1.5);
+      // step over the yellow line and you are on it
+      if (this.open > 0.85 && this.body.y < 7.3 * RT && !this.left) {
+        this.left = true; Game.run.save(); Audio.ui('select');
+        Game.go(() => new CarriageScene(), 'fade', { dur: 0.7 });
+      }
+    } else if (this.phase === 'leaving') {
+      this.wait -= dt;
+      if (this.wait <= 0) {
+        this.open = Math.max(0, this.open - dt * 1.4);
+        if (this.open <= 0) { this.trainX -= (60 + Math.abs(this.trainX) * 1.4) * dt; if (this.trainX < -1400) this.phase = 'gone'; }
+      }
+    }
+  }
+  draw(ctx) {
+    super.draw(ctx);
+    // the station name, held over the arrival like a title card
+    if (this.cine > 0) {
+      const k = clamp(this.cine / 1.1, 0, 1), bar = Math.round(46 * k);
+      rect(ctx, 0, 0, W, bar, '#05060a'); rect(ctx, 0, H - bar, W, bar, '#05060a');
+    }
+    if (this.phase === 'coming') {
+      const a = 0.5 + 0.5 * Math.sin(this.t * 4);
+      ctx.globalAlpha = a;
+      drawText(ctx, 'THE TRAIN IS COMING', W / 2, H - 58, '#f2a03a', { align: 'center', scale: 3, outline: '#12101c' });
+      ctx.globalAlpha = 1;
+    } else if (this.phase === 'stopped' && this.open > 0.6) {
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 5);
+      drawText(ctx, 'WALK OVER THE YELLOW LINE TO BOARD', W / 2, H - 58, '#6be585', { align: 'center', scale: 3, outline: '#12101c' });
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+// the train is drawn in world space, over the track, from the room's own hook
+ROOMS.platform.over = ROOMS.ueno.over = function (ctx, S) {
+  if (S.phase === 'gone') return;
+  ctx.save();
+  if (S.rumble > 0.02) ctx.translate(0, Math.round(Math.sin(S.t * 40) * 2 * S.rumble));
+  drawTrainSide(ctx, Math.round(S.trainX), S.t, S.open);
+  ctx.restore();
+};
+
+// ---------- On board ----------
+// Five stops. Four of them you cannot read. The doors open at every one and
+// nothing stops you getting off at the wrong place except counting.
+class CarriageScene extends RoomScene {
+  constructor() {
+    super(ROOMS.carriage, { id: 'keisei' }, { back: () => new PlatformScene('ueno') });
+    this.stop = 0; this.legT = 0; this.stopped = false; this.speed = 1;
+    this.doors = this.props.filter(p => p.kind === 'doors');
+    this.ann = null; this.annT = 0;
+    this.announce('NEXT STOP: SOMETHING WITH A RIVER IN IT', 0);
+  }
+  announce(line, kana) { this.ann = line; this.annKana = kana; this.annT = 4.5; }
+  update(dt) {
+    super.update(dt);
+    this.annT = Math.max(0, this.annT - dt);
+    this.legT += dt;
+    const st = STOPS[this.stop];
+    if (!this.stopped) {
+      // slow down into the station
+      const leg = 8.5;
+      this.speed = this.legT > leg - 2 ? clamp((leg - this.legT) / 2, 0.06, 1) : 1;
+      for (const w of this.props) if (w.kind === 'trainwin') w.speed = this.speed;
+      if (this.legT >= leg) {
+        this.stopped = true; this.legT = 0;
+        this.announce(st.real ? 'UENO. THIS ONE IS YOURS.' : 'THIS IS NOT IT. ' + st.tag + '.', st.kana);
+        Audio.ui(st.real ? 'fanfare' : 'type');
+      }
+    } else {
+      for (const d of this.doors) d.open = clamp(this.legT * 1.6, 0, 1) * (this.legT > 4.4 ? clamp((5.4 - this.legT) / 1, 0, 1) : 1);
+      if (this.legT > 5.6) {
+        this.stopped = false; this.legT = 0;
+        if (this.stop < STOPS.length - 1) {
+          this.stop++;
+          const n = STOPS[this.stop];
+          this.announce(n.real ? 'NEXT STOP: UENO. GET READY.' : 'NEXT STOP: ' + n.tag + '.', n.kana);
+        }
+      }
+      // step out of an open door
+      if (this.doors[0].open > 0.8 && this.body.y > 9.2 * RT && !this.left) {
+        if (st.real) { this.left = true; Game.run.save(); Audio.ui('select'); Game.go(() => new PlatformScene('ueno'), 'fade', { dur: 0.7 }); }
+        else { this.body.y = 8.6 * RT; this.flash('NOT THIS ONE. YOU CANNOT READ IT, BUT IT IS NOT UENO.'); }
+      }
+    }
+  }
+  draw(ctx) {
+    super.draw(ctx);
+    // the strip over the door, announcing what you cannot read
+    if (this.annT > 0) {
+      const a = clamp(this.annT, 0, 1);
+      ctx.globalAlpha = a;
+      const bw = Math.min(W - 40, textWidth(this.ann, { scale: 2 }) + 40);
+      rect(ctx, W / 2 - bw / 2, H - 78, bw, 30, '#0d1018');
+      frame(ctx, W / 2 - bw / 2, H - 78, bw, 30, '#f2a03a');
+      drawKana(ctx, W / 2 - bw / 2 + 8, H - 72, this.annKana || 3, 7, '#f2a03a', this.stop);
+      drawText(ctx, this.ann, W / 2 + 20, H - 68, '#ffd88a', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    // how many stops are left, as circles, because circles need no language
+    const n = STOPS.length;
+    for (let i = 0; i < n; i++) {
+      const cx = W / 2 - (n - 1) * 13 + i * 26, cy = H - 26;
+      rect(ctx, W / 2 - (n - 1) * 13, cy - 1, (n - 1) * 26, 2, '#2f7a4a');
+      circle(ctx, cx, cy, 6, i < this.stop ? '#2f7a4a' : '#0d1018');
+      ringPx(ctx, cx, cy, 6, i === this.stop ? '#ffd24a' : '#2f7a4a');
+      if (i === n - 1) drawText(ctx, 'UENO', cx, cy + 10, '#6be585', { align: 'center', font: 'small' });
+    }
+  }
 }

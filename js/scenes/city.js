@@ -83,99 +83,98 @@ function cityTile(kind, variant, mask) {
     return P.toCanvas();
   });
 }
-// ---------- The big egg is a beetle ----------
-// Seen from the air the stadium is a rhinoceros beetle: the bowl is the wing
-// case, split down the middle by the roof seam; the entrance hall is the
-// thorax with the horn of the main canopy over the doors; six ramps come off
-// it like legs; two lighting masts stand where the antennae would be. It is
-// still a stadium — that is the joke and the point.
-function drawBeetleStadium(x, cx, cy) {
-  const R = 190, W2 = 150;                       // how big the shell is
-  // ---- the plaza it stands in
-  ellipsePx(x, cx, cy + 10, R + 70, W2 + 62, '#9aa1ab');
-  for (let i = 0; i < 700; i++) { const a = (i * 2.399), r2 = Math.sqrt(i / 700) * (R + 66); const px2 = cx + Math.cos(a) * r2, py2 = cy + 10 + Math.sin(a) * r2 * 0.78; if ((i % 7) === 0) rect(x, px2, py2, 2, 2, '#8a919b'); }
-  ellipsePx(x, cx, cy + 10, R + 52, W2 + 46, '#b6bcc4');
-  // paths radiating out to the streets
-  for (let i = 0; i < 8; i++) {
-    const a = Math.PI * (0.18 + i * 0.22);
-    x.save(); x.translate(cx, cy + 10); x.rotate(a);
-    rect(x, -10, 0, 20, R + 78, '#cfd4da'); rect(x, -10, 0, 2, R + 78, '#e0e4ea');
+// ---------- THE LADYBUG ----------
+// Not a dome. A sphere the size of a hill, sitting in its own plaza, with a
+// screen wrapped all the way round it: scarlet shell, seven black spots, a
+// black head at the north with the doors under it, and a seam of light down
+// the middle where the wing cases meet. You can see it from six districts away.
+function drawLadybugSphere(x, cx, cy) {
+  const R = 210;                                   // how big the ball is
+  const SHELL = '#ee4a3c', SHELL_HI = '#ff9a80', SHELL_LO = '#a01a22', SHELL_DK = '#6a0e18';
+  const INK = '#151018', INK_HI = '#2e2636';
+  // ---- the plaza, and the ring road round it
+  ellipsePx(x, cx, cy + 40, R + 150, (R + 150) * 0.62, '#39414e');
+  ellipsePx(x, cx, cy + 40, R + 132, (R + 132) * 0.62, '#9aa1ab');
+  ellipsePx(x, cx, cy + 44, R + 96, (R + 96) * 0.6, '#b6bcc4');
+  for (let i = 0; i < 900; i++) { const a = i * 2.399, r2 = Math.sqrt(i / 900) * (R + 126); const px2 = cx + Math.cos(a) * r2, py2 = cy + 44 + Math.sin(a) * r2 * 0.6; if (i % 6 === 0) rect(x, px2, py2, 2, 2, '#8a919b'); }
+  // approach paths, one per entrance
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI * (0.1 + i * 0.3);
+    x.save(); x.translate(cx, cy + 44); x.rotate(a);
+    rect(x, -13, 0, 26, R + 140, '#cfd4da'); rect(x, -13, 0, 3, R + 140, '#e6eaf0');
+    for (let k = 30; k < R + 130; k += 34) rect(x, -9, k, 18, 3, '#b6bcc4');
     x.restore();
   }
-  // ---- six legs, angled off the body, which are the entrance ramps
-  for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
-    const ay = cy - 60 + i * 66, len = 120 + i * 18, ang = side * (0.5 + i * 0.16);
-    x.save(); x.translate(cx + side * (R * 0.62), ay); x.rotate(ang);
-    rect(x, 0, -13, len, 26, '#4a5260'); rect(x, 0, -13, len, 4, '#6a7280');
-    for (let k = 10; k < len - 8; k += 16) rect(x, k, -9, 8, 18, '#5f6a78');
-    rect(x, len - 26, -18, 26, 36, '#39414e');            // the foot
-    rect(x, len - 26, -18, 26, 4, '#5a6270');
-    x.restore();
+  // ---- the shadow the whole thing throws
+  ctx_alpha(x, 0.4, () => ellipsePx(x, cx + 26, cy + 58, R * 0.98, R * 0.42, '#0d1018'));
+  // ---- the ball
+  ellipsePx(x, cx, cy, R + 4, R + 4, INK);                     // the rim of the screen
+  ellipsePx(x, cx, cy, R, R, SHELL);
+  // the curve: light from the north-west, dark toward the south-east
+  for (let i = 0; i < 16; i++) {
+    const k = i / 16;
+    ctx_alpha(x, 0.05, () => ellipsePx(x, cx + k * 40, cy + k * 34, R * (1 - k * 0.3), R * (1 - k * 0.3), SHELL_LO));
   }
-  // ---- the shell: two wing cases, meeting down a seam, narrower at the top
-  // the way a beetle's are, with the bowl of the stadium open between them
-  ellipsePx(x, cx + 8, cy + 14, R + 4, W2 + 4, '#1c212b');            // the shadow under the whole thing
+  ctx_alpha(x, 0.55, () => ellipsePx(x, cx - R * 0.28, cy - R * 0.32, R * 0.46, R * 0.38, SHELL_HI));
+  ctx_alpha(x, 0.22, () => ellipsePx(x, cx - R * 0.42, cy - R * 0.46, R * 0.2, R * 0.15, '#ffd8c8'));
+  // the LED grid wrapped over the whole surface, tighter toward the edges
+  x.save(); x.beginPath(); x.arc(cx, cy, R - 1, 0, Math.PI * 2); x.clip();
+  x.globalAlpha = 0.1;
+  for (let i = -14; i <= 14; i++) {                            // meridians
+    const k = i / 14, ex = Math.sin(k * Math.PI / 2) * R;
+    x.beginPath(); x.ellipse(cx, cy, Math.abs(ex), R, 0, 0, Math.PI * 2); x.strokeStyle = '#2a0a12'; x.lineWidth = 1; x.stroke();
+  }
+  for (let i = -12; i <= 12; i++) {                            // parallels
+    const k = i / 12, ey = Math.sin(k * Math.PI / 2) * R;
+    x.beginPath(); x.ellipse(cx, cy, R, Math.abs(ey), 0, 0, Math.PI * 2); x.stroke();
+  }
+  x.globalAlpha = 1;
+  // ---- the seam where the wing cases meet, lit like a strip of screen
+  rect(x, cx - 5, cy - R, 10, R * 2, SHELL_DK);
+  rect(x, cx - 2, cy - R, 4, R * 2, '#ffe9a8');
+  ctx_alpha(x, 0.35, () => rect(x, cx - 8, cy - R, 16, R * 2, '#ffd24a'));
+  // ---- the spots. Seven of them, flattened and shifted toward the middle the
+  // further out they sit, because they are painted on a ball.
+  const SPOTS = [[-0.46, -0.34, 0.2], [0.44, -0.3, 0.19], [-0.56, 0.22, 0.17], [0.56, 0.2, 0.17],
+                 [-0.26, 0.56, 0.15], [0.28, 0.58, 0.15], [0, -0.66, 0.13]];
+  for (const [sx, sy, sr] of SPOTS) {
+    const d = Math.hypot(sx, sy);
+    const px2 = cx + sx * R * 0.92, py2 = cy + sy * R * 0.92;
+    const rx = sr * R * (1 - d * 0.45), ry = sr * R * (1 - d * 0.2);
+    ellipsePx(x, px2, py2, rx, ry, INK);
+    ctx_alpha(x, 0.35, () => ellipsePx(x, px2 - rx * 0.3, py2 - ry * 0.35, rx * 0.4, ry * 0.35, INK_HI));
+  }
+  // ---- the head: a black cap over the north pole, with the doors under it
+  x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
+  ellipsePx(x, cx, cy - R * 0.92, R * 0.52, R * 0.3, INK);
+  ctx_alpha(x, 0.4, () => ellipsePx(x, cx - R * 0.18, cy - R * 0.98, R * 0.22, R * 0.11, INK_HI));
+  // two eyes, which are also the big screens over the doors
   for (const side of [-1, 1]) {
-    const wx = cx + side * R * 0.44;
-    x.save();
-    x.translate(wx, cy + 6); x.rotate(side * 0.09);
-    // the case itself: a rounded shell, wider at the bottom
-    ellipsePx(x, 0, 0, R * 0.56, W2 * 0.98, '#28303c');
-    ellipsePx(x, 0, -2, R * 0.52, W2 * 0.94, '#48566a');
-    ellipsePx(x, side * -R * 0.06, -W2 * 0.22, R * 0.4, W2 * 0.6, '#5a6c82');
-    // the ribs, running down the length of it
-    x.globalAlpha = 0.4;
-    for (let i = -4; i <= 4; i++) {
-      const rx = i * R * 0.1;
-      ellipseRingPx(x, rx * 0.4, 0, Math.abs(R * 0.5 - Math.abs(rx) * 0.7), W2 * 0.9, '#323b49');
-    }
-    x.globalAlpha = 1;
-    // the outer rim, catching the light
-    x.globalAlpha = 0.55; ellipseRingPx(x, 0, -3, R * 0.52, W2 * 0.94, '#8a9ab0'); x.globalAlpha = 1;
-    // a few pinpricks of light along the roof edge
-    for (let i = 0; i < 14; i++) { const a = i * 0.45; rect(x, Math.cos(a) * R * 0.5, Math.sin(a) * W2 * 0.9, 2, 2, '#ffe9a8'); }
-    x.restore();
+    const ex = cx + side * R * 0.24, ey = cy - R * 0.84;
+    ellipsePx(x, ex, ey, R * 0.1, R * 0.07, '#f4f1ea');
+    ellipsePx(x, ex + side * R * 0.02, ey, R * 0.05, R * 0.04, '#1b2230');
+    ctx_alpha(x, 0.6, () => ellipsePx(x, ex - R * 0.03, ey - R * 0.02, R * 0.02, R * 0.015, '#ffffff'));
   }
-  // the seam between them, lit down its length
-  rect(x, cx - 5, cy - W2 * 0.92, 10, W2 * 1.9, '#1e242e');
-  rect(x, cx - 1, cy - W2 * 0.86, 2, W2 * 1.78, '#8ad8ff');
-  ellipsePx(x, cx, cy - W2 * 0.92, 7, 5, '#39414e');
-  // ---- the bowl: the open middle, where the pitch is
-  ellipsePx(x, cx, cy + 12, R * 0.46, W2 * 0.56, '#12161f');
-  ellipsePx(x, cx, cy + 12, R * 0.42, W2 * 0.5, '#1b2230');
-  // tiers of seats round it
-  for (let i = 0; i < 5; i++) { x.globalAlpha = 0.65; ellipseRingPx(x, cx, cy + 12, R * (0.42 - i * 0.03), W2 * (0.5 - i * 0.035), i % 2 ? '#8a3a2c' : '#2f4a8a'); x.globalAlpha = 1; }
-  ellipsePx(x, cx, cy + 12, R * 0.28, W2 * 0.33, '#2f7a4a');
-  for (let i = 0; i < 8; i++) { x.globalAlpha = 0.16; rect(x, cx - R * 0.26 + i * (R * 0.52 / 8), cy + 12 - W2 * 0.31, R * 0.26 / 8, W2 * 0.62, '#ffffff'); x.globalAlpha = 1; }
-  ellipsePx(x, cx, cy + 12, R * 0.12, W2 * 0.13, '#e8e4f0');          // the stage in the middle
-  x.globalAlpha = 0.3; ellipsePx(x, cx, cy + 12, R * 0.2, W2 * 0.22, '#cfe4ff'); x.globalAlpha = 1;
-  // ---- the thorax: the entrance hall at the north end
-  ellipsePx(x, cx, cy - W2 - 30, 86, 46, '#2f3a48');
-  ellipsePx(x, cx, cy - W2 - 32, 78, 40, '#4a5768');
-  rect(x, cx - 60, cy - W2 - 36, 120, 8, '#5f6e82');
-  for (let i = 0; i < 7; i++) rect(x, cx - 52 + i * 17, cy - W2 - 18, 11, 16, '#ffd24a');   // the doors, lit
-  // the horn over the doors
-  x.fillStyle = '#5f6e82';
-  x.beginPath();
-  x.moveTo(cx - 16, cy - W2 - 52); x.lineTo(cx + 16, cy - W2 - 52);
-  x.lineTo(cx + 8, cy - W2 - 118); x.lineTo(cx + 22, cy - W2 - 132);
-  x.lineTo(cx, cy - W2 - 126); x.lineTo(cx - 22, cy - W2 - 132);
-  x.lineTo(cx - 8, cy - W2 - 118); x.fill();
-  rect(x, cx - 14, cy - W2 - 52, 28, 5, '#8a98ac');
-  // ---- the antennae: two lighting masts
+  x.restore();
+  // the antennae, coming off the head
   for (const side of [-1, 1]) {
-    const mx = cx + side * 72, my = cy - W2 - 60;
-    x.save(); x.translate(mx, my); x.rotate(side * 0.34);
-    rect(x, -3, -96, 6, 96, '#6a7280'); rect(x, -3, -96, 2, 96, '#98a2b0');
-    rect(x, -16, -110, 32, 16, '#39414e');
-    for (let i = 0; i < 4; i++) rect(x, -13 + i * 8, -107, 5, 10, '#fff2c0');
+    x.save(); x.translate(cx + side * R * 0.2, cy - R * 1.02); x.rotate(side * 0.5);
+    rect(x, -3, -120, 6, 120, INK); rect(x, -3, -120, 2, 120, INK_HI);
+    ellipsePx(x, 0, -126, 13, 10, INK);
+    ctx_alpha(x, 0.9, () => ellipsePx(x, 0, -126, 8, 6, '#ffd24a'));
     x.restore();
   }
-  // ---- the name, on the plaza
-  x.globalAlpha = 0.5; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 28, '#ffffff', { align: 'center', scale: 2 }); x.globalAlpha = 1;
-  x.globalAlpha = 0.9; drawText(x, 'B E E T L E   D O M E', cx, cy + W2 + 27, '#26301f', { align: 'center', scale: 2 }); x.globalAlpha = 1;
+  // ---- the concourse and the doors, at the foot of the ball
+  rect(x, cx - R * 0.72, cy + R * 0.78, R * 1.44, 46, '#2a2f3a');
+  rect(x, cx - R * 0.72, cy + R * 0.78, R * 1.44, 4, '#4a5260');
+  for (let i = 0; i < 11; i++) rect(x, cx - R * 0.66 + i * (R * 1.32 / 11), cy + R * 0.86, 18, 26, '#ffd24a');
+  ctx_alpha(x, 0.22, () => ellipsePx(x, cx, cy + R * 1.0, R * 0.9, 40, '#ffd24a'));
+  // the name, painted on the plaza
+  ctx_alpha(x, 0.5, () => drawText(x, 'T H E   L A D Y B U G', cx, cy + R + 76, '#ffffff', { align: 'center', scale: 3 }));
+  ctx_alpha(x, 0.9, () => drawText(x, 'T H E   L A D Y B U G', cx, cy + R + 74, '#1b1018', { align: 'center', scale: 3 }));
 }
-// ---------- A building ----------
+function ctx_alpha(x, a, fn) { const o = x.globalAlpha; x.globalAlpha = a; fn(); x.globalAlpha = o; }
+// ---------- A building ----------// ---------- A building ----------
 // Roof at the top, front wall with windows below it, a door with an awning
 // over it and a sign beside the door. Drawn in map pixels, over however many
 // tiles the block gave it.
@@ -251,6 +250,103 @@ function drawMapBuilding(x, bx, by, bw, bh, rng) {
   }
   // a hard edge all round, so it sits on the ground instead of floating
   frame(x, X, Y, W2, H2, 'rgba(10,26,20,0.35)');
+}
+// ---------- A house, the way this country builds them ----------
+// Not another flat-roofed block. A machiya: a plot with a wall round it, a
+// pitched kawara roof with a ridge down the middle, deep eaves, a wooden
+// front with a noren over the door, and whatever the family put in the two
+// metres of garden they were left with.
+const TILE_COLS = [['#414c60', '#556277', '#2b3442'], ['#3c4450', '#4e5764', '#262d37'],
+                   ['#4a4438', '#5e5646', '#312d26'], ['#39463f', '#4a5a51', '#25302b'],
+                   ['#4e3f46', '#635059', '#332930']];
+const HOUSE_WALL = ['#e6dcc4', '#d9c8a6', '#cbb894', '#e0d4bc', '#c9bda8'];
+const HOUSE_WOOD = ['#6a4f36', '#7c5c3e', '#59422e', '#8a6a46'];
+function drawMapHouse(x, bx, by, bw, bh, rng) {
+  if (bw < 16 || bh < 16) return;
+  const X = bx + 1, Y = by + 1, W2 = bw - 2, H2 = bh - 2;
+  const [tile, tileHi, tileLo] = TILE_COLS[rng.int(0, TILE_COLS.length - 1)];
+  const wall = HOUSE_WALL[rng.int(0, HOUSE_WALL.length - 1)];
+  const wood = HOUSE_WOOD[rng.int(0, HOUSE_WOOD.length - 1)];
+  // ---- the plot: raked gravel, and a wall round it
+  x.fillStyle = 'rgba(10,26,20,0.26)'; x.fillRect(X + 3, Y + 4, W2, H2);
+  rect(x, X, Y, W2, H2, '#cfc6b2');
+  for (let i = 2; i < H2 - 1; i += 3) { ctx_alpha(x, 0.16, () => rect(x, X + 1, Y + i, W2 - 2, 1, '#9a9384')); }
+  ctx_alpha(x, 0.2, () => { for (let i = 0; i < W2 * H2 / 22; i++) rect(x, X + rng.int(1, W2 - 2), Y + rng.int(1, H2 - 2), 1, 1, '#8f8877'); });
+  // the boundary: a block wall with its own little tiled cap
+  rect(x, X, Y, W2, 2, '#b4ab96'); rect(x, X, Y, 1, H2, '#b4ab96');
+  rect(x, X + W2 - 1, Y, 1, H2, '#a39a86'); rect(x, X, Y + H2 - 2, W2, 2, '#a39a86');
+  // ---- the house itself, sitting at the back of the plot
+  const RW = W2 - 8, RH = Math.max(8, Math.round(H2 * 0.42));
+  const RX = X + 4, RY = Y + 3;
+  const ridge = RY + Math.round(RH * 0.46);
+  // the far slope, in shade, then the near one, which catches the light
+  rect(x, RX, RY, RW, ridge - RY, darken(tile, 0.3));
+  rect(x, RX, ridge, RW, RY + RH - ridge, tile);
+  ctx_alpha(x, 0.2, () => rect(x, RX, ridge + 3, RW, 3, '#ffffff'));
+  // rows of pantiles, and the seams between them
+  for (let yy = RY + 2; yy < ridge - 1; yy += 3) ctx_alpha(x, 0.4, () => rect(x, RX + 1, yy, RW - 2, 1, '#1d232c'));
+  for (let yy = ridge + 3; yy < RY + RH - 1; yy += 3) ctx_alpha(x, 0.33, () => rect(x, RX + 1, yy, RW - 2, 1, '#1d232c'));
+  ctx_alpha(x, 0.18, () => { for (let xx = RX + 3; xx < RX + RW - 2; xx += 4) rect(x, xx, RY + 1, 1, RH - 2, '#0f1319'); });
+  // the ridge, raised, with a cap at each end
+  rect(x, RX - 1, ridge - 3, RW + 2, 5, tileHi);
+  rect(x, RX - 1, ridge - 3, RW + 2, 1, lighten(tileHi, 0.45));
+  rect(x, RX - 1, ridge - 1, RW + 2, 1, lighten(tileHi, 0.18));
+  rect(x, RX - 1, ridge + 2, RW + 2, 1, '#151a21');
+  rect(x, RX - 2, ridge - 4, 4, 8, '#20262f'); rect(x, RX + RW - 2, ridge - 4, 4, 8, '#20262f');
+  // the eaves: a lip all round, and the shadow they throw on the ground
+  rect(x, RX - 1, RY, 1, RH, tileHi); rect(x, RX + RW, RY, 1, RH, tileLo);
+  rect(x, RX - 1, RY + RH, RW + 2, 2, '#1a2029');
+  ctx_alpha(x, 0.3, () => rect(x, RX - 1, RY + RH + 2, RW + 2, 3, '#4a4436'));
+  // ---- the front of the house, under the eaves
+  const FY = RY + RH + 4, FH = clamp(Math.round(H2 * 0.2), 5, Y + H2 - 3 - FY);
+  if (FH >= 5) {
+    rect(x, RX, FY, RW, FH, wall);
+    rect(x, RX, FY, RW, 1, lighten(wall, 0.2));
+    rect(x, RX, FY + FH - 1, RW, 1, darken(wall, 0.34));
+    // the wooden lattice: shoji panels and a slatted screen
+    const dw = Math.max(6, Math.round(RW * 0.3)), dx2 = RX + Math.round(RW * 0.5 - dw / 2);
+    rect(x, RX + 1, FY + 1, dx2 - RX - 2, FH - 2, '#f2ecd8');
+    for (let xx = RX + 2; xx < dx2 - 2; xx += 3) rect(x, xx, FY + 1, 1, FH - 2, wood);
+    rect(x, dx2 + dw + 1, FY + 1, RX + RW - dx2 - dw - 2, FH - 2, '#f2ecd8');
+    for (let xx = dx2 + dw + 2; xx < RX + RW - 2; xx += 3) rect(x, xx, FY + 1, 1, FH - 2, wood);
+    // the doorway, dark, with a noren hung across it
+    rect(x, dx2, FY, dw, FH, '#241d28');
+    const nc = rng.pick(['#2f4a8a', '#8a2a1c', '#2f6a4a', '#3a3550']);
+    rect(x, dx2, FY, dw, Math.max(2, Math.round(FH * 0.45)), nc);
+    for (let i = 1; i < 3; i++) rect(x, dx2 + Math.round(dw * i / 3), FY, 1, Math.round(FH * 0.45), darken(nc, 0.4));
+    // a paper lantern by the door, lit
+    rect(x, dx2 - 3, FY + 1, 2, 4, '#c23a2a'); rect(x, dx2 - 3, FY + 1, 2, 1, '#e8705a');
+  }
+  // ---- the garden: whatever fits in what is left
+  const GY = FY + FH + 1, GH2 = Y + H2 - 2 - GY;
+  if (GH2 >= 5) {
+    // stepping stones out to the gate
+    for (let i = 0; i < 3; i++) { const sx2 = X + Math.round(W2 * 0.5) + (i % 2 ? -3 : 2); rect(x, sx2, GY + i * Math.max(2, Math.floor(GH2 / 3)), 4, 3, '#9a9384'); rect(x, sx2, GY + i * Math.max(2, Math.floor(GH2 / 3)), 4, 1, '#b4ac98'); }
+    const g = rng.int(0, 3);
+    if (g === 0 && W2 > 18) {
+      // a pond, with a carp in it that is worth more than the house
+      ellipsePx(x, X + 6, GY + Math.floor(GH2 / 2), 5, 3, '#2f5a6a');
+      ellipsePx(x, X + 6, GY + Math.floor(GH2 / 2), 4, 2, '#3f7f96');
+      rect(x, X + 5, GY + Math.floor(GH2 / 2), 2, 1, '#e8804a');
+    } else if (g === 1) {
+      // a stone lantern
+      rect(x, X + 5, GY + GH2 - 5, 4, 4, '#9a9384'); rect(x, X + 4, GY + GH2 - 7, 6, 2, '#b4ac98'); rect(x, X + 5, GY + GH2 - 9, 4, 2, '#8f8877');
+    } else if (g === 2) {
+      // a maple, kept small on purpose
+      ellipsePx(x, X + 6, GY + Math.floor(GH2 / 2), 5, 4, '#7a2a2a');
+      ellipsePx(x, X + 5, GY + Math.floor(GH2 / 2) - 1, 3, 2, '#b04a3a');
+    } else {
+      // bicycles, because there are always bicycles
+      for (let i = 0; i < 2; i++) { const bx2 = X + 4 + i * 6; rect(x, bx2, GY + 1, 1, 5, '#3a3f4a'); circle(x, bx2, GY + 2, 2, '#2a2d33'); circle(x, bx2, GY + 5, 2, '#2a2d33'); }
+    }
+    // a pine or a clipped shrub in the far corner
+    if (rng.chance(0.5)) { ellipsePx(x, X + W2 - 6, GY + 2, 4, 3, '#24603c'); ellipsePx(x, X + W2 - 6, GY + 1, 3, 2, '#357a4c'); }
+  }
+  // the gate in the front wall
+  const gx = X + Math.round(W2 * 0.5) - 3;
+  rect(x, gx, Y + H2 - 3, 7, 3, wood);
+  rect(x, gx, Y + H2 - 3, 7, 1, lighten(wood, 0.3));
+  frame(x, X, Y, W2, H2, 'rgba(10,26,20,0.3)');
 }
 // the same tree in April, which is the only thing this city agrees on
 function sakuraTreeCanvas(v) {
@@ -384,7 +480,9 @@ function buildSF() {
         bh++;
       }
       for (let yy = 0; yy < bh; yy++) for (let xx = 0; xx < bw; xx++) used[(ty + yy) * GW + tx + xx] = 1;
-      drawMapBuilding(x, tx * TILE, ty * TILE, bw * TILE, bh * TILE, R);
+      // one- and two-tile plots get a house; the big footprints stay blocks
+      if (bw * bh <= 2 && R.chance(0.62)) drawMapHouse(x, tx * TILE, ty * TILE, bw * TILE, bh * TILE, R);
+      else drawMapBuilding(x, tx * TILE, ty * TILE, bw * TILE, bh * TILE, R);
     }
   }
   // ---- 4. street furniture and planting, on the pavement and the grass
@@ -436,12 +534,19 @@ function buildSF() {
   // gardens and a car on the drive, drawn the same way the city is.
   {
     const rr = makeRng(5150);
+    const taken = new Uint8Array(GW * GH);
+    const free = (tx, ty) => tx >= 0 && ty >= 0 && tx < GW && ty < GH && draw[ty * GW + tx] === T_LAND && !taken[ty * GW + tx];
     for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
-      if (draw[ty * GW + tx] !== T_LAND) continue;
+      if (!free(tx, ty)) continue;
       const bx = tx * TILE, by = ty * TILE, roll = rr();
-      if (roll < 0.36) {
-        drawMapBuilding(x, bx + rr.int(0, 3), by + rr.int(1, 4), TILE - rr.int(2, 6), TILE - rr.int(3, 7), rr);
-      } else if (roll < 0.44) {
+      // a plot big enough for a house with a garden in front of it
+      if (roll < 0.62 && free(tx + 1, ty) && free(tx, ty + 1) && free(tx + 1, ty + 1)) {
+        taken[ty * GW + tx] = taken[ty * GW + tx + 1] = taken[(ty + 1) * GW + tx] = taken[(ty + 1) * GW + tx + 1] = 1;
+        drawMapHouse(x, bx + rr.int(0, 3), by + rr.int(0, 3), TILE * 2 - rr.int(2, 6), TILE * 2 - rr.int(2, 6), rr);
+      } else if (roll < 0.76) {
+        taken[ty * GW + tx] = 1;
+        drawMapHouse(x, bx + rr.int(0, 2), by + rr.int(0, 2), TILE - rr.int(1, 3), TILE - rr.int(1, 3), rr);
+      } else if (roll < 0.84) {
         // a car on the drive, for colour and for scale
         const cc = ['#e8e4dc', '#2f4a68', '#c8402c', '#e8c040', '#3f8f6a', '#8a4fd0'][rr.int(0, 5)];
         rect(x, bx + 7, by + 9, 11, 7, darken(cc, 0.4)); rect(x, bx + 7, by + 9, 11, 6, cc);
@@ -455,10 +560,10 @@ function buildSF() {
   x.strokeStyle = '#c8432a'; x.lineWidth = 9 * LS; x.beginPath(); x.moveTo(225 * LS, 132 * LS); x.lineTo(90 * LS, 30 * LS); x.stroke();
   x.strokeStyle = '#9aa0b0'; x.lineWidth = 8 * LS; x.beginPath(); x.moveTo(1342 * LS, 705 * LS); x.lineTo(1500 * LS, 645 * LS); x.stroke();
   circle(x, 1350 * LS, 195 * LS, 24 * LS, '#d8d2c0'); circle(x, 1350 * LS, 195 * LS, 20 * LS, MAP_C.bldg); x.fillStyle = '#b8b2a0'; x.fillRect(1338 * LS, 186 * LS, 24 * LS, 12 * LS);
-  // ---- the stadium, which is a beetle
+  // ---- the stadium, which is a ladybug the size of a hill
   {
     const dome = NODES.find(n => n.id === 'dome');
-    if (dome) drawBeetleStadium(x, dome.x, dome.y + 30);
+    if (dome) drawLadybugSphere(x, dome.x, dome.y + 20);
   }
   // ---- labels last, so they sit on top of the tiles
   x.save();

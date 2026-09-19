@@ -135,7 +135,7 @@ class BuskScene {
     this.pads = Game.touch ? buildPads(instr, { x: 4, y: H - 132, w: W - 8, h: 128 }, false) : [];
     this.padPointers = new Map();
     // the crowd that will gather, generated once and revealed as it arrives
-    this.pool = makeBugCrowd(180, hashStr('busk' + Math.round(this.spot.x) + Math.round(this.spot.y)), { glowRate: 0.3, cols: ['#2f2743', '#3a3050', '#262038', '#43385c', '#1f1a2e'] });
+    this.pool = makeBugCrowd(180, hashStr('busk' + Math.round(this.spot.x) + Math.round(this.spot.y)), { glowRate: 0.32, cols: ['#171326', '#1f1930', '#12101f', '#241d38'] });
     this.crowdN = 0;
   }
   tipDrop(n) {
@@ -185,7 +185,7 @@ class BuskScene {
   }
   layout() {
     const a = this.anchor;
-    this.shown = layoutCrowdArc(this.pool.slice(0, this.crowdN), a.x, a.y, { rows: 7, spread: 120, depth: 62, near: 24, far: 10, gap: 22 });
+    this.shown = layoutCrowdArc(this.pool.slice(0, this.crowdN), a.x, a.y, { rows: 7, spread: 168, depth: 74, near: 34, far: 13, gap: 26 });
   }
   key(code) {
     if (this.phase === 'setup') {
@@ -241,7 +241,7 @@ class BuskScene {
     // everything on the street, sorted so near things cover far ones
     const items = [];
     for (const g of this.gear) items.push({ y: g.y, d: () => { const s = { x: cam.sx(g.x), y: cam.sy(g.y) }; ctx.save(); ctx.translate(s.x, s.y); ctx.scale(cam.z / 1.45, cam.z / 1.45); drawBuskGear(ctx, { key: g.key, x: 0, y: 0, coins: g.coins, on: g.on }, t); ctx.restore(); } });
-    if (this.shown) for (const b of this.shown) items.push({ y: b.y, d: () => drawBugSilhouette(ctx, b, cam.sx(b.x), cam.sy(b.y), b.s * (cam.z / 2.2), t, this.phase === 'tally' ? 'flat' : 'happy', b.s > 20 ? 1 : 0) });
+    if (this.shown) for (const b of this.shown) items.push({ y: b.y, d: () => drawBugSilhouette(ctx, b, cam.sx(b.x), cam.sy(b.y), b.s * (cam.z / 2.2), t, this.phase === 'tally' ? 'flat' : 'happy', b.s > 24 ? 1 : 0) });
     if (this.mates) for (const m of this.mates) items.push({ y: m.y, d: () => {
       const s = { x: cam.sx(m.x), y: cam.sy(m.y) };
       drawShadow(ctx, s.x, s.y + 6, 20, 0.3);

@@ -42,7 +42,7 @@ const ROOMS = {
       propRow('bin', 12, 17, 1, 1, 4, 8),
       propRow('pole', 15, 2, 1, 16, 2, 14, { walk: false }),
       // the way out
-      [{ kind: 'sign', tx: 42, ty: 9, tw: 3, th: 2, text: 'TOKYO', col: '#1f6f4a', label: 'WALK OUT INTO TOKYO', act: 'exit' }]
+      [{ kind: 'sign', tx: 42, ty: 9, tw: 3, th: 2, text: 'TRAINS', col: '#2f5a9a', label: 'DOWN TO THE TRAINS', act: 'exit' }]
     ),
     npcs: [
       { name: 'A TIRED FAMILY', carry: 'bag', tag: 'Four of them, three suitcases, one of them asleep standing up.',
@@ -234,3 +234,147 @@ const RAMEN_MENU = [
   { name: 'TSUKEMEN', price: 10, stam: 34, grat: 1, after: 'Dipping noodles. You take your time. Nobody hurries you.' },
   { name: 'GYOZA SET', price: 8, stam: 24, grat: 0, after: 'Six of them, and the last one is always the best.' },
 ];
+
+// ======================= THE RAILWAY =======================
+// From the airport you take the train, and the train is the first place the
+// country stops translating itself for you. Every sign here is shapes.
+const STOPS = [
+  { kana: 3, tag: 'SOMEWHERE WITH A RIVER' },
+  { kana: 4, tag: 'SOMEWHERE WITH A TOWER' },
+  { kana: 2, tag: 'SOMEWHERE WITH A MARKET' },
+  { kana: 5, tag: 'SOMEWHERE WITH A LOT OF PEOPLE' },
+  { kana: 2, tag: 'UENO', real: true },
+];
+// A platform is a platform: track, yellow line, a wall of things to buy and
+// look at. Only the name on the board and where the stairs go changes.
+function makePlatform(o) {
+  return {
+    name: o.name, sub: o.sub, tint: o.tint || '#1f3f7a',
+    w: 46, h: 18, zoom: 2.0,
+    floor: '#b4afa2', floorAlt: '#aba698', wall: '#39414f', wallTop: '#5a6472',
+    start: o.start || { tx: 6, ty: 14 },
+    enter: o.enter,
+    dark: 'rgba(10,14,30,0.16)',
+    ueno: !!o.ueno,
+    props: [].concat(
+      // the far side of the cutting, the track, and the line you stand behind
+      [{ kind: 'farside', tx: 0, ty: 0, tw: 46, th: 3 },
+       { kind: 'track', tx: 0, ty: 3, tw: 46, th: 3 },
+       { kind: 'platedge', tx: 0, ty: 6, tw: 46, th: 1, walk: true }],
+      propRow('queue', 4, 7, 3, 1, 6, 7, { walk: true }),
+      [{ kind: 'ledstrip', tx: 2, ty: 8, tw: 12, th: 1, walk: true, overhead: true },
+       { kind: 'signboard', tx: 18, ty: 8, tw: 10, th: 2, walk: true, overhead: true, label: 'THE DEPARTURE BOARD', act: 'boardsign' },
+       { kind: 'ledstrip', tx: 32, ty: 8, tw: 12, th: 1, walk: true, overhead: true }],
+      propRow('seatbench', 3, 12, 6, 2, 2, 8),
+      [{ kind: 'vending', tx: 19, ty: 12, tw: 2, th: 3, label: 'VENDING MACHINE', act: 'vend' },
+       { kind: 'vending', tx: 21, ty: 12, tw: 2, th: 3, label: 'HOT TEA - 130', act: 'vend' },
+       { kind: 'kiosk', tx: 25, ty: 12, tw: 7, th: 4, label: 'THE KIOSK', act: 'kiosk' },
+       { kind: 'mascot', tx: 34, ty: 11, tw: 3, th: 5, label: 'A MASCOT STANDEE', act: 'mascot' },
+       { kind: 'shiba', tx: 39, ty: 14, tw: 2, th: 2, walk: true, label: 'A SHIBA INU', act: 'shiba' },
+       { kind: 'bin', tx: 43, ty: 13, tw: 1, th: 1 },
+       { kind: 'bin', tx: 44, ty: 13, tw: 1, th: 1 }],
+      propRow('jposter', 2, 16, 4, 2, 5, 8, { walk: true }),
+      [{ kind: 'routemap', tx: 38, ty: 16, tw: 4, th: 2, walk: true, label: 'THE ROUTE MAP', act: 'map' },
+       { kind: 'sign', tx: o.exitTx, ty: 16, tw: 4, th: 2, text: o.exitText, col: o.exitCol || '#6a3f1f', label: o.exitLabel, act: 'exit' }]
+    ),
+    npcs: (o.npcs || []).concat([
+      { name: 'STATION STAFF', carry: 'phone', tag: '"' + o.staff + '" You understand none of it. You understand all of it.',
+        route: [{ tx: 17, ty: 10, wait: 5, act: 'stand' }, { tx: 30, ty: 10, wait: 3 }, { tx: 17, ty: 10, wait: 6 }] },
+      { name: 'A SCHOOLGIRL', carry: 'bag', tag: 'Asleep standing up, holding her own bag like it might run.',
+        route: [{ tx: 9, ty: 14.4, wait: 9, act: 'sit' }, { tx: 14, ty: 11, wait: 2 }, { tx: 9, ty: 14.4, wait: 11 }] },
+      { name: 'A SALARYMAN', carry: 'case', tag: 'Third in the queue. Has been third in this exact queue for years.',
+        route: [{ tx: 12, ty: 8, wait: 8, act: 'stand' }, { tx: 12, ty: 9, wait: 4 }] },
+      { name: 'A TOURIST', carry: 'umbrella', tag: 'Holding the map the wrong way up. You feel enormous kinship.',
+        route: [{ tx: 33, ty: 15, wait: 3 }, { tx: 43, ty: 15, wait: 5 }, { tx: 33, ty: 15, wait: 2 }] },
+      { name: 'AN OLD MAN', tag: 'Feeding the shiba something he definitely bought for himself.',
+        route: [{ tx: 38, ty: 15.4, wait: 12, act: 'stand' }, { tx: 37, ty: 16, wait: 4 }] },
+      { name: 'TWO STUDENTS', carry: 'case', tag: 'One has a guitar. The other is explaining why that was a mistake.',
+        route: [{ tx: 26, ty: 9, wait: 4 }, { tx: 19, ty: 8, wait: 3 }, { tx: 31, ty: 9, wait: 5 }] },
+      { name: 'A COMMUTER', carry: 'bag', tag: 'Standing on the mark. Exactly on the mark. Has been for four minutes.',
+        route: [{ tx: 26, ty: 8, wait: 14, act: 'stand' }] },
+      { name: 'ANOTHER COMMUTER', carry: 'phone', tag: 'Behind the mark. Reading. Will not look up until the doors open.',
+        route: [{ tx: 33, ty: 8.6, wait: 16, act: 'stand' }] },
+    ]),
+    use(S, p) {
+      const r = Game.run;
+      if (p.act === 'vend') { if (r.money >= 2) { r.money -= 2; r.stamina = Math.min(r.staminaMax, r.stamina + 11); Audio.ui('eat'); S.flash('HOT TEA FROM A COLD MACHINE. -$2, +11 STAMINA.'); } else S.flash('THE MACHINE WANTS TWO DOLLARS.'); return; }
+      if (p.act === 'kiosk') { S.speak('THE KIOSK', 'Eight kinds of rice ball, four kinds of sandwich, one magazine about trains. She waits. You point. She nods like you chose well.'); return; }
+      if (p.act === 'mascot') { S.speak('THE MASCOT', 'A cardboard bug in a stationmaster hat, one wing raised forever. Under it, four characters. You will never know what they say.'); return; }
+      if (p.act === 'shiba') { S.speak('A SHIBA INU', 'Sits. Regards you. Decides you are acceptable and looks at the track again, which is where the real business is.'); Audio.ui('coin'); return; }
+      if (p.act === 'map') { S.speak('THE ROUTE MAP', 'A green line, thirty circles, every single one of them a word you cannot read. One of them is where you are going.'); return; }
+      if (p.act === 'boardsign') { S.speak('THE BOARD', S.boardLine ? S.boardLine() : 'Numbers you can read. Everything else, shapes.'); return; }
+      S.flash(p.label || 'QUIET.');
+    },
+  };
+}
+ROOMS.platform = makePlatform({
+  name: 'NARITA AIRPORT STN - PLATFORM 1', sub: 'THE GREEN LINE, ALL STATIONS',
+  enter: 'STAND BEHIND THE YELLOW LINE. IT IS THE ONLY INSTRUCTION YOU UNDERSTAND.',
+  staff: 'Tsugi wa - kakueki teisha desu.',
+  exitTx: 6, exitText: 'BACK', exitLabel: 'BACK UP TO ARRIVALS',
+});
+ROOMS.ueno = makePlatform({
+  name: 'UENO STN - PLATFORM 9', sub: 'YOU ARE HERE. WHEREVER HERE IS.', tint: '#2f5a2a',
+  enter: 'UENO. THE ONLY WORD ON THE WHOLE PLATFORM YOU CAN READ.',
+  staff: 'Ueno, Ueno desu. Wasuremono no nai you ni.',
+  ueno: true, start: { tx: 8, ty: 8 },
+  exitTx: 42, exitText: 'EXIT', exitCol: '#1f6f4a', exitLabel: 'UP THE STAIRS INTO TOKYO',
+});
+// ======================= INSIDE THE TRAIN =======================
+ROOMS.carriage = {
+  name: 'CAR 4 - PACKED', sub: 'HOLD ON. DO NOT SPEAK. WATCH.', tint: '#1f3f7a',
+  w: 40, h: 11, zoom: 2.1,
+  floor: '#6a6f7c', floorAlt: '#646974', wall: '#2a3242', wallTop: '#46506a',
+  start: { tx: 20, ty: 5.6 },
+  enter: 'IT IS PACKED. YOU HOLD A STRAP AND LET THE COUNTRY GO PAST.',
+  dark: 'rgba(10,14,30,0.12)',
+  props: [].concat(
+    // the far side: windows the whole way, seats under them
+    propRow('trainwin', 1, 0, 7, 2, 5, 8, { walk: true }),
+    propRow('seatbench', 1, 2, 7, 2, 5, 8),
+    // the platform side: seats, then the two doorways, which have to stay clear
+    [{ kind: 'trainwin', tx: 1, ty: 9, tw: 7, th: 2, walk: true },
+     { kind: 'trainwin', tx: 14, ty: 9, tw: 9, th: 2, walk: true },
+     { kind: 'trainwin', tx: 30, ty: 9, tw: 9, th: 2, walk: true },
+     { kind: 'seatbench', tx: 1, ty: 7, tw: 7, th: 2 },
+     { kind: 'seatbench', tx: 14, ty: 7, tw: 9, th: 2 },
+     { kind: 'seatbench', tx: 30, ty: 7, tw: 9, th: 2 },
+     { kind: 'doors', tx: 8, ty: 9, tw: 6, th: 2, walk: true, open: 0, label: 'THE DOORS', act: 'doors' },
+     { kind: 'doors', tx: 23, ty: 9, tw: 7, th: 2, walk: true, open: 0, label: 'THE DOORS', act: 'doors' }],
+    [{ kind: 'straps', tx: 3, ty: 4, tw: 34, th: 1, walk: true, overhead: true }],
+    propRow('jposter', 4, 4, 3, 1, 4, 9, { walk: true, overhead: true }),
+    [{ kind: 'routemap', tx: 16, ty: 0, tw: 7, th: 2, walk: true, label: 'THE ROUTE MAP', act: 'map' },
+     { kind: 'ledstrip', tx: 25, ty: 0, tw: 9, th: 1, walk: true, overhead: true }]
+  ),
+  npcs: [
+    { name: 'A SALARYMAN', carry: 'case', tag: 'Asleep. Upright. Will wake exactly one stop before his.',
+      route: [{ tx: 5, ty: 4.3, wait: 40, act: 'sit' }] },
+    { name: 'A SCHOOLBOY', carry: 'bag', tag: 'Nine feet of space in this carriage and he has found none of it.',
+      route: [{ tx: 12, ty: 4.3, wait: 40, act: 'sit' }] },
+    { name: 'AN OLD WOMAN', tag: 'Holds a shopping bag with both hands and nods at you, once, kindly.',
+      route: [{ tx: 19, ty: 4.3, wait: 40, act: 'sit' }] },
+    { name: 'A NURSE', carry: 'bag', tag: 'Coming off a night shift. Eyes open. Nobody home.',
+      route: [{ tx: 27, ty: 4.3, wait: 40, act: 'sit' }] },
+    { name: 'A TEENAGER', carry: 'phone', tag: 'Watching something with the sound off and the captions on.',
+      route: [{ tx: 34, ty: 4.3, wait: 40, act: 'sit' }] },
+    { name: 'A BUILDER', tag: 'Boots, dust, enormous quiet. Takes up two people of room and apologises for it.',
+      route: [{ tx: 6, ty: 6.7, wait: 40, act: 'sit' }] },
+    { name: 'A COUPLE', carry: 'umbrella', tag: 'Sharing one earphone each. Same song, two heads.',
+      route: [{ tx: 15, ty: 6.7, wait: 40, act: 'sit' }] },
+    { name: 'A MUSICIAN', carry: 'case', tag: '"Ueno?" she says, and points at your case, and gives you a thumbs up.',
+      route: [{ tx: 19, ty: 6.7, wait: 40, act: 'sit' }] },
+    { name: 'A TOURIST', carry: 'bag', tag: 'Counting the stops on her fingers. You start doing it too.',
+      route: [{ tx: 31, ty: 6.7, wait: 40, act: 'sit' }] },
+    { name: 'A STANDING MAN', carry: 'phone', tag: 'Holding the strap next to yours. Neither of you says anything. It is perfect.',
+      route: [{ tx: 21, ty: 5.5, wait: 6, act: 'stand' }, { tx: 24, ty: 5.5, wait: 7, act: 'stand' }] },
+    { name: 'A STANDING WOMAN', carry: 'bag', tag: 'Reading a paperback one-handed, turning pages with her thumb.',
+      route: [{ tx: 13, ty: 5.5, wait: 9, act: 'stand' }, { tx: 10, ty: 5.5, wait: 8, act: 'stand' }] },
+    { name: 'A CONDUCTOR', tag: 'Walks the whole train twice an hour and bows at the end of every carriage.',
+      route: [{ tx: 2, ty: 5.5, wait: 3 }, { tx: 37, ty: 5.5, wait: 3 }] },
+  ],
+  use(S, p) {
+    if (p.act === 'map') { S.speak('THE ROUTE MAP', 'You find the circle you are at by counting backwards from the end. Five more. You can count. Counting is free.'); return; }
+    if (p.act === 'doors') { S.flash(S.stopped ? 'THE DOORS ARE OPEN. STEP OUT IF THIS IS YOURS.' : 'CLOSED. WE ARE DOING NINETY.'); return; }
+    S.flash(p.label || 'HOLD ON.');
+  },
+};

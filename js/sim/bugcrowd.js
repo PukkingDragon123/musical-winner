@@ -4,89 +4,69 @@
 // cases, tall ones, round ones. That is what lets a stadium hold forty
 // thousand of them without turning into soup.
 'use strict';
-const BUG_SHAPES = ['beetle', 'stag', 'moth', 'mantis', 'roach', 'ladybug', 'cricket', 'rhino'];
 function makeBugCrowd(n, seed, opts = {}) {
   const r = makeRng(seed >>> 0);
   const out = [];
   for (let i = 0; i < n; i++) {
+    // These are the same bugs as everybody else in the game. Each one gets a
+    // real spec, so the shape you see in the back row is a shape that could
+    // have walked past you in the street.
+    const spec = randomBugSpec(makeRng((seed >>> 0) + i * 2654435761));
     out.push({
-      shape: r.pick(BUG_SHAPES),
-      h: r.range(0.8, 1.35),                 // how tall they are
-      o: r.range(0, 6.3),                    // where they are in the bounce
-      hype: r.range(0.7, 1.3),
-      col: r.pick(opts.cols || ['#1b1728', '#231b38', '#2b2246', '#322648', '#141020']),
+      spec,
+      h: r.range(0.85, 1.3),
+      o: r.range(0, 6.3),
+      hype: r.range(0.75, 1.25),
       glow: r.chance(opts.glowRate != null ? opts.glowRate : 0.34) ? r.pick(['#ffd24a', '#8ad8ff', '#ff5a9a', '#6be585', '#c58bff']) : null,
-      arms: r.chance(0.5),
-      x: 0, y: 0, z: 0,
+      dark: r.pick(opts.cols || ['#241d33', '#2e2542', '#1b1728', '#382c50']),
+      flip: r.chance(0.5),
+      x: 0, y: 0, s: 16,
     });
   }
   return out;
 }
-// one bug, as a solid shape. `s` is pixels per unit: about 8 is a distant
-// silhouette, 20 is somebody you could talk to.
+// The same sprite, flattened to one colour. Cached per bug and per shade, so a
+// crowd of two hundred costs two hundred small canvases once and nothing after.
+function bugShadowCanvas(spec, pose, col) {
+  const src = bugCanvas(spec, pose, null, null);
+  return cached('bugsil|' + (spec.name || '') + JSON.stringify(spec) + '|' + pose + '|' + col, () => {
+    const c = makeCanvas(src.width, src.height), x = c.getContext('2d');
+    x.imageSmoothingEnabled = false;
+    x.drawImage(src, 0, 0);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = col; x.fillRect(0, 0, c.width, c.height);
+    return c;
+  });
+}
+// one member of the crowd. `s` is roughly how tall they are on screen: 40 is
+// somebody in the front row, 12 is somebody a long way back.
 function drawBugSilhouette(ctx, b, x, y, s, t, mood = 'happy', detail = 0) {
   const bounce = mood === 'flat' ? 0 : Math.sin(t * 5 * b.hype + b.o);
-  const up = bounce < -0.3 && mood !== 'flat';
-  const yy = y + (mood === 'flat' ? 0 : bounce * s * 0.14);
-  const col = b.col, hi = lighten(col, detail > 0 ? 0.22 : 0.1);
-  const bw = s * 0.52, bh = s * 0.72 * b.h;
-  // the shadow it stands in
-  ctx.globalAlpha = 0.22; ellipsePx(ctx, x, y + bh * 0.62, bw * 0.8, s * 0.1, '#000'); ctx.globalAlpha = 1;
-  // body: a wing case with a seam
-  ellipsePx(ctx, x, yy + bh * 0.16, bw * 0.62, bh * 0.44, col);
-  rect(ctx, Math.round(x), Math.round(yy - bh * 0.1), 1, Math.round(bh * 0.5), darken(col, 0.4));
-  // head
-  const hy = yy - bh * 0.3;
-  ellipsePx(ctx, x, hy, bw * 0.4, bw * 0.36, col);
-  if (detail > 0) { ellipsePx(ctx, x - bw * 0.16, hy - bw * 0.06, bw * 0.1, bw * 0.1, hi); ellipsePx(ctx, x + bw * 0.16, hy - bw * 0.06, bw * 0.1, bw * 0.1, hi); }
-  // what kind of bug: the bit that makes the silhouette read
-  const k = s * 0.1;
-  switch (b.shape) {
-    case 'stag':                                   // two big jaws off the head
-      rect(ctx, x - bw * 0.6, hy - k, k, k * 3, col); rect(ctx, x - bw * 0.7, hy - k * 2, k * 2, k, col);
-      rect(ctx, x + bw * 0.5, hy - k, k, k * 3, col); rect(ctx, x + bw * 0.5, hy - k * 2, k * 2, k, col);
-      break;
-    case 'rhino':                                  // one horn, curving forward
-      rect(ctx, x - k / 2, hy - bw * 0.8, k, bw * 0.6, col); rect(ctx, x - k, hy - bw * 0.95, k * 2, k, col);
-      break;
-    case 'moth':                                   // wings wider than the body
-      ellipsePx(ctx, x - bw * 0.75, yy + bh * 0.08, bw * 0.5, bh * 0.3, col);
-      ellipsePx(ctx, x + bw * 0.75, yy + bh * 0.08, bw * 0.5, bh * 0.3, col);
-      rect(ctx, x - bw * 0.3, hy - bw * 0.7, k, bw * 0.6, col); rect(ctx, x + bw * 0.3, hy - bw * 0.7, k, bw * 0.6, col);
-      break;
-    case 'mantis':                                 // long, and folded arms up front
-      rect(ctx, x - bw * 0.55, yy - bh * 0.1, k, bh * 0.3, col); rect(ctx, x - bw * 0.55, yy - bh * 0.12, bw * 0.4, k, col);
-      rect(ctx, x + bw * 0.4, yy - bh * 0.1, k, bh * 0.3, col);
-      break;
-    case 'cricket':                                // back legs cocked
-      rect(ctx, x - bw * 0.7, yy + bh * 0.2, k, bh * 0.28, col); rect(ctx, x + bw * 0.6, yy + bh * 0.2, k, bh * 0.28, col);
-      break;
-    case 'ladybug':
-      if (detail > 0) { ellipsePx(ctx, x - bw * 0.25, yy + bh * 0.1, k, k, darken(col, 0.5)); ellipsePx(ctx, x + bw * 0.25, yy + bh * 0.24, k, k, darken(col, 0.5)); }
-      break;
-    case 'roach':
-      ellipsePx(ctx, x, yy + bh * 0.3, bw * 0.5, bh * 0.2, darken(col, 0.25));
-      break;
-    default: break;
+  const up = bounce < -0.35 && mood !== 'flat';
+  const yy = y + (mood === 'flat' ? 0 : bounce * s * 0.1);
+  const pose = mood === 'flat' ? 'idle' : up ? 'cheer' : (Math.floor(t * 4 * b.hype + b.o) % 2 ? 'idle' : 'idle2');
+  // near enough to make out: the bug as it really is. Further back: the same
+  // sprite as a solid shape, which keeps every silhouette a real silhouette.
+  ctx.globalAlpha = 0.24; ellipsePx(ctx, x, y + s * 0.42, s * 0.3, s * 0.1, '#000'); ctx.globalAlpha = 1;
+  if (detail > 0) {
+    drawBugAt(ctx, b.spec, x, y + s * 0.42, { pose, scale: s / 34 * b.h, flip: b.flip, bounce: 0, t, phase: b.o });
+  } else {
+    const c = bugShadowCanvas(b.spec, pose, b.dark);
+    const sc = s / 34 * b.h;
+    const w = Math.max(2, Math.round(c.width * sc)), h = Math.max(3, Math.round(c.height * sc));
+    const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+    if (b.flip) { ctx.save(); ctx.translate(Math.round(x), 0); ctx.scale(-1, 1); ctx.drawImage(c, Math.round(-w / 2), Math.round(yy + s * 0.42 - h), w, h); ctx.restore(); }
+    else ctx.drawImage(c, Math.round(x - w / 2), Math.round(yy + s * 0.42 - h), w, h);
+    ctx.imageSmoothingEnabled = sm;
   }
-  // antennae, on everybody
-  rect(ctx, x - bw * 0.28, hy - bw * 0.62, k * 0.8, bw * 0.5, col);
-  rect(ctx, x - bw * 0.42, hy - bw * 0.72, k * 1.4, k * 0.8, col);
-  rect(ctx, x + bw * 0.2, hy - bw * 0.62, k * 0.8, bw * 0.5, col);
-  rect(ctx, x + bw * 0.22, hy - bw * 0.72, k * 1.4, k * 0.8, col);
-  // arms, up when the room goes up
-  if (up || b.arms) {
-    const ay = up ? yy - bh * 0.35 : yy + bh * 0.05;
-    rect(ctx, x - bw * 0.72, ay, k, bh * 0.3, col);
-    rect(ctx, x + bw * 0.62, ay, k, bh * 0.3, col);
-  }
-  // and a light stick in the hand of about a third of them
+  // and the light stick, which is the only colour in the back rows
   if (b.glow && mood !== 'flat') {
-    const wag = Math.sin(t * 3 + b.o) * s * 0.06;
-    const gx = x + bw * 0.66 + wag, gy = (up ? yy - bh * 0.5 : yy - bh * 0.1);
-    rect(ctx, gx, gy, Math.max(1, k * 0.9), s * 0.3, b.glow);
-    rect(ctx, gx, gy, Math.max(1, k * 0.9), s * 0.1, '#fff8e0');
-    if (detail > 0) { ctx.globalAlpha = 0.2; circle(ctx, gx, gy + s * 0.1, s * 0.16, b.glow); ctx.globalAlpha = 1; }
+    const wag = Math.sin(t * 3 + b.o) * s * 0.07;
+    const gx = x + s * 0.3 * (b.flip ? -1 : 1) + wag, gy = yy + (up ? -s * 0.28 : -s * 0.02);
+    const gw = Math.max(1, Math.round(s * 0.07));
+    rect(ctx, gx, gy, gw, s * 0.3, b.glow);
+    rect(ctx, gx, gy, gw, s * 0.1, '#fff8e0');
+    ctx.globalAlpha = 0.18; circle(ctx, gx, gy + s * 0.12, s * 0.16, b.glow); ctx.globalAlpha = 1;
   }
 }
 // Lay a crowd out in an arc in front of something, packed tighter at the front.
