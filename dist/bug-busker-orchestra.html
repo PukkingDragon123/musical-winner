@@ -787,6 +787,89 @@ const Audio = {
   },
 };
 
+// ===== js/core/voice.js =====
+// ---------- 8-bit voices ----------
+// Nobody in this game has a recorded line. What they have is a voice: a base
+// note, a wave, and a way of jumping about. A line of dialogue is played as
+// one short blip per couple of characters, pitched off the letters, so the
+// same sentence always sounds the same and two characters never sound alike.
+'use strict';
+const Voice = {
+  PRESETS: {
+    // ---- the people you meet on the way
+    captain:  { midi: 40, type: 'square',   jump: 2.0, rate: 11, len: 0.062, filt: 760,  q: 3.0, vib: 0,   gain: 0.9 },  // over a PA, bassy
+    hostess:  { midi: 67, type: 'square',   jump: 4.0, rate: 15, len: 0.042, filt: 2400, q: 1.4, vib: 14,  gain: 0.7 },
+    tannoy:   { midi: 55, type: 'triangle', jump: 1.5, rate: 12, len: 0.055, filt: 1100, q: 2.2, vib: 0,   gain: 0.6 },
+    guard:    { midi: 44, type: 'square',   jump: 2.0, rate: 12, len: 0.05,  filt: 1000, q: 1.6, vib: 0,   gain: 0.75 },
+    clerk:    { midi: 71, type: 'square',   jump: 5.0, rate: 17, len: 0.036, filt: 2900, q: 1.2, vib: 18,  gain: 0.6 },
+    barista:  { midi: 62, type: 'sawtooth', jump: 3.5, rate: 14, len: 0.046, filt: 1800, q: 1.3, vib: 8,   gain: 0.6 },
+    driver:   { midi: 47, type: 'triangle', jump: 2.5, rate: 10, len: 0.058, filt: 1300, q: 1.1, vib: 4,   gain: 0.7 },
+    oldman:   { midi: 43, type: 'triangle', jump: 2.0, rate: 9,  len: 0.07,  filt: 900,  q: 1.0, vib: 22,  gain: 0.75 },  // the spider, wobbly
+    you:      { midi: 64, type: 'square',   jump: 3.0, rate: 15, len: 0.04,  filt: 2100, q: 1.2, vib: 6,   gain: 0.55 },
+    tv:       { midi: 69, type: 'square',   jump: 6.0, rate: 19, len: 0.03,  filt: 3200, q: 0.9, vib: 0,   gain: 0.45 },
+    kid:      { midi: 76, type: 'square',   jump: 6.0, rate: 19, len: 0.03,  filt: 3400, q: 0.9, vib: 20,  gain: 0.5 },
+    robot:    { midi: 52, type: 'square',   jump: 0.4, rate: 14, len: 0.05,  filt: 1500, q: 6.0, vib: 0,   gain: 0.6 },
+  },
+  // Pick a stable voice for a name we have no preset for.
+  forName(name) {
+    const P = Object.keys(this.PRESETS);
+    return this.PRESETS[P[hashStr(String(name || 'x')) % P.length]];
+  },
+  get(key) { return (key && this.PRESETS[key]) || this.PRESETS.you; },
+  // Speak a line. Returns a handle you can stop() when the box is dismissed.
+  say(text, key, opts = {}) {
+    const stop = { on: true, stop() { this.on = false; } };
+    if (!Audio.ctx || Audio.muted) return stop;
+    const v = typeof key === 'object' ? key : this.get(key);
+    const s = String(text || '').toUpperCase();
+    const c = Audio.ctx;
+    let t = c.currentTime + 0.02;
+    const rate = (opts.rate || v.rate) * (opts.speed || 1);
+    const step = 1 / rate;
+    let n = 0;
+    for (let i = 0; i < s.length && n < 90; i += 2) {
+      const ch = s.charCodeAt(i);
+      if (s[i] === ' ') { t += step * 0.7; continue; }
+      // vowels sit low and open, consonants sit high and short
+      const vowel = 'AEIOU'.indexOf(s[i]) >= 0;
+      const note = v.midi + ((ch % 7) - 3) * v.jump * 0.5 + (vowel ? -1 : 2) + (opts.pitch || 0);
+      this.blip(c, t, Audio.freq(note), v, vowel ? v.len * 1.25 : v.len, (opts.gain || 1) * v.gain);
+      t += step; n++;
+    }
+    stop.until = t;
+    return stop;
+  },
+  blip(c, t, f, v, len, gain) {
+    const o = c.createOscillator(); o.type = v.type; o.frequency.setValueAtTime(f, t);
+    o.frequency.linearRampToValueAtTime(f * 1.04, t + len);
+    const flt = c.createBiquadFilter(); flt.type = 'bandpass'; flt.frequency.value = v.filt; flt.Q.value = v.q;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.16 * gain, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    if (v.vib) { const l = c.createOscillator(); l.frequency.value = 6.5; const lg = c.createGain(); lg.gain.value = v.vib; l.connect(lg); lg.connect(o.detune); l.start(t); l.stop(t + len + 0.02); }
+    o.connect(flt); flt.connect(g); g.connect(Audio.sfxGain || Audio.master);
+    o.start(t); o.stop(t + len + 0.02);
+  },
+  // The two-tone chime before every announcement anybody has ever ignored.
+  chime(kind = 'plane') {
+    if (!Audio.ctx || Audio.muted) return;
+    const c = Audio.ctx, t = c.currentTime;
+    const seq = kind === 'plane' ? [[880, 0], [660, 0.26]]
+      : kind === 'station' ? [[988, 0], [1319, 0.16], [988, 0.32], [660, 0.48]]
+      : [[660, 0], [880, 0.2], [1100, 0.4]];
+    for (const [f, d] of seq) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2.01;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t + d);
+      g.gain.linearRampToValueAtTime(0.16, t + d + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.5);
+      o.connect(g); o2.connect(g); g.connect(Audio.sfxGain || Audio.master);
+      o.start(t + d); o.stop(t + d + 0.55); o2.start(t + d); o2.stop(t + d + 0.55);
+    }
+  },
+};
+
 // ===== js/art/pixel.js =====
 // ---------- Pixel buffer with masks, auto-shading and outlines ----------
 'use strict';
@@ -2879,6 +2962,469 @@ function drawTokyoFromAbove(ctx, ox, oy, w, h, t, opts = {}) {
     ctx.globalAlpha = 1;
   }
   ctx.restore();
+}
+
+// ===== js/art/dragonfly.js =====
+// ---------- Dragon Fly ----------
+// The airline. Navy, gold and a dragonfly with its wings out, stamped on
+// everything it owns: the tail, the boarding pass, the seat-back, the napkin,
+// the cup, the sick bag, the safety card and the app icon.
+'use strict';
+const DF = {
+  navy: '#12203f', navyHi: '#1d3563', gold: '#e0b23c', goldHi: '#ffd97a', goldLo: '#8a6a1a',
+  cream: '#f4f1e6', red: '#c8402c', sky: '#8fc0e4',
+  name: 'DRAGON FLY', code: 'DF', tag: 'THE LONG WAY ROUND',
+};
+DF.navyLo = '#08122a';
+// The mark: a dragonfly seen from above, wings spread, inside a roundel.
+function dfMark(size, opts = {}) {
+  const S = Math.max(12, Math.round(size));
+  return cached('dfmark|' + S + '|' + (opts.flat ? 1 : 0) + '|' + (opts.mono || ''), () => {
+    const c = makeCanvas(S, S), x = c.getContext('2d');
+    x.imageSmoothingEnabled = false;
+    const g = opts.mono || DF.gold, bg = opts.flat ? null : DF.navy;
+    const cx = S / 2, cy = S / 2, R = S / 2 - 1;
+    if (bg) { circle(x, cx, cy, R, bg); ringPx(x, cx, cy, R, DF.goldLo); ringPx(x, cx, cy, R - 2, g); }
+    // the body
+    const bl = R * 1.12;
+    rect(x, cx - Math.max(1, S / 22), cy - bl * 0.42, Math.max(2, S / 11), bl * 0.86, g);
+    // the head and the two big eyes
+    circle(x, cx, cy - bl * 0.44, Math.max(1.5, S / 13), g);
+    if (S >= 22) { circle(x, cx - S / 13, cy - bl * 0.48, Math.max(1, S / 22), DF.navy); circle(x, cx + S / 13, cy - bl * 0.48, Math.max(1, S / 22), DF.navy); }
+    // four wings, swept back, the long pair over the short pair
+    const wing = (dir, up, len, wid) => {
+      x.fillStyle = g; x.beginPath();
+      x.moveTo(cx + dir * S / 24, cy + up);
+      x.quadraticCurveTo(cx + dir * len * 0.6, cy + up - wid, cx + dir * len, cy + up - wid * 0.25);
+      x.quadraticCurveTo(cx + dir * len * 0.55, cy + up + wid * 0.35, cx + dir * S / 24, cy + up + wid * 0.28);
+      x.fill();
+    };
+    for (const d of [-1, 1]) { wing(d, -R * 0.2, R * 0.96, R * 0.34); wing(d, R * 0.12, R * 0.74, R * 0.26); }
+    // the tail segments
+    if (S >= 20) for (let i = 0; i < 3; i++) { x.globalAlpha = 0.5; rect(x, cx - S / 20, cy + bl * 0.12 + i * (S / 12), S / 10, 1, DF.navy); x.globalAlpha = 1; }
+    return c;
+  });
+}
+// The wordmark, for the tail and the top of a boarding pass.
+function dfWordmark(ctx, x, y, scale = 3, opts = {}) {
+  const m = dfMark(scale * 9);
+  ctx.drawImage(m, Math.round(x), Math.round(y - scale * 1.5), m.width, m.height);
+  const tx = x + scale * 10;
+  drawText(ctx, 'DRAGON', tx, y, opts.col || DF.cream, { scale });
+  drawText(ctx, 'FLY', tx + textWidth('DRAGON ', { scale }), y, opts.accent || DF.gold, { scale });
+  if (opts.tag) drawText(ctx, DF.tag, tx, y + scale * 8, withAlpha(opts.col || DF.cream, 0.6), { font: 'small' });
+  return tx + textWidth('DRAGON FLY', { scale });
+}
+// The corner stamp that sits on every screen of the trip.
+function dfStamp(ctx, x, y, s = 20, label) {
+  const m = dfMark(s);
+  ctx.globalAlpha = 0.9; ctx.drawImage(m, Math.round(x), Math.round(y)); ctx.globalAlpha = 1;
+  if (label) drawText(ctx, label, x + s + 5, y + Math.round(s / 2) - 3, withAlpha(DF.cream, 0.75), { font: 'small' });
+}
+// A boarding pass, which is also the ticket the game gives you.
+function dfBoardingPass(ctx, x, y, w, h, d, t) {
+  rect(ctx, x + 4, y + 5, w, h, 'rgba(6,4,12,0.5)');
+  rect(ctx, x, y, w, h, DF.cream);
+  rect(ctx, x, y, w, 26, DF.navy);
+  frame(ctx, x, y, w, h, DF.navyLo);
+  dfWordmark(ctx, x + 8, y + 9, 2);
+  drawText(ctx, 'BOARDING PASS', x + w - 8, y + 10, DF.gold, { align: 'right', scale: 2 });
+  // the stub, torn off down a perforation
+  const stub = Math.round(w * 0.28);
+  for (let i = 4; i < h - 4; i += 7) rect(ctx, x + w - stub, y + i, 1, 4, '#b9b2a0');
+  const field = (lx, ly, k, v, sc) => { drawText(ctx, k, lx, ly, '#8a8478', { font: 'small' }); drawText(ctx, v, lx, ly + 8, DF.navy, { scale: sc || 2 }); };
+  field(x + 10, y + 34, 'PASSENGER', d.name || 'BUSKER / B');
+  field(x + 10, y + 62, 'FROM', d.from || 'LAS VEGAS  LAS', 2);
+  field(x + Math.round(w * 0.42), y + 62, 'TO', d.to || 'TOKYO NARITA  NRT', 2);
+  field(x + 10, y + 90, 'FLIGHT', d.flight || 'DF 0808');
+  field(x + Math.round(w * 0.28), y + 90, 'SEAT', d.seat || '31A');
+  field(x + Math.round(w * 0.48), y + 90, 'GATE', d.gate || 'C12');
+  // the barcode nobody can read, which is the point
+  const bx = x + w - stub + 8;
+  const r = makeRng(hashStr((d.flight || 'DF0808') + (d.seat || '31A')));
+  for (let i = 0; i < stub - 18; i++) { if (r.chance(0.55)) rect(ctx, bx + i, y + 34, 1, h - 48, DF.navy); }
+  drawText(ctx, d.seat || '31A', x + w - stub / 2 - 4, y + h - 13, DF.navy, { align: 'center', scale: 2 });
+}
+// The tail fin livery, for when you see the aircraft.
+function dfTail(ctx, x, yBase, w, h) {
+  ctx.fillStyle = DF.navy; ctx.beginPath();
+  ctx.moveTo(x, yBase); ctx.lineTo(x + w * 0.55, yBase - h); ctx.lineTo(x + w, yBase - h); ctx.lineTo(x + w, yBase); ctx.fill();
+  ctx.fillStyle = DF.navyHi; ctx.beginPath();
+  ctx.moveTo(x + w * 0.2, yBase); ctx.lineTo(x + w * 0.62, yBase - h * 0.82); ctx.lineTo(x + w, yBase - h * 0.82); ctx.lineTo(x + w, yBase); ctx.fill();
+  const m = dfMark(Math.round(h * 0.46), { flat: true });
+  ctx.drawImage(m, Math.round(x + w * 0.52), Math.round(yBase - h * 0.7));
+  rect(ctx, x, yBase - 6, w, 6, DF.gold);
+}
+
+// ===== js/art/sideart.js =====
+// ---------- Side-view art kit ----------
+// Everything a side-scrolling scene needs to look like a place: floors,
+// glass, shopfronts with real logos on them, neon, escalators, crowds,
+// parallax. Scenes add their own one-offs; everything shared lives here.
+'use strict';
+
+// ---------- floors ----------
+function sideFloor(ctx, x0, x1, y, opts = {}) {
+  const h = opts.h || 420, a = opts.col || '#3a3f4c', b = opts.col2 || darken(opts.col || '#3a3f4c', 0.12);
+  rect(ctx, x0, y, x1 - x0, h, a);
+  rect(ctx, x0, y, x1 - x0, 3, opts.lip || lighten(a, 0.3));
+  const step = opts.tile || 48;
+  for (let x = Math.floor(x0 / step) * step; x < x1; x += step) {
+    rect(ctx, x, y + 3, step / 2, 10, b);
+    ctx.globalAlpha = 0.16; rect(ctx, x, y + 3, 1, h - 3, '#000'); ctx.globalAlpha = 1;
+  }
+  // a wet-looking sheen, because polished floors are what airports are
+  if (opts.shine !== false) { ctx.globalAlpha = 0.07; rect(ctx, x0, y + 4, x1 - x0, 16, '#ffffff'); ctx.globalAlpha = 1; }
+  if (opts.grout) for (let x = Math.floor(x0 / step) * step; x < x1; x += step) { ctx.globalAlpha = 0.1; rect(ctx, x, y, step, 1, '#fff'); ctx.globalAlpha = 1; }
+}
+// a reflection of whatever is standing on it, cheap and convincing
+function sideSheen(ctx, x0, x1, y, alpha = 0.1) {
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < 4; i++) rect(ctx, x0, y + 6 + i * 7, x1 - x0, 2, '#ffffff');
+  ctx.globalAlpha = 1;
+}
+
+// ---------- glass, the material every terminal is made of ----------
+function glassWall(ctx, x, y, w, h, t, opts = {}) {
+  const tintc = opts.tint || '#2f4a68';
+  rect(ctx, x, y, w, h, tintc);
+  ctx.globalAlpha = 0.35; vgrad(ctx, x, y, w, h, opts.top || '#8fc0e4', opts.bot || '#1b2a3e'); ctx.globalAlpha = 1;
+  const m = opts.mullion || 60;
+  for (let i = 0; i <= w; i += m) rect(ctx, x + i, y, 3, h, '#6a7280');
+  for (let i = 0; i <= h; i += opts.rail || 80) rect(ctx, x, y + i, w, 3, '#6a7280');
+  // the diagonal flare across it
+  ctx.globalAlpha = 0.1;
+  for (let i = 0; i < w + h; i += 64) { ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + 18, y + h); ctx.lineTo(x + i + 18 + h, y); ctx.lineTo(x + i + h, y); ctx.fill(); ctx.restore(); }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- brands ----------
+// A brand is a name, two colours and a mark. Every shop in the game is one of
+// these, so a shopfront, a cup, a bag and a sign all agree with each other.
+function brandLogo(ctx, cx, cy, s, b, t) {
+  const c1 = b.col || '#0b6b4a', c2 = b.col2 || '#f4f1ea';
+  const R = Math.round(s);
+  switch (b.logo) {
+    case 'ring':        // a coffee roundel with a bug in the middle
+      circle(ctx, cx, cy, R, c1); circle(ctx, cx, cy, R - 2, c2); circle(ctx, cx, cy, R - 5, c1);
+      ellipsePx(ctx, cx, cy + 1, R * 0.42, R * 0.5, c2);
+      ellipsePx(ctx, cx, cy - R * 0.28, R * 0.28, R * 0.26, c2);
+      rect(ctx, cx - Math.round(R * 0.16), cy - Math.round(R * 0.36), 2, 3, c1); rect(ctx, cx + Math.round(R * 0.1), cy - Math.round(R * 0.36), 2, 3, c1);
+      for (let i = -1; i <= 1; i += 2) line(ctx, cx + i * R * 0.2, cy - R * 0.5, cx + i * R * 0.45, cy - R * 0.85, c2);
+      break;
+    case 'crown':       // a burger place that thinks a lot of itself
+      rect(ctx, cx - R, cy - R * 0.4, R * 2, R * 0.8, c1);
+      rect(ctx, cx - R + 2, cy - R * 0.28, R * 2 - 4, R * 0.56, c2);
+      ctx.fillStyle = '#f2c94c'; ctx.beginPath();
+      ctx.moveTo(cx - R * 0.8, cy - R * 0.5); ctx.lineTo(cx - R * 0.5, cy - R); ctx.lineTo(cx - R * 0.2, cy - R * 0.55);
+      ctx.lineTo(cx + R * 0.1, cy - R); ctx.lineTo(cx + R * 0.4, cy - R * 0.55); ctx.lineTo(cx + R * 0.7, cy - R); ctx.lineTo(cx + R * 0.8, cy - R * 0.4); ctx.lineTo(cx - R * 0.8, cy - R * 0.4); ctx.fill();
+      break;
+    case 'pretzel':     // a twist, in a hot orange
+      ringPx(ctx, cx - R * 0.35, cy, R * 0.45, c1); ringPx(ctx, cx + R * 0.35, cy, R * 0.45, c1);
+      ringPx(ctx, cx - R * 0.35, cy, R * 0.45 - 1, c1); ringPx(ctx, cx + R * 0.35, cy, R * 0.45 - 1, c1);
+      rect(ctx, cx - R * 0.1, cy - R * 0.7, R * 0.2, R * 0.6, c1);
+      break;
+    case 'leaf':
+      ellipsePx(ctx, cx, cy, R * 0.75, R, c1); ellipsePx(ctx, cx - 1, cy - 1, R * 0.5, R * 0.7, c2); rect(ctx, cx - 1, cy - R, 2, R * 2, c1);
+      break;
+    case 'store':       // a convenience store's three-stripe awning mark
+      rect(ctx, cx - R, cy - R * 0.7, R * 2, R * 0.46, '#2f8f4a');
+      rect(ctx, cx - R, cy - R * 0.24, R * 2, R * 0.46, '#e8503a');
+      rect(ctx, cx - R, cy + R * 0.22, R * 2, R * 0.46, '#2f6fc0');
+      break;
+    case 'bolt': ctx.fillStyle = c1; ctx.beginPath(); ctx.moveTo(cx + R * 0.4, cy - R); ctx.lineTo(cx - R * 0.5, cy + R * 0.12); ctx.lineTo(cx, cy + R * 0.12); ctx.lineTo(cx - R * 0.35, cy + R); ctx.lineTo(cx + R * 0.6, cy - R * 0.2); ctx.lineTo(cx + R * 0.05, cy - R * 0.2); ctx.fill(); break;
+    case 'star': ctx.fillStyle = c1; ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? R * 0.45 : R; ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } ctx.fill(); break;
+    case 'bag': rect(ctx, cx - R * 0.7, cy - R * 0.4, R * 1.4, R * 1.3, c1); rect(ctx, cx - R * 0.7, cy - R * 0.4, R * 1.4, 3, c2); ringPx(ctx, cx, cy - R * 0.5, R * 0.45, c1); break;
+    case 'bottle': rect(ctx, cx - R * 0.35, cy - R * 0.4, R * 0.7, R * 1.3, c1); rect(ctx, cx - R * 0.18, cy - R, R * 0.36, R * 0.62, c1); rect(ctx, cx - R * 0.3, cy - R * 0.1, R * 0.6, R * 0.4, c2); break;
+    case 'watch': ringPx(ctx, cx, cy, R * 0.8, c1); ringPx(ctx, cx, cy, R * 0.78, c1); rect(ctx, cx - 1, cy - R * 0.5, 2, R * 0.5, c1); rect(ctx, cx, cy - 1, R * 0.4, 2, c1); rect(ctx, cx - R * 0.22, cy - R, R * 0.44, R * 0.24, c1); break;
+    case 'book': rect(ctx, cx - R, cy - R * 0.75, R * 0.95, R * 1.5, c1); rect(ctx, cx + 0.05 * R, cy - R * 0.75, R * 0.95, R * 1.5, darken(c1, 0.2)); rect(ctx, cx - 1, cy - R * 0.75, 2, R * 1.5, c2); break;
+    case 'pill': ellipsePx(ctx, cx, cy, R, R * 0.55, c2); ctx.save(); ctx.beginPath(); ctx.rect(cx - R, cy - R, R, R * 2); ctx.clip(); ellipsePx(ctx, cx, cy, R, R * 0.55, c1); ctx.restore(); break;
+    case 'plane': ctx.fillStyle = c1; ctx.beginPath(); ctx.moveTo(cx - R, cy + R * 0.2); ctx.lineTo(cx + R * 0.3, cy - R * 0.25); ctx.lineTo(cx + R, cy - R * 0.1); ctx.lineTo(cx + R * 0.3, cy + R * 0.3); ctx.lineTo(cx - R * 0.2, cy + R * 0.8); ctx.fill(); break;
+    default: {          // a wordmark tile: the first letter, big, in a box
+      rect(ctx, cx - R, cy - R, R * 2, R * 2, c1);
+      rect(ctx, cx - R, cy - R, R * 2, 3, lighten(c1, 0.3));
+      drawText(ctx, (b.name || '?')[0], cx, cy - Math.round(R * 0.55), c2, { align: 'center', scale: Math.max(2, Math.round(R / 4)) });
+    }
+  }
+}
+// The sign board over a shop: brand colour, the mark, the name, and the
+// little tagline nobody reads.
+function brandBoard(ctx, x, y, w, h, b, t, opts = {}) {
+  const c1 = b.col || '#2f4a68', c2 = b.col2 || '#f4f1ea';
+  rect(ctx, x, y, w, h, darken(c1, 0.35));
+  rect(ctx, x + 2, y + 2, w - 4, h - 4, c1);
+  rect(ctx, x + 2, y + 2, w - 4, 2, lighten(c1, 0.35));
+  // lit from under, the way every shop sign is
+  ctx.globalAlpha = 0.16 + 0.05 * Math.sin(t * 2 + x); rect(ctx, x, y + h, w, 8, c2); ctx.globalAlpha = 1;
+  const ls = Math.min(h * 0.34, 15);
+  brandLogo(ctx, x + 6 + ls, y + h / 2, ls, b, t);
+  const sc = h > 34 ? 3 : 2;
+  drawText(ctx, b.name, x + 12 + ls * 2, y + Math.round(h / 2) - (b.tag ? 10 : 4) * (sc / 2), c2, { scale: sc });
+  if (b.tag && h > 30) drawText(ctx, b.tag, x + 12 + ls * 2, y + Math.round(h / 2) + 5, withAlpha(c2, 0.7), { font: 'small' });
+}
+// A whole shopfront: board, glass, what is inside it, and somebody working.
+function sideShopFront(ctx, x, yBase, w, h, b, t, S) {
+  const c1 = b.col || '#2f4a68', c2 = b.col2 || '#f4f1ea';
+  const top = yBase - h;
+  rect(ctx, x, top, w, h, '#20242e');
+  rect(ctx, x + 3, top + 3, w - 6, h - 6, '#161a22');
+  // the lit interior, seen through the glass
+  const inH = h - 46;
+  rect(ctx, x + 6, top + 40, w - 12, inH, b.inner || '#3a3446');
+  ctx.globalAlpha = 0.2; vgrad(ctx, x + 6, top + 40, w - 12, inH, c2, '#000'); ctx.globalAlpha = 1;
+  // shelves and stock
+  const rows = Math.max(1, Math.floor((inH - 26) / 22));
+  for (let r = 0; r < rows; r++) {
+    const ry = top + 48 + r * 22;
+    rect(ctx, x + 12, ry + 15, w - 24, 3, '#6a5f78');
+    const n = Math.max(2, Math.floor((w - 30) / 13));
+    for (let i = 0; i < n; i++) {
+      const px2 = x + 15 + i * 13, hh = 8 + ((i * 7 + r * 5) % 6);
+      rect(ctx, px2, ry + 15 - hh, 9, hh, [c1, c2, '#f2c94c', '#e8503a', '#6be585', '#8ad8ff'][(i + r) % 6]);
+      ctx.globalAlpha = 0.3; rect(ctx, px2, ry + 15 - hh, 9, 2, '#fff'); ctx.globalAlpha = 1;
+    }
+  }
+  // the counter and whoever is behind it
+  rect(ctx, x + 8, yBase - 30, w - 16, 26, darken(c1, 0.2));
+  rect(ctx, x + 8, yBase - 30, w - 16, 3, lighten(c1, 0.2));
+  if (b.staff !== false && w > 90) {
+    const sp = cachedBrandStaff(b);
+    drawBugAt(ctx, sp, x + w * 0.72, yBase - 26, { pose: Math.floor(t * 1.4 + x) % 2 ? 'idle' : 'talk', scale: 1.15, bounce: 0.4, phase: x * 0.01 });
+  }
+  // the glass over all of it
+  ctx.globalAlpha = 0.16; rect(ctx, x + 6, top + 40, w - 12, inH, '#bfe0ff'); ctx.globalAlpha = 1;
+  for (let i = 30; i < w; i += 54) { ctx.globalAlpha = 0.12; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x + i, yBase - 6); ctx.lineTo(x + i + 12, yBase - 6); ctx.lineTo(x + i + 12 + inH * 0.5, top + 40); ctx.lineTo(x + i + inH * 0.5, top + 40); ctx.fill(); ctx.globalAlpha = 1; }
+  rect(ctx, x + 6, top + 40, w - 12, 2, '#8a939e'); rect(ctx, x + 6, yBase - 6, w - 12, 3, '#8a939e');
+  // the board
+  brandBoard(ctx, x + 2, top + 4, w - 4, 34, b, t);
+  // the doorway, dark, in the middle
+  const dw = Math.min(54, w * 0.3), dx = x + w / 2 - dw / 2;
+  rect(ctx, dx, yBase - 62, dw, 62, '#0d0f16');
+  rect(ctx, dx, yBase - 62, dw, 3, '#4a4a58');
+  ctx.globalAlpha = 0.25; rect(ctx, dx + 2, yBase - 58, dw - 4, 54, c2); ctx.globalAlpha = 1;
+  // a welcome mat, and the open sign
+  rect(ctx, dx - 6, yBase - 3, dw + 12, 3, darken(c1, 0.3));
+  rect(ctx, x + 10, yBase - 56, 22, 12, '#12101c');
+  ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 3 + x * 0.02);
+  drawText(ctx, 'OPEN', x + 12, yBase - 53, '#6be585', { font: 'small' });
+  ctx.globalAlpha = 1;
+}
+const _brandStaff = {};
+function cachedBrandStaff(b) {
+  const k = b.name || 'x';
+  if (!_brandStaff[k]) { const s = randomBugSpec(makeRng(hashStr(k + 'staff'))); s.name = k; _brandStaff[k] = s; }
+  return _brandStaff[k];
+}
+
+// ---------- neon ----------
+function neonSign(ctx, x, y, text, col, t, opts = {}) {
+  const sc = opts.scale || 4, w = textWidth(text, { scale: sc });
+  const flick = opts.flicker ? (Math.sin(t * 31 + x) > -0.9 ? 1 : 0.3) : 1;
+  const pulse = (0.72 + 0.28 * Math.sin(t * 2.2 + x * 0.01)) * flick;
+  if (opts.box !== false) { rect(ctx, x - 8, y - 6, w + 16, sc * 7 + 12, '#0d0b14'); frame(ctx, x - 8, y - 6, w + 16, sc * 7 + 12, darken(col, 0.4)); }
+  ctx.globalAlpha = 0.16 * pulse;
+  for (let r = 7; r > 0; r -= 2) drawText(ctx, text, x, y, col, { scale: sc });
+  ctx.globalAlpha = 1;
+  drawText(ctx, text, x, y, col, { scale: sc, outline: darken(col, 0.5) });
+  ctx.globalAlpha = pulse;
+  drawText(ctx, text, x, y - 1, lighten(col, 0.42), { scale: sc });
+  ctx.globalAlpha = 1;
+}
+// a vertical strip of characters you cannot read, lit up
+function neonStrip(ctx, x, y, w, h, col, t, seed) {
+  rect(ctx, x, y, w, h, '#0d0b14'); frame(ctx, x, y, w, h, darken(col, 0.4));
+  const r = makeRng(seed || 7);
+  const n = Math.max(1, Math.floor(h / (w + 4)));
+  for (let i = 0; i < n; i++) {
+    const cy = y + 4 + i * (w + 2);
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 3 + i + (seed || 0));
+    drawKanaBlock(ctx, x + 3, cy, w - 6, col, r.int(0, 5));
+    ctx.globalAlpha = 1;
+  }
+}
+function drawKanaBlock(ctx, x, y, s, col, kind) {
+  const u = Math.max(1, Math.round(s / 6));
+  switch (kind % 6) {
+    case 0: rect(ctx, x, y + s * 0.2, s, u, col); rect(ctx, x + s * 0.4, y, u, s, col); break;
+    case 1: rect(ctx, x, y, s, u, col); rect(ctx, x, y + s * 0.45, s, u, col); rect(ctx, x + s * 0.3, y, u, s, col); break;
+    case 2: rect(ctx, x + s * 0.4, y, u, s * 0.8, col); rect(ctx, x, y + s * 0.6, s, u, col); rect(ctx, x, y + s * 0.15, s * 0.5, u, col); break;
+    case 3: rect(ctx, x, y + s * 0.1, s, u, col); rect(ctx, x + s * 0.15, y + s * 0.4, u, s * 0.5, col); rect(ctx, x + s * 0.65, y + s * 0.4, u, s * 0.5, col); break;
+    case 4: rect(ctx, x, y, u, s, col); rect(ctx, x + s - u, y, u, s, col); rect(ctx, x, y + s * 0.45, s, u, col); break;
+    default: rect(ctx, x + s * 0.1, y + s * 0.15, s * 0.8, u, col); rect(ctx, x + s * 0.45, y, u, s, col); rect(ctx, x + s * 0.1, y + s * 0.7, s * 0.8, u, col);
+  }
+}
+
+// ---------- parallax ----------
+function sideParallax(ctx, cam, par, draw) {
+  ctx.save();
+  ctx.translate(Math.round(-cam.x * par), 0);
+  draw(ctx, cam.x * par);
+  ctx.restore();
+}
+
+// ---------- background crowd ----------
+function makeSideCrowd(n, seed, opts = {}) {
+  const r = makeRng(seed >>> 0), out = [];
+  for (let i = 0; i < n; i++) out.push({
+    spec: randomBugSpec(makeRng((seed >>> 0) + i * 2654435761)),
+    x: r.range(opts.x0 || 0, opts.x1 || 2000),
+    floor: opts.floors ? r.int(0, opts.floors - 1) : 0,
+    sp: r.range(14, 34) * (r.chance(0.5) ? 1 : -1),
+    sc: r.range(opts.min || 0.9, opts.max || 1.4),
+    o: r.range(0, 6.3),
+    carry: r.chance(0.5) ? r.pick(['bag', 'case', 'suitcase', 'coffee', 'phone', null]) : null,
+    dim: r.range(0.12, 0.4),
+  });
+  return out;
+}
+function drawSideCrowd(ctx, S, crowd, t, opts = {}) {
+  const x0 = opts.x0 || 0, x1 = opts.x1 != null ? opts.x1 : (S.D.w || 2400);
+  for (const c of crowd) {
+    let x = c.x + t * c.sp;
+    const span = x1 - x0;
+    x = x0 + ((x - x0) % span + span) % span;
+    if (!S.cam.visible(x, 90)) continue;
+    const y = opts.y != null ? opts.y : S.floorY(c.floor);
+    drawShadow(ctx, x, y + 2, 20 * c.sc, 0.2);
+    drawBugAt(ctx, c.spec, x, y + 2, { pose: Math.floor(t * 6 + c.o) % 2 ? 'walk1' : 'walk2', scale: c.sc, flip: c.sp < 0, bounce: 0.7, phase: c.o });
+    if (c.carry) drawSideCarry(ctx, c.carry, x, y, c.sp > 0 ? 1 : -1, c.sc, t);
+    if (opts.dim) { ctx.globalAlpha = c.dim * opts.dim; rect(ctx, x - 20 * c.sc, y - 52 * c.sc, 40 * c.sc, 54 * c.sc, '#0a0814'); ctx.globalAlpha = 1; }
+  }
+}
+
+// ---------- the shared prop library ----------
+// A scene can always paint its own; these are the ones every place needs.
+function drawSideProp(ctx, p, t, S) {
+  const x = Math.round(p.x - p.w / 2), w = Math.round(p.w), h = Math.round(p.h || 40);
+  const base = Math.round(S ? S.propY(p) : (p.y || 430));
+  const y = base - h;
+  const sh = () => { ctx.globalAlpha = 0.28; ellipsePx(ctx, p.x, base + 1, w * 0.5, 5, '#000'); ctx.globalAlpha = 1; };
+  switch (p.kind) {
+    case 'door': {
+      rect(ctx, x, y, w, h, p.col || '#3a2f4a');
+      rect(ctx, x + 3, y + 3, w - 6, h - 6, '#12101c');
+      ctx.globalAlpha = 0.3 + 0.1 * Math.sin(t * 2); rect(ctx, x + 4, y + 4, w - 8, h - 8, p.glow || '#ffd88a'); ctx.globalAlpha = 1;
+      rect(ctx, x, y, w, 4, lighten(p.col || '#3a2f4a', 0.3));
+      if (p.text) { rect(ctx, x - 4, y - 20, w + 8, 18, '#12101c'); frame(ctx, x - 4, y - 20, w + 8, 18, p.glow || '#c8a03a'); drawText(ctx, p.text, p.x, y - 16, p.glow || '#ffd24a', { align: 'center', scale: 2 }); }
+      break;
+    }
+    case 'sign': {
+      rect(ctx, x, y, w, h, p.col || '#1f6f4a');
+      rect(ctx, x, y, w, 2, lighten(p.col || '#1f6f4a', 0.3));
+      frame(ctx, x, y, w, h, '#0d1018');
+      if (p.text) drawText(ctx, p.text, p.x, y + h / 2 - 7, '#f4f1ea', { align: 'center', scale: p.scale || 2 });
+      if (p.arrow) { ctx.fillStyle = '#f4f1ea'; const ax = p.arrow > 0 ? x + w - 12 : x + 12, d = Math.sign(p.arrow); ctx.beginPath(); ctx.moveTo(ax + d * 6, y + h / 2); ctx.lineTo(ax - d * 4, y + h / 2 - 6); ctx.lineTo(ax - d * 4, y + h / 2 + 6); ctx.fill(); }
+      break;
+    }
+    case 'bench': sh(); rect(ctx, x, y, w, h * 0.5, '#2f4a68'); rect(ctx, x, y, w, 3, '#4a6f96'); for (let i = 0; i < w; i += 18) rect(ctx, x + i, y + 2, 1, h * 0.5 - 4, '#24384f'); rect(ctx, x + 4, y + h * 0.5, 5, h * 0.5, '#3a3f4a'); rect(ctx, x + w - 9, y + h * 0.5, 5, h * 0.5, '#3a3f4a'); break;
+    case 'bin': sh(); rect(ctx, x, y, w, h, '#4a5260'); rect(ctx, x - 2, y, w + 4, 5, '#6a7280'); rect(ctx, x + 3, y + 8, w - 6, h - 11, '#3a4250'); break;
+    case 'plant': sh(); rect(ctx, x + 2, base - 14, w - 4, 14, '#8a5f3a'); rect(ctx, x + 2, base - 14, w - 4, 3, '#a87a50'); for (let i = 0; i < 9; i++) { const a = i * 0.7; ellipsePx(ctx, p.x + Math.cos(a) * w * 0.4, base - 20 - Math.abs(Math.sin(a)) * h * 0.5, 8, 5, i % 2 ? '#2f8f4a' : '#43a85c'); } break;
+    case 'pillar': rect(ctx, x, y, w, h, '#b9bec6'); rect(ctx, x, y, 4, h, '#dfe4ea'); rect(ctx, x + w - 4, y, 4, h, '#8a8f98'); rect(ctx, x - 3, y, w + 6, 6, '#cfd6de'); rect(ctx, x - 3, base - 8, w + 6, 8, '#a0a6ae'); break;
+    case 'barrier': for (let i = 0; i < w; i += 40) { rect(ctx, x + i, base - 34, 4, 34, '#8a8f98'); ellipsePx(ctx, x + i + 2, base - 36, 5, 4, '#3a3f4a'); } rect(ctx, x, base - 30, w, 3, '#2f4a68'); break;
+    case 'poster': rect(ctx, x, y, w, h, '#f4f1ea'); frame(ctx, x, y, w, h, '#8a8478'); rect(ctx, x + 3, y + 3, w - 6, h * 0.55, p.col || '#e8503a'); ctx.globalAlpha = 0.4; ellipsePx(ctx, p.x, y + h * 0.3, w * 0.24, h * 0.16, '#fff'); ctx.globalAlpha = 1; for (let i = 0; i < 3; i++) rect(ctx, x + 5, y + h * 0.62 + i * 6, w - 10 - i * 8, 3, '#5a5468'); break;
+    case 'screen': {
+      rect(ctx, x, y, w, h, '#1b2230'); rect(ctx, x + 3, y + 3, w - 6, h - 6, '#0d1018');
+      const rows = Math.max(1, Math.floor((h - 10) / 12));
+      for (let r = 0; r < rows; r++) { const ry = y + 6 + r * 12; drawKanaBlock(ctx, x + 6, ry, 8, '#6be585', r * 3); for (let i = 0; i < 4; i++) drawKanaBlock(ctx, x + 20 + i * 11, ry, 8, r === 0 ? '#f2a03a' : '#8ad8ff', r + i * 2); drawText(ctx, pad2((6 + r * 3) % 24) + ':' + pad2((r * 17) % 60), x + w - 8, ry + 1, '#f4f1ea', { align: 'right', font: 'small' }); }
+      ctx.globalAlpha = 0.08; for (let i = 0; i < h; i += 3) rect(ctx, x, y + i, w, 1, '#000'); ctx.globalAlpha = 1;
+      break;
+    }
+    case 'vending': {
+      sh(); rect(ctx, x, y, w, h, '#c8402c'); rect(ctx, x, y, w, 6, '#e8604a'); frame(ctx, x, y, w, h, '#6a1a12');
+      rect(ctx, x + 4, y + 10, w - 8, h * 0.52, '#12101c');
+      for (let r = 0; r < 3; r++) for (let i = 0; i < 4; i++) rect(ctx, x + 7 + i * ((w - 14) / 4), y + 14 + r * ((h * 0.52 - 8) / 3), 7, 11, ['#f2c94c', '#6be585', '#8ad8ff', '#f4f1ea'][(i + r) % 4]);
+      ctx.globalAlpha = 0.2; rect(ctx, x + 4, y + 10, w - 8, h * 0.52, '#bfe0ff'); ctx.globalAlpha = 1;
+      rect(ctx, x + 5, base - 20, w - 10, 8, '#2a2d33'); rect(ctx, x + 5, base - 10, w - 10, 6, '#1b1b24');
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 4 + x); rect(ctx, x + w - 12, y + h * 0.58, 6, 4, '#6be585'); ctx.globalAlpha = 1;
+      break;
+    }
+    case 'lift': {
+      rect(ctx, x, y, w, h, '#8a8f98'); rect(ctx, x + 3, y + 3, w - 6, h - 6, '#5a6472');
+      const o = p.open ? clamp(p.open, 0, 1) : 0, half = Math.round((w - 6) / 2 * (1 - o));
+      rect(ctx, x + 3, y + 3, w - 6, h - 6, '#12101c');
+      rect(ctx, x + 3, y + 3, half, h - 6, '#cfd6de'); rect(ctx, x + w - 3 - half, y + 3, half, h - 6, '#cfd6de');
+      rect(ctx, x + 3, y + 3, half, 3, '#e8eef4'); rect(ctx, x + w - 3 - half, y + 3, half, 3, '#e8eef4');
+      rect(ctx, x + w / 2 - 16, y - 16, 32, 14, '#12101c'); drawText(ctx, p.level != null ? String(p.level) : '1', p.x, y - 12, '#f2a03a', { align: 'center', scale: 2 });
+      break;
+    }
+    case 'escalator': {
+      // a run of steps going up to the next floor, drawn as a ramp
+      const toY = p.toY != null ? p.toY : base - 120;
+      const dir = p.dir || 1;                       // 1 = up to the right
+      const x0 = dir > 0 ? x : x + w, x1 = dir > 0 ? x + w : x;
+      ctx.fillStyle = '#4a5260'; ctx.beginPath();
+      ctx.moveTo(x0, base); ctx.lineTo(x1, toY); ctx.lineTo(x1, toY + 18); ctx.lineTo(x0, base + 18); ctx.fill();
+      // the steps, marching
+      const n = 12, off = ((t * (p.speed || 0.35)) % 1);
+      for (let i = 0; i < n; i++) {
+        const k = ((i + off) / n);
+        const sx2 = lerp(x0, x1, k), sy2 = lerp(base, toY, k);
+        rect(ctx, sx2 - 8, sy2 - 4, 17, 5, '#8a939e');
+        rect(ctx, sx2 - 8, sy2 - 4, 17, 1, '#c0c6ce');
+      }
+      // the balustrade and the moving handrail
+      ctx.strokeStyle = '#1b2230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0, base - 34); ctx.lineTo(x1, toY - 34); ctx.stroke(); ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.5; ctx.strokeStyle = '#8fc0e4'; ctx.beginPath(); ctx.moveTo(x0, base - 30); ctx.lineTo(x1, toY - 30); ctx.stroke(); ctx.globalAlpha = 1;
+      // the arrow that tells you which way it is going
+      const ax = lerp(x0, x1, 0.5), ay = lerp(base, toY, 0.5);
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 3);
+      ctx.fillStyle = '#6be585'; ctx.beginPath();
+      ctx.moveTo(ax, ay - 52); ctx.lineTo(ax - 7 * dir, ay - 44); ctx.lineTo(ax + 7 * dir, ay - 44); ctx.fill();
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'stairs': {
+      const toY = p.toY != null ? p.toY : base - 120, n = 10, dir = p.dir || 1;
+      for (let i = 0; i < n; i++) {
+        const k = i / n, sx2 = dir > 0 ? x + (w * k) : x + w - (w * k), sy2 = lerp(base, toY, k);
+        rect(ctx, Math.min(sx2, sx2 + dir * (w / n)), sy2 - 5, w / n + 1, 6, '#b4ab96');
+        rect(ctx, Math.min(sx2, sx2 + dir * (w / n)), sy2 - 5, w / n + 1, 1, '#d4cbb6');
+        rect(ctx, sx2, sy2, 2, base - sy2, '#8f8877');
+      }
+      break;
+    }
+    case 'travelator': {
+      rect(ctx, x, base - 10, w, 12, '#3a4250'); rect(ctx, x, base - 10, w, 2, '#6a7280');
+      const off = (t * 30) % 20;
+      for (let i = -20; i < w; i += 20) { ctx.globalAlpha = 0.6; rect(ctx, x + i + off, base - 8, 9, 8, '#2a3040'); ctx.globalAlpha = 1; }
+      rect(ctx, x, base - 44, 3, 36, '#1b2230'); rect(ctx, x + w - 3, base - 44, 3, 36, '#1b2230');
+      ctx.globalAlpha = 0.4; rect(ctx, x, base - 44, w, 3, '#8fc0e4'); ctx.globalAlpha = 1;
+      break;
+    }
+    case 'belt': {   // a baggage carousel, seen side on
+      rect(ctx, x, base - 30, w, 30, '#2a2d33');
+      rect(ctx, x, base - 34, w, 6, '#4a5260');
+      const off = (t * 26) % 26;
+      for (let i = -26; i < w; i += 26) { rect(ctx, x + i + off, base - 33, 22, 4, '#3a3f46'); }
+      // the bags going round
+      for (let i = 0; i < Math.floor(w / 90); i++) {
+        const bx = x + ((i * 90 + t * 26) % w);
+        const c = ['#2f4a8a', '#8a2a1c', '#2f6a4a', '#3a3550', '#8a6a2a'][i % 5];
+        rect(ctx, bx, base - 52, 26, 19, c); rect(ctx, bx, base - 52, 26, 3, lighten(c, 0.25)); rect(ctx, bx + 9, base - 55, 8, 4, '#8a8f98');
+      }
+      break;
+    }
+    case 'trolley': sh(); rect(ctx, x, base - 30, w, 5, '#b9bec6'); rect(ctx, x + 2, base - 25, w - 4, 4, '#8a8f98'); rect(ctx, x + w - 6, base - 50, 4, 26, '#8a8f98'); rect(ctx, x + w - 14, base - 52, 14, 4, '#6a7079'); circle(ctx, x + 6, base - 3, 4, '#2a2d33'); circle(ctx, x + w - 8, base - 3, 4, '#2a2d33'); break;
+    case 'counter': sh(); rect(ctx, x, y, w, h, p.col || '#d8d2c4'); rect(ctx, x, y, w, 5, '#f0ece2'); rect(ctx, x, base - 6, w, 6, darken(p.col || '#d8d2c4', 0.3)); if (p.text) drawText(ctx, p.text, p.x, y - 14, '#f4f1ea', { align: 'center', scale: 2, outline: '#12101c' }); break;
+    case 'table': sh(); rect(ctx, x, y, w, 6, p.col || '#a8784a'); rect(ctx, x, y, w, 2, lighten(p.col || '#a8784a', 0.25)); rect(ctx, x + 4, y + 6, 5, h - 6, darken(p.col || '#a8784a', 0.3)); rect(ctx, x + w - 9, y + 6, 5, h - 6, darken(p.col || '#a8784a', 0.3)); break;
+    case 'stool': sh(); rect(ctx, x, y, w, 5, '#8a4a2a'); rect(ctx, x + w / 2 - 2, y + 5, 4, h - 5, '#4a4a52'); rect(ctx, x, base - 3, w, 3, '#4a4a52'); break;
+    case 'lamp': rect(ctx, p.x - 2, y, 4, h, '#2f3742'); ellipsePx(ctx, p.x, y, 12, 6, '#3a4250'); ctx.globalAlpha = 0.14; ellipsePx(ctx, p.x, y + 40, 44, 42, '#ffe9a8'); ctx.globalAlpha = 1; ellipsePx(ctx, p.x, y + 3, 9, 4, '#ffe9a8'); break;
+    case 'cone': ctx.fillStyle = '#e06020'; ctx.beginPath(); ctx.moveTo(p.x, base - h); ctx.lineTo(p.x - w / 2, base); ctx.lineTo(p.x + w / 2, base); ctx.fill(); rect(ctx, x + 2, base - h * 0.55, w - 4, 5, '#f4f1ea'); break;
+    case 'luggage': { sh(); const c = p.col || '#2f4a8a'; rect(ctx, x, y, w, h, c); rect(ctx, x, y, w, 3, lighten(c, 0.25)); rect(ctx, x, y + h * 0.45, w, 2, darken(c, 0.3)); rect(ctx, x + w / 2 - 5, y - 5, 10, 5, '#8a8f98'); break; }
+    case 'crate': sh(); rect(ctx, x, y, w, h, '#6a4a2e'); rect(ctx, x, y, w, 3, '#8a6440'); for (let i = 0; i < w - 6; i += 8) rect(ctx, x + 3 + i, y + 5, 6, h - 10, '#7a5636'); break;
+    case 'fireext': rect(ctx, x, y, w, h, '#c8402c'); rect(ctx, x, y, w, 3, '#e8604a'); rect(ctx, x + w / 2 - 2, y - 6, 4, 6, '#3a3f4a'); break;
+    case 'payphone': rect(ctx, x, y, w, h, '#2f6a4a'); rect(ctx, x + 3, y + 5, w - 6, h * 0.4, '#1b2230'); rect(ctx, x - 3, y + 10, 5, 12, '#1b2230'); break;
+    case 'atm': rect(ctx, x, y, w, h, '#3a4250'); rect(ctx, x + 4, y + 6, w - 8, h * 0.4, '#0d1018'); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 2); rect(ctx, x + 6, y + 8, w - 12, h * 0.34, '#2f6fc0'); ctx.globalAlpha = 1; for (let i = 0; i < 9; i++) rect(ctx, x + 8 + (i % 3) * 9, y + h * 0.56 + Math.floor(i / 3) * 8, 7, 6, '#6a7079'); break;
+    case 'window': {  // a window onto somewhere else (a plane, a train, a room)
+      rect(ctx, x - 3, y - 3, w + 6, h + 6, p.frame || '#cfd6de');
+      rect(ctx, x, y, w, h, '#0d1420');
+      if (p.draw) p.draw(ctx, x, y, w, h, t, S);
+      ctx.globalAlpha = 0.14; rect(ctx, x + 2, y + 2, w - 4, h * 0.3, '#ffffff'); ctx.globalAlpha = 1;
+      break;
+    }
+    default: { sh(); rect(ctx, x, y, w, h, p.col || '#6a6478'); rect(ctx, x, y, w, 3, lighten(p.col || '#6a6478', 0.25)); if (p.text) drawText(ctx, p.text, p.x, y + 4, '#f4f1ea', { align: 'center', font: 'small' }); }
+  }
+  if (p.tag) { rect(ctx, p.x - textWidth(p.tag, { font: 'small' }) / 2 - 4, y - 14, textWidth(p.tag, { font: 'small' }) + 8, 11, 'rgba(10,8,18,0.8)'); drawText(ctx, p.tag, p.x, y - 12, '#cfc9e6', { align: 'center', font: 'small' }); }
 }
 
 // ===== js/art/instruments.js =====
@@ -6957,6 +7503,581 @@ function drawPrompt(ctx, cam, p, t, label) {
   drawText(ctx, txt, sx, sy - 15 + bob, '#ffe9a8', { align: 'center', scale: 2 });
   ctx.fillStyle = '#ffd24a';
   ctx.beginPath(); ctx.moveTo(sx - 4, sy + bob); ctx.lineTo(sx + 4, sy + bob); ctx.lineTo(sx, sy + 5 + bob); ctx.fill();
+}
+
+// ===== js/sim/side.js =====
+// ---------- The side-scroller ----------
+// The whole game runs on this now. A scene is a long strip of world: you walk
+// left and right along a floor, step between floors that are stacked into the
+// screen, and stand in front of things to use them. Nothing is top-down any
+// more.
+//
+// World space is pixels. x runs 0..def.w. y is the same scale as the screen at
+// zoom 1, so a floor at y 430 is authored where you can see it.
+'use strict';
+
+// ---------- somebody walking ----------
+class SideWalker {
+  constructor(x, floor, opts = {}) {
+    this.x = x; this.floor = floor || 0; this.fk = this.floor;   // fk = the floor we are visually on, tweened
+    this.vx = 0; this.face = 1; this.moving = false; this.t = 0;
+    this.speed = opts.speed || 118; this.accel = opts.accel || 900; this.friction = opts.friction || 1200;
+    this.spec = opts.spec || null; this.scale = opts.scale || 1.5; this.r = opts.r || 9;
+    this.carry = opts.carry || null;                                // a case, a bag, a tray
+    this.riding = null;                                             // an escalator has hold of you
+  }
+  get pose() { return this.moving ? (Math.floor(this.t * 7) % 2 ? 'walk1' : 'walk2') : 'idle'; }
+  get flip() { return this.face < 0; }
+  // ax: -1..1. solid(x, floor) says whether that spot is blocked.
+  step(dt, ax, solid) {
+    this.t += dt;
+    if (this.riding) { this.riding.carry(this, dt); return; }
+    const want = ax * this.speed;
+    if (Math.abs(ax) > 0.02) { this.vx += (want - this.vx) * Math.min(1, dt * (this.accel / 90)); this.face = ax > 0 ? 1 : -1; }
+    else { const d = this.friction * dt; this.vx = Math.abs(this.vx) <= d ? 0 : this.vx - Math.sign(this.vx) * d; }
+    const nx = this.x + this.vx * dt;
+    if (!solid || !solid(nx, this.floor)) this.x = nx; else this.vx = 0;
+    this.moving = Math.abs(this.vx) > 8;
+    // ease onto the floor we were sent to
+    this.fk += (this.floor - this.fk) * Math.min(1, dt * 7);
+    if (Math.abs(this.fk - this.floor) < 0.01) this.fk = this.floor;
+  }
+  goFloor(n) { this.floor = n; }
+}
+
+// ---------- the camera, which mostly just tracks sideways ----------
+class SideCam {
+  constructor(opts = {}) {
+    this.x = 0; this.y = 0; this.z = opts.z || 1; this.targetZ = this.z;
+    this.view = opts.view || { x: 0, y: 0, w: W, h: H };
+    this.x0 = opts.x0 || 0; this.x1 = opts.x1 != null ? opts.x1 : 4000;
+    this.lead = opts.lead != null ? opts.lead : 0.34;
+    this.yBias = opts.yBias != null ? opts.yBias : 0.60;   // where the floor sits down the screen
+    this.hold = null;                                      // a cinematic target
+    this.sh = 0; this.shT = 0;
+  }
+  want(x, y, vx) {
+    const V = this.view, z = this.z;
+    let cx = x * z - V.w / 2 + (vx || 0) * this.lead;
+    let cy = y * z - V.h * this.yBias;
+    return { x: clamp(cx, this.x0 * z, Math.max(this.x0 * z, this.x1 * z - V.w)), y: cy };
+  }
+  snapTo(x, y) { const t = this.want(x, y, 0); this.x = t.x; this.y = t.y; }
+  follow(dt, x, y, vx) {
+    this.z += (this.targetZ - this.z) * Math.min(1, dt * 3.4);
+    const g = this.hold || { x, y, vx };
+    const t = this.want(g.x, g.y, g.vx || 0);
+    const k = Math.min(1, dt * (this.hold ? 3.2 : 6));
+    this.x += (t.x - this.x) * k; this.y += (t.y - this.y) * k;
+    if (this.shT > 0) { this.shT -= dt; if (this.shT <= 0) this.sh = 0; }
+  }
+  // Look somewhere that is not the player for a moment.
+  focus(x, y, z) { this.hold = { x, y }; if (z) this.targetZ = z; }
+  release(z) { this.hold = null; if (z) this.targetZ = z; }
+  kick(m, d) { this.sh = m; this.shT = d; }
+  get shakeX() { return this.shT > 0 ? Math.round((Math.random() - 0.5) * 2 * this.sh) : 0; }
+  sx(x) { return Math.round(x * this.z - this.x + this.view.x); }
+  sy(y) { return Math.round(y * this.z - this.y + this.view.y); }
+  wx(x) { return (x - this.view.x + this.x) / this.z; }
+  wy(y) { return (y - this.view.y + this.y) / this.z; }
+  push(ctx) {
+    ctx.save(); ctx.beginPath(); ctx.rect(this.view.x, this.view.y, this.view.w, this.view.h); ctx.clip();
+    ctx.translate(this.view.x - this.x + this.shakeX, this.view.y - this.y); ctx.scale(this.z, this.z);
+  }
+  pop(ctx) { ctx.restore(); }
+  visible(x, pad = 120) { const s = this.sx(x); return s > this.view.x - pad && s < this.view.x + this.view.w + pad; }
+}
+
+// ---------- input: left, right, up, down, and the button ----------
+class SideInput {
+  constructor() { this.k = new Set(); this.pads = null; this.held = new Map(); }
+  key(c) { this.k.add(c); }
+  keyUp(c) { this.k.delete(c); }
+  clear() { this.k.clear(); this.held.clear(); }
+  get ax() {
+    let a = 0;
+    if (this.k.has('ArrowLeft') || this.k.has('KeyA')) a -= 1;
+    if (this.k.has('ArrowRight') || this.k.has('KeyD')) a += 1;
+    for (const v of this.held.values()) { if (v === 'l') a -= 1; if (v === 'r') a += 1; }
+    return clamp(a, -1, 1);
+  }
+  // the touch pads, laid across the bottom of a phone
+  layout() {
+    const b = Game.touch ? 62 : 0;
+    if (!b) return null;
+    return {
+      l: { x: 12, y: H - b - 12, w: b, h: b },
+      r: { x: 12 + b + 8, y: H - b - 12, w: b, h: b },
+      u: { x: W - b * 2 - 20, y: H - b - 12, w: b, h: b },
+      a: { x: W - b - 12, y: H - b - 12, w: b, h: b },
+    };
+  }
+  hit(x, y, id) {
+    const L = this.layout(); if (!L) return null;
+    for (const k of ['l', 'r', 'u', 'a']) { const r = L[k]; if (x >= r.x - 8 && x < r.x + r.w + 8 && y >= r.y - 8 && y < r.y + r.h + 8) { if (k === 'l' || k === 'r') this.held.set(id, k); return k; } }
+    return null;
+  }
+  up(id) { this.held.delete(id); }
+  draw(ctx) {
+    const L = this.layout(); if (!L) return;
+    const pad = (r, glyph, on) => {
+      ctx.globalAlpha = on ? 0.55 : 0.3;
+      rect(ctx, r.x, r.y, r.w, r.h, '#0b0a14'); frame(ctx, r.x, r.y, r.w, r.h, '#ffd24a');
+      rect(ctx, r.x + 2, r.y + 2, r.w - 4, 2, '#3a3450');
+      ctx.globalAlpha = on ? 1 : 0.75;
+      drawText(ctx, glyph, r.x + r.w / 2, r.y + r.h / 2 - 7, '#ffd24a', { align: 'center', scale: 3 });
+      ctx.globalAlpha = 1;
+    };
+    const dirs = Array.from(this.held.values());
+    pad(L.l, '<', dirs.includes('l')); pad(L.r, '>', dirs.includes('r'));
+    pad(L.u, '^', false); pad(L.a, 'A', false);
+  }
+}
+
+// ---------- a speech bubble ----------
+// Everybody in this game talks in a bubble over their head, not in a box at
+// the bottom of the screen. The box at the bottom is for the narrator.
+class Bubble {
+  constructor(text, opts = {}) {
+    this.full = String(text); this.n = 0; this.t = 0;
+    this.who = opts.who || null; this.voice = opts.voice || null;
+    this.think = !!opts.think; this.col = opts.col || '#f6f2e0'; this.ink = opts.ink || '#241d28';
+    this.maxChars = opts.maxChars || 34;
+    this.lines = wrapText(this.full, this.maxChars);
+    this.speed = opts.speed || 44;
+    this.done = false; this.spoke = false;
+  }
+  update(dt) {
+    this.t += dt;
+    if (!this.spoke && this.voice !== false) { this.spoke = true; Voice.say(this.full, this.voice, {}); }
+    this.n = Math.min(this.full.length, this.n + dt * this.speed);
+    if (this.n >= this.full.length) this.done = true;
+  }
+  skip() { this.n = this.full.length; this.done = true; }
+  // draw it over a point in SCREEN space
+  draw(ctx, sx, sy, t) {
+    const shown = this.full.slice(0, Math.floor(this.n));
+    const lines = wrapText(shown, this.maxChars);
+    const all = this.lines;
+    const wch = Math.max(...all.map(l => l.length), 6);
+    const bw = wch * 12 + 18, bh = all.length * 20 + (this.who ? 26 : 14);
+    let bx = Math.round(clamp(sx - bw / 2, 8, W - bw - 8));
+    let by = Math.round(clamp(sy - bh - 20, 30, H - bh - 20));
+    // the tail, which is what makes it a speech bubble instead of a box
+    ctx.fillStyle = 'rgba(8,6,14,0.45)'; ctx.fillRect(bx + 4, by + 5, bw, bh);
+    rect(ctx, bx, by, bw, bh, this.col);
+    frame(ctx, bx, by, bw, bh, '#241d28');
+    rect(ctx, bx + 1, by + 1, bw - 2, 2, '#ffffff');
+    if (this.think) {
+      for (let i = 0; i < 3; i++) { const r = 5 - i, cx = sx + (sx > bx + bw / 2 ? -6 : 6) * 0, cy = by + bh + 5 + i * 8; circle(ctx, clamp(sx, bx + 10, bx + bw - 10), cy, r, this.col); ringPx(ctx, clamp(sx, bx + 10, bx + bw - 10), cy, r, '#241d28'); }
+    } else {
+      const tx = clamp(sx, bx + 14, bx + bw - 22);
+      ctx.fillStyle = this.col; ctx.beginPath();
+      ctx.moveTo(tx - 7, by + bh - 1); ctx.lineTo(tx + 7, by + bh - 1); ctx.lineTo(clamp(sx, bx + 6, bx + bw - 6), by + bh + 13); ctx.fill();
+      ctx.strokeStyle = '#241d28'; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(tx - 7, by + bh - 0.5); ctx.lineTo(clamp(sx, bx + 6, bx + bw - 6), by + bh + 13); ctx.lineTo(tx + 7, by + bh - 0.5); ctx.stroke();
+    }
+    let ty = by + 8;
+    if (this.who) { rect(ctx, bx + 6, by - 9, textWidth(this.who, { scale: 2 }) + 12, 17, '#c8a03a'); frame(ctx, bx + 6, by - 9, textWidth(this.who, { scale: 2 }) + 12, 17, '#5a3a10'); drawText(ctx, this.who, bx + 12, by - 5, '#2a1a08', { scale: 2 }); ty = by + 12; }
+    lines.forEach((l, i) => drawText(ctx, l, bx + 9, ty + i * 20, this.ink, { scale: 2 }));
+    if (this.done) { ctx.globalAlpha = 0.4 + 0.5 * Math.sin(t * 6); drawText(ctx, Game.touch ? 'TAP' : 'Z', bx + bw - 8, by + bh - 12, '#8a7a5e', { align: 'right', font: 'small' }); ctx.globalAlpha = 1; }
+  }
+}
+
+// ---------- a conversation ----------
+// A script is a list of beats. A beat is a line, or a line with choices, or a
+// function to run. Choices branch by label. This runs the whole thing.
+class Dialogue {
+  // script: [{who, text, voice, think, at, choices:[{label, next, go, cost}], do, next, id}]
+  constructor(script, opts = {}) {
+    this.script = script; this.i = 0; this.opts = opts; this.t = 0;
+    this.bubble = null; this.choiceIdx = 0; this.finished = false; this.rects = [];
+    this.begin();
+  }
+  find(id) { const n = this.script.findIndex(b => b.id === id); return n < 0 ? this.script.length : n; }
+  begin() {
+    while (this.i < this.script.length) {
+      const b = this.script[this.i];
+      if (!b) break;
+      if (b.when && !b.when()) { this.i++; continue; }
+      if (b.do && !b._ran) { b._ran = true; b.do(this); }
+      if (b.text) { this.bubble = new Bubble(b.text, { who: b.who, voice: b.voice, think: b.think }); this.choiceIdx = 0; return; }
+      if (b.next) { this.i = this.find(b.next); continue; }
+      this.i++;
+    }
+    this.finished = true; this.bubble = null;
+    if (this.opts.onEnd) { const f = this.opts.onEnd; this.opts.onEnd = null; f(); }
+  }
+  get beat() { return this.script[this.i]; }
+  get choices() { const b = this.beat; return this.bubble && this.bubble.done && b && b.choices ? b.choices : null; }
+  update(dt) { this.t += dt; if (this.bubble) this.bubble.update(dt); }
+  advance() {
+    const b = this.beat; if (!b) { this.finished = true; return; }
+    if (!this.bubble.done) { this.bubble.skip(); return; }
+    if (b.choices) { this.pick(this.choiceIdx); return; }
+    this.i = b.next ? this.find(b.next) : this.i + 1;
+    this.bubble = null; this.begin();
+  }
+  pick(n) {
+    const b = this.beat, c = b.choices[n]; if (!c) return;
+    Audio.ui('select');
+    if (c.go) c.go(this);
+    this.i = c.next ? this.find(c.next) : this.i + 1;
+    this.bubble = null; this.begin();
+  }
+  key(code) {
+    if (this.finished) return;
+    const ch = this.choices;
+    if (ch) {
+      if (code === 'ArrowUp' || code === 'KeyW') { this.choiceIdx = (this.choiceIdx - 1 + ch.length) % ch.length; Audio.ui('move'); return; }
+      if (code === 'ArrowDown' || code === 'KeyS') { this.choiceIdx = (this.choiceIdx + 1) % ch.length; Audio.ui('move'); return; }
+    }
+    if (['Enter', 'Space', 'KeyZ', 'KeyX', 'Escape'].includes(code)) this.advance();
+  }
+  click(x, y) {
+    if (this.finished) return true;
+    const ch = this.choices;
+    if (ch) { for (let i = 0; i < this.rects.length; i++) { const r = this.rects[i]; if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { this.pick(i); return true; } } return true; }
+    this.advance(); return true;
+  }
+  // sx/sy: screen point the bubble points at
+  draw(ctx, sx, sy) {
+    if (!this.bubble) return;
+    this.bubble.draw(ctx, sx, sy, this.t);
+    this.rects = [];
+    const ch = this.choices; if (!ch) return;
+    const rowH = Game.touch ? 34 : 28, bw = 430, bx = W / 2 - bw / 2, by = H - 24 - ch.length * rowH;
+    ctx.fillStyle = 'rgba(6,5,12,0.62)'; ctx.fillRect(0, by - 12, W, H - by + 12);
+    ch.forEach((c, i) => {
+      const y = by + i * rowH, on = i === this.choiceIdx;
+      this.rects.push({ x: bx, y, w: bw, h: rowH - 4 });
+      rect(ctx, bx, y, bw, rowH - 4, on ? '#ffd24a' : '#1b1728');
+      frame(ctx, bx, y, bw, rowH - 4, on ? '#fff6c8' : '#4a4068');
+      if (on) rect(ctx, bx, y, 5, rowH - 4, '#c8402c');
+      drawText(ctx, c.label, bx + 14, y + Math.floor((rowH - 4 - 14) / 2), on ? '#2a1a08' : '#cfc9e6', { scale: 2 });
+      if (c.note) drawText(ctx, c.note, bx + bw - 12, y + Math.floor((rowH - 4 - 10) / 2), on ? '#7a5a10' : '#8a82a8', { align: 'right', font: 'small' });
+    });
+  }
+}
+
+// ---------- the scene everything inherits ----------
+// def: {
+//   name, sub, w, floors: [{y, z, name}], sky (fn or [c1,c2]),
+//   back(ctx,S,t), mid(ctx,S,t), fore(ctx,S,t),     // parallax painters
+//   props: [{kind, x, w, h, floor, solid, label, act, over, ...}],
+//   npcs:  [{name, x, floor, spec, voice, tag, walk:[x0,x1], speed, carry, scale}],
+//   use(S, p), enterLine, hud (false to hide), start:{x,floor}
+// }
+class SideScene {
+  constructor(def, opts = {}) {
+    this.D = def; this.opts = opts; this.t = 0; this.fx = new Particles();
+    this.you = (Game.run && Game.run.members[0]) || { spec: HERO_PRESETS.buzz };
+    this.floors = def.floors || [{ y: 430, z: 1 }];
+    this.props = (def.props || []).map(p => Object.assign({ floor: 0, w: 40, h: 40 }, p));
+    this.npcs = (def.npcs || []).map((n, i) => Object.assign({
+      floor: 0, scale: 1.4, speed: 32, t: makeRng(hashStr((def.name || '') + i))() * 6,
+      spec: n.spec || randomBugSpec(makeRng(hashStr((def.name || 'x') + 'n' + i))),
+      _x: n.x, dir: 1,
+    }, n));
+    const st = def.start || { x: 60, floor: 0 };
+    this.body = new SideWalker(st.x, st.floor || 0, { spec: this.you.spec, scale: def.heroScale || 1.6, speed: def.speed || 120, carry: opts.carry || def.carry });
+    this.cam = new SideCam({ z: def.zoom || 1, x0: 0, x1: def.w || 2400, yBias: def.yBias != null ? def.yBias : 0.62 });
+    this.cam.targetZ = def.zoom || 1;
+    this.input = new SideInput();
+    this.cam.snapTo(this.body.x, this.floorY(this.body.fk));
+    this.prompt = null; this.dlg = null; this.msg = null; this.msgT = 0;
+    this.locked = 0;                        // > 0 means you cannot walk
+    this.left = false;
+    if (def.enterLine) this.flash(def.enterLine);
+    if (def.init) def.init(this);
+  }
+  // ---- geometry
+  floorY(fk) {
+    const f = this.floors;
+    const a = f[Math.max(0, Math.min(f.length - 1, Math.floor(fk)))];
+    const b = f[Math.max(0, Math.min(f.length - 1, Math.ceil(fk)))];
+    const k = fk - Math.floor(fk);
+    return lerp(a.y, b.y, k);
+  }
+  floorZ(fk) {
+    const f = this.floors;
+    const a = f[Math.max(0, Math.min(f.length - 1, Math.floor(fk)))];
+    const b = f[Math.max(0, Math.min(f.length - 1, Math.ceil(fk)))];
+    return lerp(a.z != null ? a.z : 1, b.z != null ? b.z : 1, fk - Math.floor(fk));
+  }
+  propY(p) { return p.y != null ? p.y : this.floorY(p.floor); }
+  flash(m, secs) { this.msg = m; this.msgT = secs || 3.2; }
+  // ---- talking
+  say(who, text, voice, opts) {
+    this.dlg = new Dialogue([{ who, text, voice }], Object.assign({ onEnd: () => { this.dlg = null; } }, opts || {}));
+  }
+  run(script, onEnd) {
+    this.dlg = new Dialogue(script, { onEnd: () => { this.dlg = null; if (onEnd) onEnd(); } });
+  }
+  leave(factory, kind, opts) {
+    if (this.left) return; this.left = true;
+    if (Game.run) Game.run.save();
+    Game.go(factory || this.opts.back || (() => new StreetHubScene()), kind || 'fade', opts || { dur: 0.6 });
+  }
+  // ---- what is in front of you
+  solid(x, floor) {
+    if (x < 14 || x > (this.D.w || 2400) - 14) return true;
+    for (const p of this.props) {
+      if (!p.solid || p.floor !== floor) continue;
+      if (x > p.x - p.w / 2 && x < p.x + p.w / 2) return true;
+    }
+    return false;
+  }
+  findPrompt() {
+    const b = this.body; let best = null, bd = 1e9;
+    for (const p of this.props) {
+      if (!p.label && !p.act) continue;
+      if (Math.round(p.floor) !== Math.round(b.floor)) continue;
+      const d = Math.abs(b.x - p.x) - (p.w || 40) / 2;
+      const reach = p.reach || 34;
+      if (d < reach && d < bd) { bd = d; best = { kind: 'prop', p }; }
+    }
+    for (const n of this.npcs) {
+      if (!n.tag && !n.act) continue;
+      if (Math.round(n.floor) !== Math.round(b.floor)) continue;
+      const d = Math.abs(b.x - n._x) - 18;
+      if (d < 32 && d < bd) { bd = d; best = { kind: 'npc', n }; }
+    }
+    return best;
+  }
+  interact() {
+    const P = this.prompt; if (!P) return;
+    Audio.ui('select');
+    if (P.kind === 'npc') {
+      const n = P.n;
+      if (n.act && this.D.use) { this.D.use(this, n); return; }
+      const line = typeof n.tag === 'function' ? n.tag(this) : n.tag;
+      if (Array.isArray(line)) this.run(line.map(l => ({ who: n.name, text: l, voice: n.voice })));
+      else this.say(n.name, line, n.voice);
+      return;
+    }
+    const p = P.p;
+    if (p.act === 'exit') { this.leave(p.to, p.trans || 'fade'); return; }
+    if (this.D.use) this.D.use(this, p);
+  }
+  // ---- loop
+  update(dt) {
+    this.t += dt; this.msgT = Math.max(0, this.msgT - dt);
+    this.fx.update(dt);
+    if (this.dlg) { this.dlg.update(dt); this.body.step(dt, 0, (x, f) => this.solid(x, f)); }
+    else if (this.locked > 0) { this.locked -= dt; this.body.step(dt, 0, (x, f) => this.solid(x, f)); }
+    else this.body.step(dt, this.input.ax, (x, f) => this.solid(x, f));
+    for (const n of this.npcs) this.stepNpc(n, dt);
+    this.cam.follow(dt, this.body.x, this.floorY(this.body.fk), this.body.vx);
+    this.prompt = (this.dlg || this.locked > 0) ? null : this.findPrompt();
+    if (this.D.tick) this.D.tick(this, dt);
+  }
+  stepNpc(n, dt) {
+    n.t += dt;
+    if (!n.walk) { n.moving = false; return; }
+    const [a, b] = n.walk;
+    n._x += n.dir * n.speed * dt;
+    if (n._x > b) { n._x = b; n.dir = -1; } else if (n._x < a) { n._x = a; n.dir = 1; }
+    n.moving = true; n.face = n.dir;
+  }
+  key(code) {
+    if (this.dlg) { this.dlg.key(code); return; }
+    if (['Enter', 'Space', 'KeyZ'].includes(code)) { this.interact(); return; }
+    if (code === 'ArrowUp' || code === 'KeyW') { this.upDown(-1); return; }
+    if (code === 'ArrowDown' || code === 'KeyS') { this.upDown(1); return; }
+    if (code === 'Escape') { if (this.D.canLeave !== false) this.leave(); return; }
+    this.input.key(code);
+  }
+  keyUp(code) { this.input.keyUp(code); }
+  upDown(d) {
+    // up/down steps between floors when you are standing on something that
+    // connects them; otherwise it is the use button too
+    const P = this.prompt;
+    if (P && P.kind === 'prop' && (P.p.kind === 'escalator' || P.p.kind === 'stairs' || P.p.kind === 'lift')) { this.interact(); return; }
+    const n = clamp(this.body.floor + d, 0, this.floors.length - 1);
+    if (n !== this.body.floor && this.D.freeFloors !== false) { this.body.goFloor(n); Audio.ui('move'); }
+    else if (P) this.interact();
+  }
+  pointerDown(x, y, id) {
+    if (this.dlg) { this.dlg.click(x, y); return; }
+    const h = this.input.hit(x, y, id);
+    if (h === 'a') { this.interact(); return; }
+    if (h === 'u') { this.upDown(-1); return; }
+    if (h) return;
+    // tapping the thing you are standing at uses it; tapping elsewhere walks
+    if (this.prompt) {
+      const P = this.prompt;
+      const px2 = P.kind === 'npc' ? this.cam.sx(P.n._x) : this.cam.sx(P.p.x);
+      if (Math.abs(x - px2) < 90) { this.interact(); return; }
+    }
+    this.input.held.set(id, x < W / 2 ? 'l' : 'r');
+  }
+  pointerMove(x, y, id) { if (this.input.held.has(id)) this.input.held.set(id, x < W / 2 ? 'l' : 'r'); }
+  pointerUp(x, y, id) { this.input.up(id); }
+  click(x, y) { this.pointerDown(x, y, 991); }
+  hover() {}
+  // ---- drawing
+  drawHero(ctx) {
+    const b = this.body, y = this.floorY(b.fk), z = this.floorZ(b.fk);
+    drawShadow(ctx, b.x, y + 2, 24 * b.scale * z, 0.32);
+    drawBugAt(ctx, this.you.spec, b.x, y + 3, { pose: b.pose, scale: b.scale * z, flip: b.flip, bounce: b.moving ? 1 : 0.6 });
+    if (b.carry) drawSideCarry(ctx, b.carry, b.x, y, b.face, b.scale * z, this.t);
+  }
+  drawNpc(ctx, n) {
+    const y = n.y != null ? n.y : this.floorY(n.floor), z = this.floorZ(n.floor);
+    drawShadow(ctx, n._x, y + 2, 22 * n.scale * z, 0.28);
+    drawBugAt(ctx, n.spec, n._x, y + 3, {
+      pose: n.pose || (n.moving ? (Math.floor(n.t * 6) % 2 ? 'walk1' : 'walk2') : 'idle'),
+      scale: n.scale * z, flip: n.face < 0, bounce: n.moving ? 0.9 : 0.5, phase: n.t,
+    });
+    if (n.carry) drawSideCarry(ctx, n.carry, n._x, y, n.face || 1, n.scale * z, this.t);
+  }
+  draw(ctx) {
+    const D = this.D, t = this.t, cam = this.cam;
+    // ---- sky
+    if (typeof D.sky === 'function') D.sky(ctx, this, t);
+    else if (Array.isArray(D.sky)) vgrad(ctx, 0, 0, W, H, D.sky[0], D.sky[1]);
+    else rect(ctx, 0, 0, W, H, '#0a0912');
+    if (D.back) D.back(ctx, this, t);
+    cam.push(ctx);
+    if (D.mid) D.mid(ctx, this, t);
+    // ---- everything on the floors, far floors first
+    const items = [];
+    for (const p of this.props) if (!p.hidden) items.push({ f: p.floor, y: this.propY(p), z: p.over ? 9 : 0, d: () => this.drawProp(ctx, p) });
+    for (const n of this.npcs) if (!n.hidden) items.push({ f: n.floor, y: n.y != null ? n.y : this.floorY(n.floor), z: 1, d: () => this.drawNpc(ctx, n) });
+    items.push({ f: this.body.fk, y: this.floorY(this.body.fk), z: 2, d: () => this.drawHero(ctx) });
+    items.sort((a, b) => (a.f - b.f) || (a.y - b.y) || (a.z - b.z));
+    for (const it of items) it.d();
+    if (D.fore) D.fore(ctx, this, t);
+    cam.pop(ctx);
+    if (D.after) D.after(ctx, this, t);
+    // ---- the prompt over what you are at
+    if (this.prompt) {
+      const P = this.prompt;
+      const px2 = P.kind === 'npc' ? cam.sx(P.n._x) : cam.sx(P.p.x);
+      const py = P.kind === 'npc' ? cam.sy((P.n.y != null ? P.n.y : this.floorY(P.n.floor)) - 56) : cam.sy(this.propY(P.p) - (P.p.h || 40) - 12);
+      sidePrompt(ctx, px2, py, P.kind === 'npc' ? 'TALK' : (P.p.label || 'USE'), t);
+    }
+    this.fx.draw(ctx);
+    if (D.hud !== false && Game.run) Game.drawHud(ctx);
+    // ---- the name of the place
+    if (D.name && this.t < 4.5) {
+      const a = clamp(4.5 - this.t, 0, 1) * clamp(this.t * 2.5, 0, 1);
+      ctx.globalAlpha = a;
+      uiRibbon(ctx, W / 2, D.hud === false ? 14 : 30, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
+      if (D.sub) drawText(ctx, D.sub, W / 2, (D.hud === false ? 14 : 30) + 30, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
+      ctx.globalAlpha = 1;
+    }
+    if (this.msgT > 0) {
+      ctx.globalAlpha = clamp(this.msgT, 0, 1);
+      const w2 = Math.min(W - 40, textWidth(this.msg, { scale: 2 }) + 28);
+      rect(ctx, W / 2 - w2 / 2, H - 112, w2, 26, 'rgba(8,20,12,0.9)'); frame(ctx, W / 2 - w2 / 2, H - 112, w2, 26, '#6be585');
+      drawText(ctx, this.msg, W / 2, H - 104, '#6be585', { align: 'center', scale: 2 });
+      ctx.globalAlpha = 1;
+    }
+    if (this.dlg) {
+      const b = this.body;
+      const who = this.dlg.beat && this.dlg.beat.at;
+      const target = who === 'you' || !who ? { x: b.x, y: this.floorY(b.fk) - 58 * b.scale * 0.6 }
+        : typeof who === 'object' ? who
+          : (this.npcs.find(n => n.name === who) ? { x: this.npcs.find(n => n.name === who)._x, y: this.floorY(this.npcs.find(n => n.name === who).floor) - 52 } : { x: b.x, y: this.floorY(b.fk) - 60 });
+      this.dlg.draw(ctx, cam.sx(target.x), cam.sy(target.y));
+    }
+    this.input.draw(ctx);
+    if (D.overlay) D.overlay(ctx, this, t);
+  }
+  // props get drawn by the scene's own painter, or the shared library
+  drawProp(ctx, p) {
+    if (this.D.prop && this.D.prop(ctx, p, this.t, this) !== false) return;
+    drawSideProp(ctx, p, this.t, this);
+  }
+  isPlaying() { return false; }
+}
+
+// ---------- scripted movement ----------
+// A cutscene needs to be able to walk you somewhere, hold you still, and put
+// you on an escalator, without the player fighting it.
+SideScene.prototype.lock = function (secs) { this.locked = Math.max(this.locked, secs || 0.5); };
+SideScene.prototype.walkTo = function (x, floor, cb) {
+  this.auto = { x, floor: floor != null ? floor : this.body.floor, cb };
+};
+SideScene.prototype.stopAuto = function () { this.auto = null; };
+// Put the player on a ramp and carry them to the other end of it.
+SideScene.prototype.ride = function (p, cb) {
+  const toFloor = p.toFloor != null ? p.toFloor : (p.floor === 0 ? 1 : 0);
+  const dir = p.dir || 1;
+  const endX = p.x + dir * (p.w / 2 + 24);
+  this.riding = { p, toFloor, endX, k: 0, dur: p.rideTime || 1.8, from: { x: this.body.x, f: this.body.floor }, cb };
+  Audio.ui('move');
+};
+// the black bars, for the beats that are not gameplay
+SideScene.prototype.bars = function (ctx, k) { letterbox(ctx, Math.round(58 * clamp(k, 0, 1)), 1); };
+
+const _sideUpdate = SideScene.prototype.update;
+SideScene.prototype.update = function (dt) {
+  // an escalator has hold of you: nothing else gets a say
+  if (this.riding) {
+    const R = this.riding;
+    R.k = Math.min(1, R.k + dt / R.dur);
+    this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt);
+    this.body.x = lerp(R.from.x, R.endX, easeInOut(R.k));
+    this.body.fk = lerp(R.from.f, R.toFloor, easeInOut(R.k));
+    this.body.moving = false;
+    for (const n of this.npcs) this.stepNpc(n, dt);
+    this.cam.follow(dt, this.body.x, this.floorY(this.body.fk), 0);
+    this.prompt = null;
+    if (R.k >= 1) { this.body.floor = R.toFloor; this.body.fk = R.toFloor; this.riding = null; if (R.cb) R.cb(); }
+    if (this.D.tick) this.D.tick(this, dt);
+    return;
+  }
+  // walking yourself somewhere on a script
+  if (this.auto && !this.dlg) {
+    const a = this.auto, d = a.x - this.body.x;
+    if (this.body.floor !== a.floor) this.body.goFloor(a.floor);
+    if (Math.abs(d) < 6) { this.auto = null; this.input.clear(); if (a.cb) a.cb(); }
+    else {
+      this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt);
+      this.body.step(dt, Math.sign(d) * (Math.abs(d) < 40 ? 0.5 : 1), (x, f) => this.solid(x, f));
+      for (const n of this.npcs) this.stepNpc(n, dt);
+      this.cam.follow(dt, this.body.x, this.floorY(this.body.fk), this.body.vx);
+      this.prompt = null;
+      if (this.D.tick) this.D.tick(this, dt);
+      return;
+    }
+  }
+  _sideUpdate.call(this, dt);
+};
+
+// the little arrow + word over whatever you are standing at
+function sidePrompt(ctx, sx, sy, label, t) {
+  const bob = Math.round(Math.sin(t * 5) * 2);
+  const w = textWidth(label, { scale: 2 }) + 16;
+  rect(ctx, sx - w / 2, sy - 20 + bob, w, 18, '#ffd24a');
+  frame(ctx, sx - w / 2, sy - 20 + bob, w, 18, '#5a3a10');
+  drawText(ctx, label, sx, sy - 15 + bob, '#2a1a08', { align: 'center', scale: 2 });
+  ctx.fillStyle = '#ffd24a'; ctx.beginPath();
+  ctx.moveTo(sx - 5, sy - 2 + bob); ctx.lineTo(sx + 5, sy - 2 + bob); ctx.lineTo(sx, sy + 5 + bob); ctx.fill();
+}
+// something held: a case, a bag, a tray, a suitcase on wheels
+function drawSideCarry(ctx, kind, x, y, face, s, t) {
+  const ox = x + face * 13 * s, bob = Math.round(Math.sin(t * 6) * 1);
+  switch (kind) {
+    case 'case': rect(ctx, ox - 5 * s, y - 20 * s + bob, 10 * s, 20 * s, '#3a2a3a'); rect(ctx, ox - 5 * s, y - 20 * s + bob, 10 * s, 2, '#5a4a5a'); rect(ctx, ox - 2 * s, y - 24 * s + bob, 4 * s, 4 * s, '#8a7a5e'); break;
+    case 'bag': rect(ctx, ox - 6 * s, y - 15 * s + bob, 12 * s, 14 * s, '#5a3a2a'); rect(ctx, ox - 6 * s, y - 15 * s + bob, 12 * s, 2, '#7a5a40'); break;
+    case 'tray': rect(ctx, ox - 9 * s, y - 20 * s + bob, 18 * s, 3 * s, '#b9bec6'); rect(ctx, ox - 7 * s, y - 24 * s + bob, 6 * s, 4 * s, '#e8503a'); rect(ctx, ox + 1 * s, y - 23 * s + bob, 5 * s, 3 * s, '#f2c94c'); break;
+    case 'suitcase': {
+      const sx2 = ox + face * 6 * s;
+      rect(ctx, sx2 - 8 * s, y - 22 * s, 16 * s, 20 * s, '#2f4a8a'); rect(ctx, sx2 - 8 * s, y - 22 * s, 16 * s, 2, '#4a6fb0');
+      rect(ctx, sx2 - 8 * s, y - 14 * s, 16 * s, 2, '#1f3568');
+      circle(ctx, sx2 - 5 * s, y - 1, 2.5 * s, '#1b1b24'); circle(ctx, sx2 + 5 * s, y - 1, 2.5 * s, '#1b1b24');
+      rect(ctx, sx2 - 1 * s, y - 32 * s, 2 * s, 11 * s, '#8a8f98');
+      rect(ctx, sx2 - 5 * s, y - 33 * s, 10 * s, 3 * s, '#6a7079');
+      break;
+    }
+    case 'phone': rect(ctx, ox - 3 * s, y - 20 * s + bob, 6 * s, 10 * s, '#1b1b24'); rect(ctx, ox - 2 * s, y - 19 * s + bob, 4 * s, 8 * s, '#8ad8ff'); break;
+    case 'coffee': rect(ctx, ox - 3 * s, y - 20 * s + bob, 6 * s, 8 * s, '#f0ece2'); rect(ctx, ox - 3 * s, y - 21 * s + bob, 6 * s, 2 * s, '#3f6f4a'); break;
+    case 'umbrella': rect(ctx, ox - 1 * s, y - 26 * s + bob, 2 * s, 24 * s, '#3a3440'); ellipsePx(ctx, ox, y - 27 * s + bob, 9 * s, 4 * s, '#c8402c'); break;
+  }
 }
 
 // ===== js/sim/rhythm.js =====
@@ -12738,8 +13859,8 @@ class TitleScene {
   constructor() {
     this.t = 0; this.page = 'main'; this.boot = 1;
     const items = [
-      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new DroneScene(() => new SelectScene()), 'fade', { dur: 0.55 }); } },
-      { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => r.nightPending ? new NightScene() : new CityScene(), 'iris'); } } },
+      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new SelectScene(), 'fade', { dur: 0.55 }); } },
+      { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => chapterResume(), 'iris'); } } },
       { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
       { label: Game.muted ? 'SOUND OFF' : 'SOUND ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = Game.muted ? 'SOUND OFF' : 'SOUND ON'; } },
     ];
@@ -12873,7 +13994,7 @@ class SelectScene {
       this.confirmT += dt;
       if (this.confirmT > 0.5 && !this.leaving) {
         this.leaving = true; this.phase = 'gone';
-        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene({ straightIn: true }); }, 'fade', { dur: 0.9 });
+        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.chapter = 'vegas'; Game.run.save(); return beginJourney(); }, 'fade', { dur: 0.9 });
       }
     }
   }
@@ -16599,6 +17720,58 @@ class DraftScene {
   }
 }
 
+// ===== js/scenes/flow.js =====
+// ---------- The shape of the game ----------
+// The game used to be a map you clicked. It is a side-scrolling life now: you
+// start broke in Las Vegas, you get on a plane, you land, you find somewhere to
+// sleep, and then every day is the same loop - wake up, write down what you
+// want, go out, play, get paid, get a bit better known. This file is the
+// plumbing that decides which scene comes next, and nothing else.
+'use strict';
+
+// Where the day happens. Everything that used to say "back to the map" says
+// this instead.
+function gameHub(opts) {
+  if (typeof QuietStreetScene !== 'undefined') return new QuietStreetScene(opts || {});
+  return new CityScene();
+}
+// The first scene of a new run.
+function beginJourney() {
+  if (typeof VegasScene !== 'undefined') return new VegasScene();
+  return gameHub();
+}
+// Picking up a saved run: each chapter knows its own door back in.
+const CHAPTERS = {
+  vegas: () => typeof VegasScene !== 'undefined' ? new VegasScene() : gameHub(),
+  plane: () => typeof PlaneScene !== 'undefined' ? new PlaneScene() : gameHub(),
+  narita: () => typeof NaritaTerminalScene !== 'undefined' ? new NaritaTerminalScene() : gameHub(),
+  uber: () => typeof UberScene !== 'undefined' ? new UberScene() : gameHub(),
+  capsule: () => typeof CapsuleNightScene !== 'undefined' ? new CapsuleNightScene() : gameHub(),
+  morning: () => typeof MorningScene !== 'undefined' ? new MorningScene() : gameHub(),
+  tokyo: () => gameHub(),
+};
+function chapterResume() {
+  const r = Game.run; if (!r) return beginJourney();
+  if (r.nightPending && typeof NightScene !== 'undefined') return new NightScene();
+  const f = CHAPTERS[r.chapter || 'tokyo'];
+  return f ? f() : gameHub();
+}
+function setChapter(k) { if (Game.run) { Game.run.chapter = k; Game.run.save(); } }
+
+// ---- The old top-down map is not the game any more.
+// Rather than chase twenty call sites, the name is rebound: anything that still
+// asks for the city gets the street it is standing on. `new CityScene()` still
+// works, it just hands back the hub.
+if (typeof QuietStreetScene !== 'undefined' && typeof CityScene !== 'undefined') {
+  CityScene = function () { return gameHub(); };
+}
+
+// ---- The phone in the top bar is a Ladybug 11 now.
+function openPhoneScene(back) {
+  if (typeof LadybugPhone !== 'undefined') return new LadybugPhone(back);
+  return new PhoneScene(back);
+}
+
 // ===== js/game.js =====
 // ---------- Game core: loop, input, run state, save ----------
 'use strict';
@@ -16618,6 +17791,10 @@ class RunState {
     // what is bolted to the instrument, what it is painted, and how much the
     // city owes you back
     this.skins = {}; this.ownedSkins = []; this.gearMods = []; this.gratitude = 0;
+    // ---- the side-scrolling run: where you are in the story, who is watching,
+    // and what you decided to wear
+    this.followers = 0; this.fame = 0; this.outfit = {}; this.chapter = 'vegas';
+    this.flags = {}; this.beermat = null; this.basket = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -16673,14 +17850,14 @@ class RunState {
   gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, skins: this.skins, ownedSkins: this.ownedSkins, gearMods: this.gearMods, gratitude: this.gratitude, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, skins: this.skins, ownedSkins: this.ownedSkins, gearMods: this.gearMods, gratitude: this.gratitude, followers: this.followers, fame: this.fame, outfit: this.outfit, chapter: this.chapter, flags: this.flags, beermat: this.beermat, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, followers: d.followers || 0, fame: d.fame || 0, outfit: d.outfit || {}, chapter: d.chapter || 'vegas', flags: d.flags || {}, beermat: d.beermat || null, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -16735,7 +17912,7 @@ const Game = {
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); if (e.repeat) return; Audio.init();
       if (e.code === 'KeyM' && !(this.scene && this.scene.isPlaying && this.scene.isPlaying())) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
-      if (e.code === 'KeyP' && this.run && this.scene && !(this.scene instanceof PhoneScene) && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => new PhoneScene(() => here), 'slideL'); return; }
+      if (e.code === 'KeyP' && this.run && this.scene && !this.phoneOpen() && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => openPhoneScene(() => here), 'slideL'); return; }
       this.keys.add(e.code); if (this.trans.active) return; if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
@@ -16809,15 +17986,16 @@ const Game = {
   openPhone(x, y) {
     const b = this.phoneBtn;
     if (!b || !this.run || !this.scene) return false;
-    if (this.scene instanceof PhoneScene) return false;
+    if (this.phoneOpen()) return false;
     if (this.scene.isPlaying && this.scene.isPlaying()) return false;
     if (x < b.x || x >= b.x + b.w || y < b.y || y >= b.y + b.h) return false;
     const here = this.scene, back = () => here;
     Audio.ui('select');
-    this.go(() => new PhoneScene(back), 'slideL');
+    this.go(() => openPhoneScene(back), 'slideL');
     return true;
   },
-  afterNode() { this.run.save(); this.setScene(new CityScene()); },
+  phoneOpen() { const s = this.scene; if (!s) return false; return (typeof PhoneScene !== 'undefined' && s instanceof PhoneScene) || (typeof LadybugPhone !== 'undefined' && s instanceof LadybugPhone); },
+  afterNode() { this.run.save(); this.setScene(gameHub()); },
 };
 function uiSlotMini(ctx, x, y, empty, s) { s = s || 11; rect(ctx, x, y, s, s, UI.goldOl); rect(ctx, x + 1, y + 1, s - 2, s - 2, empty ? '#5a4a38' : UI.gold); rect(ctx, x + 2, y + 2, s - 4, s - 4, empty ? '#4a3a2a' : UI.slot); }
 // Charm icon fallbacks: any icon name not in ICON_DEFS maps to a themed generated glyph

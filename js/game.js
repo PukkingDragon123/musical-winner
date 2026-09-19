@@ -16,6 +16,10 @@ class RunState {
     // what is bolted to the instrument, what it is painted, and how much the
     // city owes you back
     this.skins = {}; this.ownedSkins = []; this.gearMods = []; this.gratitude = 0;
+    // ---- the side-scrolling run: where you are in the story, who is watching,
+    // and what you decided to wear
+    this.followers = 0; this.fame = 0; this.outfit = {}; this.chapter = 'vegas';
+    this.flags = {}; this.beermat = null; this.basket = [];
   }
   static newRun(char) {
     const s = new RunState((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
@@ -71,14 +75,14 @@ class RunState {
   gearScore() { return this.members.reduce((a, m) => a + gearTier(m.quality).pay, 0) / Math.max(1, this.members.length); }
   save() {
     try {
-      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, skins: this.skins, ownedSkins: this.ownedSkins, gearMods: this.gearMods, gratitude: this.gratitude, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
+      const data = { seed: this.seed, money: this.money, day: this.day, members: this.members, charms: this.charms, charmSlots: this.charmSlots, vouchers: this.vouchers, perks: this.perks, consumables: this.consumables, spareInstruments: this.spareInstruments, karma: this.karma, stats: this.stats, today: this.today, goals: this.goals, buffs: this.buffs, pendingGig: this.pendingGig, seenEvents: this.seenEvents, seenMysteries: this.seenMysteries, contacts: this.contacts, usedContacts: this.usedContacts, skins: this.skins, ownedSkins: this.ownedSkins, gearMods: this.gearMods, gratitude: this.gratitude, followers: this.followers, fame: this.fame, outfit: this.outfit, chapter: this.chapter, flags: this.flags, beermat: this.beermat, nightPending: this.nightPending, pos: this.pos, tickets: this.tickets, stamina: this.stamina, staminaMax: this.staminaMax, tile: this.tile, weather: this.weather, doneNodes: this.doneNodes, hero: this.hero, lastTune: this.lastTune };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { }
   }
   static load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const d = JSON.parse(raw); const s = new RunState(d.seed);
-      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
+      Object.assign(s, { money: d.money, day: d.day, charms: d.charms, charmSlots: d.charmSlots || CHARM_SLOTS_BASE, vouchers: d.vouchers || [], perks: d.perks || {}, consumables: d.consumables, spareInstruments: d.spareInstruments || [], karma: d.karma, stats: d.stats, today: d.today || { earned: 0, gigs: 0, bestCombo: 0, perfects: 0, tiles: 0, recruited: 0, upgrades: 0 }, goals: d.goals || [], buffs: d.buffs || {}, pendingGig: d.pendingGig, seenEvents: d.seenEvents || [], seenMysteries: d.seenMysteries || [], contacts: d.contacts || [], usedContacts: d.usedContacts || [], skins: d.skins || {}, ownedSkins: d.ownedSkins || [], gearMods: d.gearMods || [], gratitude: d.gratitude || 0, followers: d.followers || 0, fame: d.fame || 0, outfit: d.outfit || {}, chapter: d.chapter || 'vegas', flags: d.flags || {}, beermat: d.beermat || null, nightPending: d.nightPending, pos: d.pos || 'mission', tickets: d.tickets != null ? d.tickets : 7, stamina: d.stamina != null ? d.stamina : 240, staminaMax: d.staminaMax || 240, tile: d.tile || null, weather: d.weather || 'clear', doneNodes: d.doneNodes || {}, hero: d.hero || 'buzz', lastTune: d.lastTune });
       s.members = d.members.map(m => new Member(m));
       return s;
     } catch (e) { return null; }
@@ -133,7 +137,7 @@ const Game = {
     window.addEventListener('keydown', (e) => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); if (e.repeat) return; Audio.init();
       if (e.code === 'KeyM' && !(this.scene && this.scene.isPlaying && this.scene.isPlaying())) { this.muted = !this.muted; Audio.setMuted(this.muted); return; }
-      if (e.code === 'KeyP' && this.run && this.scene && !(this.scene instanceof PhoneScene) && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => new PhoneScene(() => here), 'slideL'); return; }
+      if (e.code === 'KeyP' && this.run && this.scene && !this.phoneOpen() && !(this.scene.isPlaying && this.scene.isPlaying())) { const here = this.scene; Audio.ui('select'); this.go(() => openPhoneScene(() => here), 'slideL'); return; }
       this.keys.add(e.code); if (this.trans.active) return; if (this.scene && this.scene.key) this.scene.key(e.code, e);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (this.scene && this.scene.keyUp) this.scene.keyUp(e.code); });
@@ -207,15 +211,16 @@ const Game = {
   openPhone(x, y) {
     const b = this.phoneBtn;
     if (!b || !this.run || !this.scene) return false;
-    if (this.scene instanceof PhoneScene) return false;
+    if (this.phoneOpen()) return false;
     if (this.scene.isPlaying && this.scene.isPlaying()) return false;
     if (x < b.x || x >= b.x + b.w || y < b.y || y >= b.y + b.h) return false;
     const here = this.scene, back = () => here;
     Audio.ui('select');
-    this.go(() => new PhoneScene(back), 'slideL');
+    this.go(() => openPhoneScene(back), 'slideL');
     return true;
   },
-  afterNode() { this.run.save(); this.setScene(new CityScene()); },
+  phoneOpen() { const s = this.scene; if (!s) return false; return (typeof PhoneScene !== 'undefined' && s instanceof PhoneScene) || (typeof LadybugPhone !== 'undefined' && s instanceof LadybugPhone); },
+  afterNode() { this.run.save(); this.setScene(gameHub()); },
 };
 function uiSlotMini(ctx, x, y, empty, s) { s = s || 11; rect(ctx, x, y, s, s, UI.goldOl); rect(ctx, x + 1, y + 1, s - 2, s - 2, empty ? '#5a4a38' : UI.gold); rect(ctx, x + 2, y + 2, s - 4, s - 4, empty ? '#4a3a2a' : UI.slot); }
 // Charm icon fallbacks: any icon name not in ICON_DEFS maps to a themed generated glyph

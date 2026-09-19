@@ -54,8 +54,8 @@ class TitleScene {
   constructor() {
     this.t = 0; this.page = 'main'; this.boot = 1;
     const items = [
-      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new DroneScene(() => new SelectScene()), 'fade', { dur: 0.55 }); } },
-      { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => r.nightPending ? new NightScene() : new CityScene(), 'iris'); } } },
+      { label: 'NEW GAME', onSelect: () => { RunState.clearSave(); Game.run = null; Game.go(() => new SelectScene(), 'fade', { dur: 0.55 }); } },
+      { label: 'CONTINUE', disabled: !RunState.hasSave(), onSelect: () => { const r = RunState.load(); if (r) { Game.run = r; Game.go(() => chapterResume(), 'iris'); } } },
       { label: 'HOW TO PLAY', onSelect: () => { this.page = 'help'; } },
       { label: Game.muted ? 'SOUND OFF' : 'SOUND ON', onSelect: (it) => { Game.muted = !Game.muted; Audio.setMuted(Game.muted); it.label = Game.muted ? 'SOUND OFF' : 'SOUND ON'; } },
     ];
@@ -189,7 +189,7 @@ class SelectScene {
       this.confirmT += dt;
       if (this.confirmT > 0.5 && !this.leaving) {
         this.leaving = true; this.phase = 'gone';
-        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.save(); return new ConcertScene({ straightIn: true }); }, 'fade', { dur: 0.9 });
+        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.chapter = 'vegas'; Game.run.save(); return beginJourney(); }, 'fade', { dur: 0.9 });
       }
     }
   }
