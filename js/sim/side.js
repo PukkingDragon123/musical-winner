@@ -452,12 +452,21 @@ class SideScene {
     }
     this.fx.draw(ctx);
     if (D.hud !== false && Game.run) Game.drawHud(ctx);
-    // ---- the name of the place
-    if (D.name && this.t < 4.5) {
-      const a = clamp(4.5 - this.t, 0, 1) * clamp(this.t * 2.5, 0, 1);
+    // ---- the name of the place, as a title card that gets out of the way
+    // It used to sit at the top and fight whatever the scene had put there -
+    // an objective line, a shop's own sign, the HUD. It is a card now: it
+    // lands in the middle of the frame over its own plate, holds, and goes.
+    if (D.name && this.t < 4.2) {
+      const a = clamp(4.2 - this.t, 0, 1) * clamp(this.t * 3, 0, 1);
+      const cy = D.nameY != null ? D.nameY : Math.round(H * 0.24);
+      const tw = Math.max(textWidth(D.name, { scale: 3 }), D.sub ? textWidth(D.sub, { scale: 2 }) : 0) + 56;
+      ctx.globalAlpha = a * 0.72;
+      rect(ctx, W / 2 - tw / 2, cy - 12, tw, D.sub ? 62 : 40, '#07060c');
+      rect(ctx, W / 2 - tw / 2, cy - 12, tw, 2, D.tint || '#7a1a2a');
+      rect(ctx, W / 2 - tw / 2, cy + (D.sub ? 48 : 26), tw, 2, D.tint || '#7a1a2a');
       ctx.globalAlpha = a;
-      uiRibbon(ctx, W / 2, D.hud === false ? 14 : 30, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
-      if (D.sub) drawText(ctx, D.sub, W / 2, (D.hud === false ? 14 : 30) + 30, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
+      uiRibbon(ctx, W / 2, cy, D.name, { scale: 3, color: D.tint || '#7a1a2a' });
+      if (D.sub) drawText(ctx, D.sub, W / 2, cy + 32, '#cfc9e6', { align: 'center', scale: 2, outline: '#12101c' });
       ctx.globalAlpha = 1;
     }
     if (this.msgT > 0) {
