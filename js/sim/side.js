@@ -132,7 +132,7 @@ class SideInput {
 class Bubble {
   constructor(text, opts = {}) {
     this.full = String(text); this.n = 0; this.t = 0;
-    this.who = opts.who || null; this.voice = opts.voice || null;
+    this.who = opts.who || null; this.voice = opts.voice === false ? false : (opts.voice || null);
     this.think = !!opts.think; this.col = opts.col || '#f6f2e0'; this.ink = opts.ink || '#241d28';
     this.maxChars = opts.maxChars || 34;
     this.lines = wrapText(this.full, this.maxChars);
@@ -262,7 +262,7 @@ class Dialogue {
 // }
 class SideScene {
   constructor(def, opts = {}) {
-    this.D = def; this.opts = opts; this.t = 0; this.fx = new Particles();
+    this.D = def; this.opts = opts; this.t = 0; this.fx = new Particles(); this.wfx = new Particles();
     this.you = (Game.run && Game.run.members[0]) || { spec: HERO_PRESETS.buzz };
     this.floors = def.floors || [{ y: 430, z: 1 }];
     this.props = (def.props || []).map(p => Object.assign({ floor: 0, w: 40, h: 40 }, p));
@@ -301,7 +301,9 @@ class SideScene {
   flash(m, secs) { this.msg = m; this.msgT = secs || 3.2; }
   // ---- talking
   say(who, text, voice, opts) {
-    this.dlg = new Dialogue([{ who, text, voice }], Object.assign({ onEnd: () => { this.dlg = null; } }, opts || {}));
+    const o = opts || {};
+    this.dlg = new Dialogue([{ who, text, voice, at: o.at || who || 'you', think: o.think }],
+      Object.assign({ onEnd: () => { this.dlg = null; } }, o));
   }
   run(script, onEnd) {
     this.dlg = new Dialogue(script, { onEnd: () => { this.dlg = null; if (onEnd) onEnd(); } });
@@ -344,8 +346,8 @@ class SideScene {
       const n = P.n;
       if (n.act && this.D.use) { this.D.use(this, n); return; }
       const line = typeof n.tag === 'function' ? n.tag(this) : n.tag;
-      if (Array.isArray(line)) this.run(line.map(l => ({ who: n.name, text: l, voice: n.voice })));
-      else this.say(n.name, line, n.voice);
+      if (Array.isArray(line)) this.run(line.map(l => ({ who: n.name, text: l, voice: n.voice, at: n.name })));
+      else this.say(n.name, line, n.voice, { at: n.name });
       return;
     }
     const p = P.p;
@@ -355,7 +357,7 @@ class SideScene {
   // ---- loop
   update(dt) {
     this.t += dt; this.msgT = Math.max(0, this.msgT - dt);
-    this.fx.update(dt);
+    this.fx.update(dt); this.wfx.update(dt);
     if (this.dlg) { this.dlg.update(dt); this.body.step(dt, 0, (x, f) => this.solid(x, f)); }
     else if (this.locked > 0) { this.locked -= dt; this.body.step(dt, 0, (x, f) => this.solid(x, f)); }
     else this.body.step(dt, this.input.ax, (x, f) => this.solid(x, f));
@@ -440,6 +442,7 @@ class SideScene {
     items.push({ f: this.body.fk, y: this.floorY(this.body.fk), z: 2, d: () => this.drawHero(ctx) });
     items.sort((a, b) => (a.f - b.f) || (a.y - b.y) || (a.z - b.z));
     for (const it of items) it.d();
+    this.wfx.draw(ctx);
     if (D.fore) D.fore(ctx, this, t);
     cam.pop(ctx);
     if (D.after) D.after(ctx, this, t);
@@ -520,7 +523,7 @@ SideScene.prototype.update = function (dt) {
   if (this.riding) {
     const R = this.riding;
     R.k = Math.min(1, R.k + dt / R.dur);
-    this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt);
+    this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt); this.wfx.update(dt);
     this.body.x = lerp(R.from.x, R.endX, easeInOut(R.k));
     this.body.fk = lerp(R.from.f, R.toFloor, easeInOut(R.k));
     this.body.moving = false;
@@ -537,7 +540,7 @@ SideScene.prototype.update = function (dt) {
     if (this.body.floor !== a.floor) this.body.goFloor(a.floor);
     if (Math.abs(d) < 6) { this.auto = null; this.input.clear(); if (a.cb) a.cb(); }
     else {
-      this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt);
+      this.t += dt; this.msgT = Math.max(0, this.msgT - dt); this.fx.update(dt); this.wfx.update(dt);
       this.body.step(dt, Math.sign(d) * (Math.abs(d) < 40 ? 0.5 : 1), (x, f) => this.solid(x, f));
       for (const n of this.npcs) this.stepNpc(n, dt);
       this.cam.follow(dt, this.body.x, this.floorY(this.body.fk), this.body.vx);

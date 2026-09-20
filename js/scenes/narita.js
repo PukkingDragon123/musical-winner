@@ -279,7 +279,7 @@ function nrtBridge(ctx, S, t, x0, x1) {
   // the handrail, the skirting, and the carpet
   rect(ctx, a, 330, b - a, 5, '#6a7284');
   rect(ctx, a, 335, b - a, 6, '#2f3644');
-  sideFloor(ctx, a, b, NRT_A_Y, { h: 120, col: '#4a4038', col2: '#413930', tile: 62, lip: '#6b5e50', shine: false });
+  sideFloor(ctx, a, b, NRT_A_Y, { h: 200, col: '#4a4038', col2: '#413930', tile: 62, lip: '#6b5e50', shine: false });
   // the join plates, which are the bit that always clanks
   for (let x = Math.floor(a / 176) * 176; x < b; x += 176) {
     rect(ctx, x, NRT_A_Y - 2, 12, 6, '#8a8f98');
@@ -316,7 +316,9 @@ function nrtBridgeWindow(ctx, x, y, w, h, t) {
 // six words in a language you are about to find out you do not have.
 function nrtWelcomeWall(ctx, t) {
   const a = NRT_A_WALL0, b = NRT_A_WALL1;
-  rect(ctx, a, 120, b - a, 330, '#2b3140');
+  // the wall stops at the floor line, not below it: anything past NRT_A_Y
+  // paints over the carpet and reads as a shadow nobody asked for
+  rect(ctx, a, 120, b - a, NRT_A_Y - 120, '#2b3140');
   rect(ctx, a, 120, b - a, 6, '#4c556a');
   // the mural: a mountain, flattened into six bands because that is all the
   // resolution a wall gets at this distance
@@ -360,7 +362,7 @@ function nrtImmigHall(ctx, S, t, x0, x1) {
   // FOREIGN PASSPORTS, in green, over the lane you are in
   nrtGreenSign(ctx, NRT_A_IMMIG - 96, 150, 190, 34, ['FOREIGN PASSPORTS'], 1, t);
   nrtGreenSign(ctx, NRT_A_IMMIG + 120, 150, 150, 34, ['BAGGAGE  EXIT'], 1, t);
-  sideFloor(ctx, a, b, NRT_A_Y, { h: 120, col: '#6d6a63', col2: '#5f5c56', tile: 52, lip: '#938f86', grout: true });
+  sideFloor(ctx, a, b, NRT_A_Y, { h: 200, col: '#6d6a63', col2: '#5f5c56', tile: 52, lip: '#938f86', grout: true });
 }
 // One booth. A desk, a screen the officer looks at instead of you, a camera
 // on a stalk, and a light that is red until it is not.
@@ -421,7 +423,7 @@ function nrtBaggageHall(ctx, S, t, x0, x1) {
   // BELT 4 painted enormous on the back wall, because people look up
   drawText(ctx, 'BELT 4', NRT_A_BELT, 200, withAlpha('#7a8494', 0.9), { align: 'center', scale: 6 });
   nrtKanaBoard(ctx, NRT_A_BELT - 60, 246, 120, 18, '#8a94a4', t, 29);
-  sideFloor(ctx, a, b, NRT_A_Y, { h: 120, col: '#6d6a63', col2: '#5f5c56', tile: 52, lip: '#938f86', grout: true });
+  sideFloor(ctx, a, b, NRT_A_Y, { h: 200, col: '#6d6a63', col2: '#5f5c56', tile: 52, lip: '#938f86', grout: true });
   // the customs arches at the end: one red, one green, and a hard choice
   if (b > NRT_A_CUSTOMS - 80) {
     nrtCustomsArch(ctx, NRT_A_CUSTOMS - 46, '#c8402c', 'RED', 'GOODS TO DECLARE', t);
@@ -567,16 +569,28 @@ function nrtArrivalDef() {
     // ---- the corridor, drawn in slices, so only what is on screen is painted
     mid: function (ctx, S, t) {
       const x0 = S.cam.wx(-160), x1 = S.cam.wx(W + 160);
-      // the generic walls and floor everywhere the set pieces are not
-      rect(ctx, x0, 100, x1 - x0, 360, '#333a48');
-      sideFloor(ctx, x0, x1, NRT_A_Y, { h: 130, col: NRT_PAL.floor, col2: NRT_PAL.floorLo, tile: 52, lip: NRT_PAL.floorHi, grout: true });
+      // The generic walls and floor everywhere the set pieces are not. The
+      // camera sits high enough to see above the set pieces, so the plenum -
+      // the dark tray of ducts and hangers above the ceiling line - gets
+      // painted too, otherwise the top of frame is a bare black strip.
+      rect(ctx, x0, 20, x1 - x0, 440, '#333a48');
+      rect(ctx, x0, 20, x1 - x0, 92, '#191d26');
+      for (let x = Math.floor(x0 / 96) * 96; x < x1; x += 96) {
+        rect(ctx, x, 20, 4, 92, '#232834');
+        rect(ctx, x + 18, 46, 60, 7, '#2c323f');       // a duct running the length of it
+        rect(ctx, x + 18, 46, 60, 2, '#3c4352');
+        rect(ctx, x + 44, 53, 3, 30, '#232834');       // and the hanger holding it up
+      }
+      // the floor is drawn deep on purpose: at this yBias the bottom of the
+      // screen is 160px below the floor line and anything shallower shows sky
+      sideFloor(ctx, x0, x1, NRT_A_Y, { h: 210, col: NRT_PAL.floor, col2: NRT_PAL.floorLo, tile: 52, lip: NRT_PAL.floorHi, grout: true });
       if (x0 < 240) nrtCabinSlice(ctx, t);
       nrtBridge(ctx, S, t, x0, x1);
       if (x1 > NRT_A_WALL0 && x0 < NRT_A_WALL1) nrtWelcomeWall(ctx, t);
       // the long corridor between the wall and immigration
       if (x1 > NRT_A_WALL1 && x0 < 1340) {
         const a = Math.max(x0, NRT_A_WALL1), b = Math.min(x1, 1340);
-        rect(ctx, a, 120, b - a, 330, '#3a4150');
+        rect(ctx, a, 120, b - a, NRT_A_Y - 120, '#3a4150');
         rect(ctx, a, 120, b - a, 5, '#59627a');
         for (let x = Math.floor(a / 64) * 64; x < b; x += 64) {
           rect(ctx, x, 124, 2, 210, '#2b3140');
@@ -956,12 +970,16 @@ function nrtLayout() {
 // The roof. In real life it is a hundred metres of glazing on white steel; at
 // this size it is three bands of sky, a lot of diagonals, and dust in the air.
 function nrtRoof(ctx, S, t, x0, x1) {
-  vgrad(ctx, x0, -40, x1 - x0, 190, '#c6d4e0', '#8fa2b4');
+  // it starts well above the frame: on the upper level the camera rides up
+  // and anything shallower than this leaves a strip of bare sky over the glass
+  vgrad(ctx, x0, -280, x1 - x0, 430, '#c6d4e0', '#8fa2b4');
   // the glazing bars, and the grey afternoon coming through them
   for (let x = Math.floor(x0 / 58) * 58; x < x1; x += 58) {
-    rect(ctx, x, -40, 3, 190, '#e6ecf2');
-    ctx.globalAlpha = 0.18; rect(ctx, x + 3, -40, 24, 190, '#ffffff'); ctx.globalAlpha = 1;
+    rect(ctx, x, -280, 3, 430, '#e6ecf2');
+    ctx.globalAlpha = 0.18; rect(ctx, x + 3, -280, 24, 430, '#ffffff'); ctx.globalAlpha = 1;
   }
+  // a second, higher truss for the air the upper level can see into
+  nrtTruss(ctx, x0, x1, -66, 30, 3);
   nrtTruss(ctx, x0, x1, 86, 34, 5);
   nrtTruss(ctx, x0, x1, 126, 14, 9);
   // the service run bolted under the trusses, because nothing is ever tidy
@@ -1127,6 +1145,72 @@ function nrtBed(ctx, x, base, w, t, seed) {
   ctx.globalAlpha = 0.4; rect(ctx, x - w / 2 + 3, base - 24, w - 6, 4, '#3a2f22'); ctx.globalAlpha = 1;
   if (seed % 3 === 0) rect(ctx, x + w * 0.3, base - 30, 5, 8, '#bfe0ff');
 }
+// The wall behind the arrivals floor. There is a hundred and sixty pixels of
+// building between the underside of the mezzanine and the ground, and the shop
+// runs only cover three stretches of it; the rest is wall. A wall in an airport
+// is never blank, so it gets piers, a dado, a scuffed skirting, and whatever
+// the building bolts up when it has run out of shops to put there.
+function nrtBackWall(ctx, S, t, x0, x1) {
+  const top = NRT_T_UP + 36, bot = NRT_T_DOWN;
+  rect(ctx, x0, top, x1 - x0, bot - top, '#434a59');
+  vgrad(ctx, x0, top, x1 - x0, Math.round((bot - top) * 0.6), '#4d5464', '#3c4351');
+  rect(ctx, x0, top, x1 - x0, 3, '#616a7d');
+  // the piers, every eight metres or so, which are the only rhythm a wall has
+  for (let x = Math.floor(x0 / 168) * 168; x < x1; x += 168) {
+    rect(ctx, x, top, 26, bot - top, '#4e5666');
+    rect(ctx, x, top, 5, bot - top, '#69728a');
+    rect(ctx, x + 21, top, 5, bot - top, '#343b49');
+  }
+  // the dado rail, the darker panel under it, and the skirting that every
+  // trolley in the building has hit at least once
+  rect(ctx, x0, bot - 54, x1 - x0, 4, '#2f3644');
+  rect(ctx, x0, bot - 50, x1 - x0, 50, '#3a4150');
+  rect(ctx, x0, bot - 50, x1 - x0, 2, '#59627a');
+  rect(ctx, x0, bot - 13, x1 - x0, 13, '#2b313d');
+  ctx.globalAlpha = 0.12;
+  for (let x = Math.floor(x0 / 37) * 37; x < x1; x += 37) rect(ctx, x, bot - 13, 3, 13, '#000000');
+  ctx.globalAlpha = 1;
+  // the light falling down off the lit fascia above it
+  ctx.globalAlpha = 0.07; rect(ctx, x0, top, x1 - x0, 46, '#ffe9a8'); ctx.globalAlpha = 1;
+  // and the three things that end up on a wall with no shop on it
+  for (let x = Math.floor(x0 / 420) * 420; x < x1; x += 420) {
+    const k = Math.abs(Math.round(x / 420)) % 3;
+    if (k === 0) {
+      const ax = x + 90;
+      rect(ctx, ax, top + 28, 118, 70, '#1b2230');
+      rect(ctx, ax + 3, top + 31, 112, 64, '#2f4a68');
+      ctx.globalAlpha = 0.18; rect(ctx, ax + 3, top + 31, 112, 22, '#ffffff'); ctx.globalAlpha = 1;
+      drawText(ctx, 'TOKYO', ax + 10, top + 42, withAlpha('#f4f1ea', 0.88), { scale: 3 });
+      drawText(ctx, 'IS THAT WAY', ax + 10, top + 70, withAlpha('#f4f1ea', 0.6), { font: 'small' });
+      frame(ctx, ax, top + 28, 118, 70, '#0d1018');
+      ctx.globalAlpha = 0.08; ellipsePx(ctx, ax + 59, top + 112, 82, 46, '#cfe4f4'); ctx.globalAlpha = 1;
+    } else if (k === 1) {
+      // a run of signage nobody in your party can read, backlit and honest
+      nrtKanaBoard(ctx, x + 120, top + 38, 152, 22, '#8fa0b0', t, Math.abs(Math.round(x / 420)) + 4);
+      rect(ctx, x + 120, top + 66, 152, 3, '#59627a');
+    } else {
+      // a clock, which is right, and which everybody checks against a phone
+      const cx = x + 180, cy = top + 60;
+      circle(ctx, cx, cy, 26, '#e8e4da');
+      ringPx(ctx, cx, cy, 26, '#2a2f3a');
+      ringPx(ctx, cx, cy, 25, '#b8b2a6');
+      for (let i = 0; i < 12; i++) rect(ctx, cx + Math.cos(i * Math.PI / 6) * 20 - 1, cy + Math.sin(i * Math.PI / 6) * 20 - 1, 2, 2, '#4a4f58');
+      line(ctx, cx, cy, cx + Math.cos(-1.15) * 12, cy + Math.sin(-1.15) * 12, '#241d28');
+      line(ctx, cx, cy, cx + Math.cos(-0.3) * 19, cy + Math.sin(-0.3) * 19, '#241d28');
+      const sa = t * 0.1047 - Math.PI / 2;
+      line(ctx, cx, cy, cx + Math.cos(sa) * 21, cy + Math.sin(sa) * 21, '#c8402c');
+      circle(ctx, cx, cy, 2, '#241d28');
+    }
+  }
+}
+// The zone name for a band, whether or not the catalogue got as far as it.
+function nrtBandLabel(i) {
+  const band = NRT_BANDS[i];
+  if (!band) return 'SHOPS';
+  if (band.label) return band.label;
+  const zones = band.floor === 1 ? NRT_ZONES_F1 : NRT_ZONES_F0;
+  return NRT_BAND_NAMES[zones[i % zones.length]] || 'SHOPS';
+}
 // Every shopfront on both levels, drawn back to front, before the crowds.
 function nrtDrawShops(ctx, S, t, floor) {
   const L = nrtLayout();
@@ -1137,16 +1221,23 @@ function nrtDrawShops(ctx, S, t, floor) {
     if (!S.cam.visible(s.x, s.w + 160)) continue;
     sideShopFront(ctx, s.x - s.w / 2, base, s.w, s.h, s.brand, t, S);
   }
-  // the band names, hung over the middle of each run of shops. Only on the
-  // near level: upstairs the trusses already own that strip of air.
+  // The band names. There is exactly one strip of this building that is free
+  // all day, and it is the lit fascia on the edge of the mezzanine, so that is
+  // where a terminal letters its zones. Hung anywhere else it lands on top of
+  // the upstairs shopfronts, which is where it used to land.
   if (floor !== 1) return;
   for (let b = 0; b < NRT_BANDS.length; b++) {
     const band = NRT_BANDS[b];
     if (band.floor !== floor) continue;
     const cx = (band.x0 + band.x1) / 2;
     if (!S.cam.visible(cx, 400)) continue;
-    nrtKanaBoard(ctx, cx - 54, base - 214, 108, 14, NRT_PAL.gold, t, b * 13 + 5);
-    if (band.label) drawText(ctx, band.label, cx, base - 196, withAlpha(NRT_PAL.cream, 0.55), { align: 'center', scale: 2 });
+    const nm = nrtBandLabel(b);
+    const bw = textWidth(nm, { scale: 2 }) + 40;
+    rect(ctx, cx - bw / 2, NRT_T_UP + 21, bw, 18, '#39404e');
+    rect(ctx, cx - bw / 2, NRT_T_UP + 21, bw, 2, '#5c6577');
+    rect(ctx, cx - bw / 2, NRT_T_UP + 37, bw, 2, '#22262f');
+    drawText(ctx, nm, cx, NRT_T_UP + 24, withAlpha(NRT_PAL.cream, 0.82), { align: 'center', scale: 2 });
+    nrtKanaBoard(ctx, cx - bw / 2 - 36, NRT_T_UP + 21, 32, 18, NRT_PAL.gold, t, b * 13 + 5);
   }
 }
 
@@ -1253,7 +1344,10 @@ function nrtTerminalNpcs() {
   const props = nrtTerminalProps();
   const down = nrtFreeSpots(props, 1, 180, NRT_T_W - 260, 200);
   const up = nrtFreeSpots(props, 0, 1100, 6700, 220);
-  const poses = ['idle', 'talk', 'idle', 'sleep', 'idle', 'cheer', 'talk', 'idle', 'idle', 'talk', 'idle', 'idle'];
+  // 'sleep' is not a pose the sprite builder knows: it falls through to idle
+  // and the bug who has been here nine hours stands up straight. 'sad' is the
+  // slumped one, which is what a man asleep sitting up in a suit looks like.
+  const poses = ['idle', 'talk', 'idle', 'sad', 'idle', 'cheer', 'talk', 'idle', 'idle', 'talk', 'idle', 'idle'];
   const carries = [null, null, null, null, 'bag', null, null, null, 'coffee', 'phone', 'suitcase', null];
   const out = [];
   for (let i = 0; i < 12; i++) {
@@ -1392,10 +1486,12 @@ function nrtTerminalDef() {
       nrtUpperSlab(ctx, S, t, x0, x1);
       nrtDrawShops(ctx, S, t, 0);
       drawSideCrowd(ctx, S, S.nrtCrowdUp, t, { x0: 1000, x1: 6700, y: NRT_T_UP, dim: 0.35 });
+      // the wall the arrivals floor stands against, everywhere a shop is not
+      nrtBackWall(ctx, S, t, x0, x1);
       // the glass lift shaft, which runs through both levels
       nrtLiftShaft(ctx, S, t);
       // the arrivals floor, its shops, and everybody on that
-      sideFloor(ctx, x0, x1, NRT_T_DOWN, { h: 140, col: NRT_PAL.floor, col2: NRT_PAL.floorLo, tile: 56, lip: NRT_PAL.floorHi, grout: true });
+      sideFloor(ctx, x0, x1, NRT_T_DOWN, { h: 210, col: NRT_PAL.floor, col2: NRT_PAL.floorLo, tile: 56, lip: NRT_PAL.floorHi, grout: true });
       // the green line painted on the floor, which is the honest wayfinding
       ctx.globalAlpha = 0.5;
       for (let x = Math.floor(x0 / 34) * 34; x < x1; x += 34) rect(ctx, x, NRT_T_DOWN + 26, 22, 4, NRT_PAL.greenHi);
@@ -1404,7 +1500,9 @@ function nrtTerminalDef() {
       // the pillars, in the gaps between the shop runs
       const pillars = [800, 2580, 4420, 6320, 7280];
       for (let i = 0; i < pillars.length; i++) if (S.cam.visible(pillars[i], 120)) nrtBannerPillar(ctx, pillars[i], 190, NRT_T_DOWN, i, t);
-      drawSideCrowd(ctx, S, S.nrtCrowdDown, t, { x0: 160, x1: NRT_T_W - 200, dim: 0.16 });
+      // NB the y: without it drawSideCrowd falls back to floorY(0), which is
+      // the mezzanine, and forty people walk along the balcony rail
+      drawSideCrowd(ctx, S, S.nrtCrowdDown, t, { x0: 160, x1: NRT_T_W - 200, y: NRT_T_DOWN, dim: 0.16 });
     },
 
     fore: function (ctx, S, t) {
@@ -1659,7 +1757,7 @@ function nrtPlanPanel(ctx, S, t) {
       const bx = mx + mw * (band.x0 / NRT_T_W), bw = mw * ((band.x1 - band.x0) / NRT_T_W);
       rect(ctx, bx, my + 14, bw, 16, '#2f8f4a');
       rect(ctx, bx, my + 14, bw, 2, '#6be585');
-      drawText(ctx, band.name, bx + 2, my + 19, '#f4f1ea', { font: 'small' });
+      drawText(ctx, nrtBandLabel(b), bx + 2, my + 19, '#f4f1ea', { font: 'small' });
     }
     if (f === 1) {
       rect(ctx, mx + mw - 20, my + 14, 20, 16, '#c8402c');
@@ -1873,7 +1971,7 @@ function nrtKerbDef() {
       // the vehicles waiting at their numbered gates
       if (S.cam.visible(710, 340)) nrtBus(ctx, 560, 404, t);
       for (let i = 0; i < 3; i++) if (S.cam.visible(1084 + i * 150, 220)) nrtTaxi(ctx, 1020 + i * 150, 404, t, i);
-      sideFloor(ctx, x0, x1, NRT_K_Y, { h: 120, col: '#8b867c', col2: '#7a7570', tile: 54, lip: '#adA79a', grout: true });
+      sideFloor(ctx, x0, x1, NRT_K_Y, { h: 210, col: '#8b867c', col2: '#7a7570', tile: 54, lip: '#ada79a', grout: true });
       // the yellow tactile strip along the kerb edge
       for (let x = Math.floor(x0 / 12) * 12; x < x1; x += 12) rect(ctx, x, NRT_K_Y - 2, 8, 5, '#d8b23a');
     },

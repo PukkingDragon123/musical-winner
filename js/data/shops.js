@@ -52,6 +52,10 @@ const SHOP_KIND_LOOK = {
   sport:   { name: 'SPORT',       label: 'BROWSE', tint: '#14284a' },
   kids:    { name: 'PLAY AREA',   label: 'LOOK',   tint: '#7a4a18' },
   lounge:  { name: 'LOUNGE',      label: 'LOOK',   tint: '#1b2a44' },
+  // Two kinds that live outside this airport. The Tokyo street carries its own
+  // shop rows for them, and looks the name up in here, so the names live here.
+  music:   { name: 'USED GEAR',    label: 'GO IN',  tint: '#3a3446' },
+  hotel:   { name: 'FRONT DESK',   label: 'ASK',    tint: '#1b2a3e' },
 };
 
 // ---------- the shops ----------
@@ -235,7 +239,7 @@ const SHOPS = [
   },
   {
     id: 'mossburger', name: 'MOSS BURGER', tag: 'RICE BUNS', kind: 'fast', logo: 'crown',
-    col: '#2f6a3a', col2: '#f2e0a0', inner: '#1b4224', w: 140, enter: false, zone: 'foodcourt',
+    col: '#2f6a3a', col2: '#f2e0a0', inner: '#1b4224', w: 140, enter: true, zone: 'foodcourt',
     blurb: 'Slower than the other burger place because they make it after you ask.',
   },
 
@@ -523,6 +527,22 @@ const SHOP_STOCK = {
     { name: 'CHOCOLATE POTATO CHIPS', price: 10, icon: 'food', kind: 'food', stam: 12, effect: 'gift', line: 'Half dipped, half salt. Should not work. Has worked since 1976.' },
     { name: 'SINGLE BAR', price: 5, icon: 'food', kind: 'food', stam: 9, effect: 'sugar', line: 'For eating on the kerb outside while waiting for a car.' },
     { name: 'ICE PACK', price: 1, icon: 'permit', kind: 'item', effect: 'luck', line: 'They offer it before you ask, and they are right to.' },
+  ],
+
+  // ---- not in this building at all ----
+  // AMP OFF is a second-hand shop on a Tokyo side street, and js/scenes/street2.js
+  // carries its own row for it. Stock is looked up by id, so the shelf can live
+  // here with all the other shelves instead of being stranded in a scene file.
+  ampoff: [
+    { name: 'PATCH CABLE, USED', price: 5, icon: 'strings', kind: 'gear', effect: 'gear', line: 'Coiled by somebody who knew how. It has been somewhere.' },
+    { name: 'STRINGS, MIXED GAUGES', price: 6, icon: 'strings', kind: 'gear', effect: 'gear', line: 'An opened packet with four left in it, sold at four fifths of the price.' },
+    { name: 'CLIP TUNER, SECONDHAND', price: 5, icon: 'metronome', kind: 'gear', effect: 'gear', line: 'Somebody else name is worn off the back of it. It still goes green.' },
+    { name: 'PICKS IN A TIN', price: 3, icon: 'pick', kind: 'gear', effect: 'gear', line: 'Thirty of them, every one a different shop, every one a different night.' },
+    { name: 'GIG BAG, TAPED SEAM', price: 14, icon: 'bag', kind: 'gear', effect: 'gear', line: 'The tape is the same colour as the bag. Somebody cared about that.' },
+    { name: 'EAR PLUGS, FOR THE VAN', price: 2, icon: 'earplugs', kind: 'gear', effect: 'gear', line: 'Behind the till, in a jar, next to a sign that says PLEASE.' },
+    { name: 'MIC STAND, NO BOOM', price: 16, icon: 'amp', kind: 'gear', effect: 'gear', line: 'Straight, heavy, and it will not creep down in the middle of a song.' },
+    { name: 'HEADPHONES, ONE EAR LOUD', price: 9, icon: 'headphones', kind: 'gear', effect: 'gear', line: 'Priced in felt pen at a third, and honest about it on the label.' },
+    { name: 'STAVE PAD, HALF USED', price: 2, icon: 'book', kind: 'item', effect: 'read', line: 'Eleven pages of somebody else song, then blank. They sell it anyway.' },
   ],
 };
 

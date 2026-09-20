@@ -225,9 +225,27 @@ class GigScene {
     T.maxCombo = Math.max(T.maxCombo, res.maxCombo);
     if (this.backing) this.backing.stopped = true;
     if (this.songIdx + 1 < this.setlist.length) {
+      Audio.applause(0.6, 1.1);
+      // One song down, and the room is still yours: take something off the
+      // table before the next record goes on.
+      if (typeof UpgradeScene === 'function') {
+        const here = this;
+        Game.go(() => new UpgradeScene({
+          run: Game.run, songIndex: this.songIdx,
+          title: 'SONG ' + (this.songIdx + 1) + ' DOWN',
+          onDone: () => {
+            Game.go(() => {
+              here.songBreak = { t: 0, next: here.setlist[here.songIdx + 1] };
+              here.phase = 'break';
+              here.mods = Game.run.gigMods(here.performers, here.difficulty, here.bossMod);
+              return here;
+            }, 'fade', { dur: 0.5 });
+          },
+        }), 'fade', { dur: 0.5 });
+        return;
+      }
       this.songBreak = { t: 0, next: this.setlist[this.songIdx + 1] };
       this.phase = 'break';
-      Audio.applause(0.6, 1.1);
       return;
     }
     this.finish();
@@ -256,6 +274,10 @@ class GigScene {
     const st = 20 * (r.perks.stamina || 1) + (this.mods.staminaExtra || 0); this.xpLines = [];
     for (const m of this.performers) { m.stamina = Math.max(0, m.stamina - st * (m.hunger ? 1.4 : 1)); m.gigs++; const xp = 0.5 + res.acc * 1.5; m.xp += xp; let up = 0; while (m.xp >= 3 && m.skill < 10) { m.xp -= 3; m.skill++; up++; } if (up) this.xpLines.push(m.name + ' LV' + m.skill); }
     this.grade = res.acc >= 0.95 ? 'S' : res.acc >= 0.85 ? 'A' : res.acc >= 0.7 ? 'B' : res.acc >= 0.5 ? 'C' : 'D';
+    // somebody in the third row filmed it on a phone
+    if (typeof grantFollowers === 'function') {
+      this.fame = grantFollowers(r, { acc: res.acc, perfects: res.perfect, maxCombo: res.maxCombo, watchers: this.crowd.watchers.length, mode: this.mode });
+    }
     this.phase = 'tally'; this.tallyT = 0; this.tallyStep = 0; this.tallyDone = false;
     if (res.acc >= 0.7) Audio.applause(clamp(res.acc, 0.3, 1), 1.5);
     r.save();

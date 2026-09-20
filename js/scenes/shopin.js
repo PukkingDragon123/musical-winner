@@ -616,7 +616,11 @@ function shopinCeiling(ctx, S, t) {
     } else {
       // a recessed fluorescent tray, flat white, with the faint flicker one
       // tube in every shop has and nobody has ever replaced
-      const flick = (Math.sin(t * 27 + cx * 0.3) > -0.94 || (cx % 240 !== 0)) ? 1 : 0.55;
+      // Every third tube along is the one nobody has replaced. It does not
+      // strobe; it just drops out for a frame or two and comes back, which is
+      // the thing that makes you look up and then decide you imagined it.
+      const bad = Math.abs(Math.round(cx / step)) % 3 === 1;
+      const flick = (bad && Math.sin(t * 23 + cx * 0.11) > 0.93) ? 0.45 : 1;
       rect(ctx, cx - 34, ceil - 12, 68, 12, '#c8ccd2');
       rect(ctx, cx - 31, ceil - 9, 62, 9, '#eef2f6');
       ctx.globalAlpha = 0.9 * flick; rect(ctx, cx - 29, ceil - 8, 58, 7, I.lightCol); ctx.globalAlpha = 1;
@@ -769,7 +773,7 @@ function shopinProp(ctx, p, t, S) {
       // the bag rack and the hot case of things nobody ordered
       rect(ctx, x + 2, y - 16, 8, 16, '#8a8f98');
       for (let i = 0; i < 3; i++) { ctx.globalAlpha = 0.5; rect(ctx, x + 1, y - 14 + i * 5, 11, 3, '#f4f8fa'); ctx.globalAlpha = 1; }
-      if (p.label) { rect(ctx, p.x - 30, y - 52, 60, 14, B.col); frame(ctx, p.x - 30, y - 52, 60, 14, darken(B.col, 0.4)); drawText(ctx, 'TILL', p.x, y - 49, B.col2 || '#f4f1ea', { align: 'center', font: 'small' }); }
+      if (p.label) { rect(ctx, p.x - 30, y - 52, 60, 14, B.col); frame(ctx, p.x - 30, y - 52, 60, 14, darken(B.col, 0.4)); drawText(ctx, p.label, p.x, y - 49, B.col2 || '#f4f1ea', { align: 'center', font: 'small' }); }
       return true;
     }
     // ---- the wall of cold drinks: the single best thing about being awake at 3am
@@ -1053,8 +1057,11 @@ function shopinProp2(ctx, p, t, S) {
       rect(ctx, x - 3, y - 3, w + 6, h + 6, '#6a4a2e');
       rect(ctx, x - 3, y - 3, w + 6, 3, '#8a6440');
       rect(ctx, x, y, w, h, '#b58a52');
+      // One stream of numbers, drawn in order, rather than ninety generators
+      // a frame: the speckle is identical and the room stops costing anything.
+      const rs = makeRng(hashStr(B.id + 'speckle'));
       ctx.globalAlpha = 0.25;
-      for (let i = 0; i < 90; i++) { const r2 = makeRng(hashStr('cork' + i)); rect(ctx, x + r2() * w, y + r2() * h, 1, 1, '#6a4a2e'); }
+      for (let i = 0; i < 90; i++) rect(ctx, x + rs() * w, y + rs() * h, 1, 1, '#6a4a2e');
       ctx.globalAlpha = 1;
       const r = makeRng(hashStr(B.id + 'cork'));
       for (let i = 0; i < 7; i++) {
@@ -1234,6 +1241,82 @@ function shopinProp2(ctx, p, t, S) {
       frame(ctx, p.x - 14, y - 40, 28, 16, '#c8402c');
       drawText(ctx, p.sign || 'SALE', p.x, y - 36, '#c8402c', { align: 'center', font: 'small' });
       rect(ctx, p.x - 1, y - 24, 2, 24, '#8a8f98');
+      return true;
+    }
+    // ---- the table you sit at, which in the shared library is a plank on
+    // two legs. In a coffee place it is the thing you look at for an hour,
+    // so it gets a banded edge, a pedestal, and whatever the last person
+    // left on it: a cup with a ring under it, a napkin, a sugar caddy.
+    case 'table': {
+      shade();
+      const r = makeRng(hashStr(B.id + 'tbl' + p.x));
+      rect(ctx, x + 2, y + 4, w - 4, 4, darken('#6a4a2e', 0.2));
+      rect(ctx, x, y, w, 5, '#a8784a');
+      rect(ctx, x, y, w, 2, '#c99a62');
+      rect(ctx, x + 1, y + 5, w - 2, 2, '#7a5636');
+      // one column and a cross foot, so it reads as a cafe table and not a desk
+      rect(ctx, p.x - 5, y + 7, 10, h - 12, '#4a3220');
+      rect(ctx, p.x - 5, y + 7, 3, h - 12, '#6a4a2e');
+      rect(ctx, x + 8, base - 5, w - 16, 5, '#3a2a1a');
+      rect(ctx, x + 8, base - 5, w - 16, 2, '#5a4230');
+      // the sugar caddy, always at the wall end
+      rect(ctx, x + w - 22, y - 11, 13, 11, '#cfc8ba');
+      rect(ctx, x + w - 22, y - 11, 13, 2, '#e8e2d6');
+      for (let i = 0; i < 3; i++) rect(ctx, x + w - 20 + i * 4, y - 9, 2, 6, ['#c8402c', '#f4f1ea', '#8a5a3a'][i]);
+      // and the cup somebody has not taken back yet
+      if (r.chance(0.7)) {
+        const cx3 = x + 20 + Math.round(r.range(0, Math.max(1, w - 58)));
+        ctx.globalAlpha = 0.2; ellipsePx(ctx, cx3 + 6, y + 1, 9, 2, '#000000'); ctx.globalAlpha = 1;
+        rect(ctx, cx3, y - 3, 13, 3, '#f4f1ea');
+        rect(ctx, cx3 + 1, y - 12, 11, 9, '#f4f1ea');
+        rect(ctx, cx3 + 1, y - 12, 11, 2, '#ffffff');
+        rect(ctx, cx3 + 2, y - 11, 9, 2, '#8a6a44');
+        rect(ctx, cx3 + 12, y - 10, 3, 4, '#ddd6c6');
+      }
+      if (r.chance(0.5)) { rect(ctx, x + 6, y - 2, 11, 2, '#f2eee2'); rect(ctx, x + 6, y - 2, 11, 1, '#ffffff'); }
+      return true;
+    }
+    // ---- a stool: a padded seat, a footring, and four feet that have been
+    // dragged across the same tile a thousand times
+    case 'stool': {
+      shade();
+      const seatH = 7;
+      rect(ctx, x, y + 1, w, seatH, '#8a3a2a');
+      rect(ctx, x, y, w, 3, '#b0523a');
+      rect(ctx, x, y + seatH, w, 2, '#5a2016');
+      rect(ctx, x + 1, y + 1, w - 2, 1, withAlpha('#ffffff', 0.35));
+      rect(ctx, p.x - 3, y + seatH + 2, 6, h - seatH - 4, '#6a7079');
+      rect(ctx, p.x - 3, y + seatH + 2, 2, h - seatH - 4, '#9aa2aa');
+      const ry2 = base - 11;
+      rect(ctx, x + 3, ry2, w - 6, 2, '#8a8f98');
+      rect(ctx, x + 3, ry2, w - 6, 1, '#c0c8d0');
+      rect(ctx, x + 2, base - 3, 4, 3, '#4a4c56');
+      rect(ctx, x + w - 6, base - 3, 4, 3, '#4a4c56');
+      if (p.sat) { ctx.globalAlpha = 0.25; rect(ctx, x, y, w, seatH, '#ffd24a'); ctx.globalAlpha = 1; }
+      return true;
+    }
+    // ---- the bin, which in this country is never one bin. Two bodies, two
+    // lids, two pictograms, and a long moment of standing there deciding.
+    case 'bin': {
+      shade();
+      const bw2 = Math.floor((w - 2) / 2);
+      for (let i = 0; i < 2; i++) {
+        const bx2 = x + i * (bw2 + 2);
+        const lid = i ? '#2f6fc0' : '#c8402c';
+        rect(ctx, bx2, y + 10, bw2, h - 10, '#dfe4e8');
+        rect(ctx, bx2, y + 10, 3, h - 10, '#f2f6f8');
+        rect(ctx, bx2 + bw2 - 3, y + 10, 3, h - 10, '#a8b0b6');
+        rect(ctx, bx2 - 2, y + 4, bw2 + 4, 7, lid);
+        rect(ctx, bx2 - 2, y + 4, bw2 + 4, 2, lighten(lid, 0.35));
+        rect(ctx, bx2 - 2, y + 10, bw2 + 4, 1, darken(lid, 0.4));
+        // the mouth cut in the lid, and the liner showing through it
+        rect(ctx, bx2 + 2, y + 6, bw2 - 4, 3, '#14181c');
+        // the label plate, which is the whole reason you hesitated
+        rect(ctx, bx2 + 1, y + 16, bw2 - 2, 9, '#f4f1ea');
+        rect(ctx, bx2 + 2, y + 18, bw2 - 4, 2, darken(lid, 0.1));
+        rect(ctx, bx2 + 2, y + 21, Math.max(2, bw2 - 7), 1, '#8a8478');
+        rect(ctx, bx2, base - 3, bw2, 3, '#9aa2aa');
+      }
       return true;
     }
     default: return false;
@@ -1479,7 +1562,11 @@ function shopinClosePanel(S) {
 }
 function shopinPanelMove(S, d) {
   const I = S.SI, P = I.panel, list = P.p.items;
-  P.idx = (P.idx + d + list.length) % list.length;
+  if (!list || !list.length) return;
+  // A page jump is a whole screen of rows, which is more rows than a short
+  // shelf has. One modulo is not enough to bring that back into range, so
+  // wrap it twice and let a two-item shelf be paged like any other.
+  P.idx = (((P.idx + d) % list.length) + list.length) % list.length;
   const vis = SHOPIN_ROWS;
   if (P.idx < P.scroll) P.scroll = P.idx;
   if (P.idx >= P.scroll + vis) P.scroll = P.idx - vis + 1;
@@ -1680,6 +1767,12 @@ function shopinDrawPanel(ctx, S, t) {
   drawText(ctx, 'IN YOUR POCKET', bx + bw - 14, by + 28, withAlpha(c2, 0.6), { align: 'right', font: 'small' });
   // ---- the shelf tags down the left
   const list = P.p.items;
+  // A shelf can only be emptied by the dealer before the room opens, never
+  // while you are stood at it, but a panel with nothing in it would read the
+  // product off the end of the list, so it simply shuts instead.
+  if (!list || !list.length) { I.panel = null; return; }
+  P.idx = clamp(P.idx, 0, list.length - 1);
+  P.scroll = clamp(P.scroll, 0, Math.max(0, list.length - SHOPIN_ROWS));
   P.rows = [];
   const lx = bx + 12, ly = by + 46, lw = 300, rh = 30;
   rect(ctx, lx - 2, ly - 2, lw + 4, SHOPIN_ROWS * rh + 4, '#ddd6c6');
@@ -1913,24 +2006,58 @@ function shopinBackdrop(ctx, S, t) {
       drawText(ctx, i % 2 ? 'THIS WEEK' : 'FROM THE CASE', bx, C + 48, withAlpha('#f4f1ea', 0.75), { align: 'center', font: 'small' });
     }
   } else if (kind === 'coffee') {
-    // white tile behind the bar, a wooden rail, and the chalk nobody redrew
-    rect(ctx, 600, C + 24, 520, F - C - 40, '#e8e4da');
-    for (let gy = C + 24; gy < F - 16; gy += 18) { rect(ctx, 600, gy, 520, 1, '#cfc8ba'); for (let gx = 600 + ((Math.round(gy / 18) % 2) * 13); gx < 1120; gx += 26) rect(ctx, gx, gy - 17, 1, 17, '#d8d2c2'); }
-    rect(ctx, 600, C + 20, 520, 5, '#6a4a2e');
-    rect(ctx, 120, C + 30, 340, 110, '#3a2a1e');
-    for (let i = 0; i < 4; i++) rect(ctx, 130 + i * 84, C + 34, 76, 102, '#2a1e16');
-    // framed things on the wall: a map, a photograph, two prints of beans
-    for (let i = 0; i < 4; i++) {
-      const fx = 136 + i * 84;
-      rect(ctx, fx, C + 40, 64, 84, '#8a6440');
-      rect(ctx, fx + 4, C + 44, 56, 76, ['#cfc8ba', '#6a8a70', '#d8c4a0', '#8a7a5e'][i]);
-      for (let k = 0; k < 4; k++) rect(ctx, fx + 8, C + 52 + k * 14, 48 - k * 8, 3, withAlpha('#3a2a1a', 0.5));
+    // White tile behind the bar, starting exactly where the noticeboard ends
+    // so the two do not fight over the same strip of wall, and a wooden rail
+    // along the top of it because every coffee place on earth has one.
+    rect(ctx, 560, C + 24, 560, F - C - 40, '#e8e4da');
+    for (let gy = C + 24; gy < F - 16; gy += 18) { rect(ctx, 560, gy, 560, 1, '#cfc8ba'); for (let gx = 560 + ((Math.round(gy / 18) % 2) * 13); gx < 1120; gx += 26) rect(ctx, gx, gy - 17, 1, 17, '#d8d2c2'); }
+    rect(ctx, 560, C + 20, 560, 5, '#6a4a2e');
+    rect(ctx, 560, C + 25, 560, 2, '#4a3220');
+    // The window is down the seating end, where the light belongs and where
+    // nothing is hung in front of it. It is raining. It was always going to be.
+    const wx2 = 132, ww2 = 104, wy2 = C + 30, wh2 = 140;
+    rect(ctx, wx2 - 8, wy2 - 8, ww2 + 16, wh2 + 20, '#4a3220');
+    rect(ctx, wx2 - 8, wy2 - 8, ww2 + 16, 4, '#6a4a2e');
+    glassWall(ctx, wx2, wy2, ww2, wh2, t, { tint: '#2c4050', top: '#8aa8c0', bot: '#1b2a38', mullion: 52, rail: wh2 });
+    ctx.save(); ctx.beginPath(); ctx.rect(wx2, wy2, ww2, wh2); ctx.clip();
+    // the street out there: a wet pavement, a parked thing, somebody passing
+    rect(ctx, wx2, wy2 + wh2 - 34, ww2, 34, '#2a3038');
+    rect(ctx, wx2, wy2 + wh2 - 34, ww2, 2, '#49525c');
+    for (let i = 0; i < 3; i++) {
+      const ox = ((t * 11 + i * 47) % (ww2 + 50)) - 25;
+      ctx.globalAlpha = 0.4;
+      ellipsePx(ctx, wx2 + ox, wy2 + wh2 - 44, 7, 17, '#0e1420');
+      ellipsePx(ctx, wx2 + ox, wy2 + wh2 - 66, 5, 6, '#0e1420');
+      ctx.globalAlpha = 1;
     }
-    // the rain on the window, because it is always raining when you arrive
-    glassWall(ctx, 500, C + 30, 84, 130, t, { tint: '#2c4050', top: '#8aa8c0', bot: '#1b2a38', mullion: 84, rail: 130 });
-    ctx.save(); ctx.beginPath(); ctx.rect(500, C + 30, 84, 130); ctx.clip();
-    for (let i = 0; i < 18; i++) { const r = makeRng(hashStr('rain' + i)); const rx2 = 500 + r() * 84, ry = C + 30 + ((t * (40 + r() * 60) + r() * 130) % 130); ctx.globalAlpha = 0.4; rect(ctx, rx2, ry, 1, 7, '#cfe4f0'); ctx.globalAlpha = 1; }
+    // one stream of numbers for the whole shower, drawn in the same order
+    // every frame, so it is stable and costs one generator instead of twenty
+    const rr = makeRng(hashStr('cafe-rain'));
+    for (let i = 0; i < 22; i++) {
+      const rx2 = wx2 + rr() * ww2, sp = 40 + rr() * 70, off = rr() * wh2;
+      ctx.globalAlpha = 0.34;
+      rect(ctx, rx2, wy2 + ((t * sp + off) % wh2), 1, 8, '#cfe4f0');
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
+    // the light the window throws back into the room, which is the only
+    // reason anybody ever sits at that end of a cafe in the afternoon
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = '#bfd8ea'; ctx.beginPath();
+    ctx.moveTo(wx2, wy2 + wh2); ctx.lineTo(wx2 + ww2, wy2 + wh2); ctx.lineTo(wx2 + ww2 + 70, F); ctx.lineTo(wx2 - 50, F); ctx.fill();
+    ctx.globalAlpha = 1;
+    // the dark panel of framed things, between the window and the noticeboard
+    rect(ctx, 268, C + 30, 168, 116, '#3a2a1e');
+    rect(ctx, 268, C + 30, 168, 3, '#55402c');
+    for (let i = 0; i < 2; i++) {
+      const fx = 278 + i * 80;
+      rect(ctx, fx, C + 38, 70, 100, '#8a6440');
+      rect(ctx, fx, C + 38, 70, 2, '#a8804e');
+      rect(ctx, fx + 4, C + 42, 62, 92, ['#cfc8ba', '#6a8a70'][i]);
+      if (i === 0) { for (let k = 0; k < 5; k++) rect(ctx, fx + 9, C + 52 + k * 16, 52 - k * 9, 3, withAlpha('#3a2a1a', 0.5)); }
+      else { ellipsePx(ctx, fx + 35, C + 76, 17, 20, '#4a6a54'); ellipsePx(ctx, fx + 35, C + 70, 12, 13, '#8aa88e'); rect(ctx, fx + 9, C + 112, 52, 3, withAlpha('#2a3a2c', 0.6)); }
+      rect(ctx, fx + 4, C + 42, 62, 3, withAlpha('#ffffff', 0.35));
+    }
   } else if (kind === 'fast') {
     // the kitchen band, seen over the counter, lit hard and white
     rect(ctx, 760, C + 20, 360, F - C - 34, '#e8e4da');

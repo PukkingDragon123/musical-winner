@@ -27,6 +27,10 @@ const UBR = {
 };
 // The horizon, a fixed fraction down the window. Everything hangs off it.
 const UBR_HZN = 0.58;
+// Yuki, as flat hex, for the parts of him that are painted rather than
+// sprited: the back of his head, his shoulder, the cap he has worn indoors
+// since 2003.
+const UBR_TONE = { head: '#5a483a', limb: '#2f241c', jacket: '#242430', cap: '#3a3f4c' };
 
 // The boards along the expressway. Same parodies as everywhere else in the
 // game, because a brand that changes its mind is not a brand.
@@ -258,14 +262,46 @@ function drawCarWindow(ctx, x, y, w, h, t, k) {
         if (r.chance(0.4)) neonStrip(ctx, sx2 + 9, gnd - 58, 10, 30, r.pick(['#ff5a9a', '#8ad8ff', '#ffd24a', '#6be585']), t, c * 7 + i);
       }
     } else {
-      // a board on legs, lit from underneath, selling something you will buy
+      // A board on legs, lit from underneath, selling something you will buy.
+      // The width comes off the name rather than being a round number: at 44
+      // high brandBoard sets its own type to scale 3, and BURGER MONARCH at
+      // scale 3 is two hundred and fifty pixels of MONARCH hanging off the
+      // end of a board that was a hundred and thirty-two.
       const b = UBR_BILLBOARDS[Math.abs(c + (r.chance(0.5) ? 1 : 0)) % UBR_BILLBOARDS.length];
-      const bw = 132, bh = 44, bx2 = bx + r.int(20, 130), by2 = gnd - r.int(58, 96);
-      rect(ctx, bx2 + 12, by2 + bh, 6, gnd - by2 - bh, '#2a3040');
-      rect(ctx, bx2 + bw - 18, by2 + bh, 6, gnd - by2 - bh, '#2a3040');
-      brandBoard(ctx, bx2, by2, bw, bh, b, t);
-      ctx.globalAlpha = 0.12; ellipsePx(ctx, bx2 + bw / 2, by2 + bh + 16, bw * 0.7, 26, b.col2 || '#f4f1ea'); ctx.globalAlpha = 1;
+      const bh = 34;
+      const bw = Math.round(46 + textWidth(b.name, { scale: 2 }) + 18);
+      const bx2 = bx + r.int(6, Math.max(8, 292 - bw));
+      const by2 = gnd - r.int(56, 94);
       rect(ctx, bx, gnd - 8, 300, 8, '#171c28');
+      // the frame behind it, which is most of what a hoarding actually is
+      const legs = [bx2 + 12, bx2 + bw - 18];
+      for (const lx of legs) {
+        rect(ctx, lx, by2 + bh, 6, gnd - by2 - bh, '#2a3040');
+        rect(ctx, lx, by2 + bh, 2, gnd - by2 - bh, '#3f4658');
+        rect(ctx, lx - 3, gnd - 10, 12, 4, '#1e2430');
+      }
+      ctx.strokeStyle = '#242a38'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(legs[0] + 3, by2 + bh + 8); ctx.lineTo(legs[1] + 3, gnd - 14);
+      ctx.moveTo(legs[1] + 3, by2 + bh + 8); ctx.lineTo(legs[0] + 3, gnd - 14);
+      ctx.stroke(); ctx.lineWidth = 1;
+      // the walkway along the bottom that somebody has to stand on twice a year
+      rect(ctx, bx2 - 4, by2 + bh, bw + 8, 4, '#343c4c');
+      rect(ctx, bx2 - 4, by2 + bh, bw + 8, 1, '#4e5768');
+      for (let i = 0; i < 7; i++) rect(ctx, bx2 + 4 + i * ((bw - 8) / 7), by2 + bh + 4, 1, 5, '#242a38');
+      brandBoard(ctx, bx2, by2, bw, bh, b, t);
+      // floodlights on a rail, angled back at the face of it
+      for (let i = 0; i < 3; i++) {
+        const fx = Math.round(bx2 + 14 + i * ((bw - 28) / 2));
+        rect(ctx, fx - 1, by2 + bh + 4, 2, 6, '#2a3040');
+        rect(ctx, fx - 5, by2 + bh + 9, 10, 5, '#3a4250');
+        rect(ctx, fx - 4, by2 + bh + 9, 8, 2, '#ffe6a0');
+        ctx.fillStyle = 'rgba(255,230,160,0.06)';
+        ctx.beginPath();
+        ctx.moveTo(fx - 5, by2 + bh + 9); ctx.lineTo(fx + 5, by2 + bh + 9);
+        ctx.lineTo(fx + 16, by2 - 2); ctx.lineTo(fx - 16, by2 - 2); ctx.fill();
+      }
+      ctx.globalAlpha = 0.12; ellipsePx(ctx, bx2 + bw / 2, by2 + bh + 16, bw * 0.7, 26, b.col2 || '#f4f1ea'); ctx.globalAlpha = 1;
     }
   });
 
@@ -369,13 +405,13 @@ function drawCarWindow(ctx, x, y, w, h, t, k) {
     frame(ctx, gx, y + 22, 146, 46, '#0a2a1c');
     rect(ctx, gx, y + 22, 146, 2, '#2f7a52');
     for (let i = 0; i < 4; i++) drawKanaBlock(ctx, gx + 10 + i * 15, y + 30, 12, '#f4f1ea', i * 3 + 1);
-    drawText(ctx, 'EXIT 9', gx + 78, y + 32, '#f4f1ea', { scale: 2 });
+    drawText(ctx, 'EXIT 9', gx + 138, y + 32, '#f4f1ea', { align: 'right', scale: 2 });
     drawText(ctx, 'SHIOMI  1 KM', gx + 10, y + 54, '#bfe0d0', { font: 'small' });
     ctx.globalAlpha = 0.12; rect(ctx, gx, y + 68, 146, 10, '#6be585'); ctx.globalAlpha = 1;
   });
 
   // the toll plaza. It happens once. He has opinions about it.
-  const toll = ubrSweep(x, w, k, 0.36, 0.055);
+  const toll = ubrSweep(x, w, k, 0.36, 0.075);
   if (toll !== null) {
     rect(ctx, toll - 8, y - 4, 8, barTop - y + 8, '#2a2d38');
     rect(ctx, toll + 168, y - 4, 8, barTop - y + 8, '#2a2d38');
@@ -719,8 +755,11 @@ function drawCarInterior(ctx, t, S) {
   if (radio) {
     drawText(ctx, 'FM 81.3', UBR.dashX + 6, 293, '#8ad8ff', { font: 'small' });
     const st = S && S.radioStation ? S.radioStation : 'NIGHT FLIGHT';
-    const scroll = Math.floor((t * 6) % (st.length + 8));
-    drawText(ctx, (st + '   -   ').slice(scroll) + (st + '   -   ').slice(0, scroll), UBR.dashX + 6, 304, '#4a86f7', { font: 'small' });
+    // the readout is nineteen characters wide and the name is longer than
+    // that, so it walks, the way every head unit made after 1994 does
+    const marq = st + '   -   ';
+    const scroll = Math.floor((t * 6) % marq.length);
+    drawText(ctx, (marq.slice(scroll) + marq.slice(0, scroll)).slice(0, 19), UBR.dashX + 6, 304, '#4a86f7', { font: 'small' });
     for (let i = 0; i < 9; i++) {
       const bh = 2 + Math.abs(Math.sin(t * 7 + i * 0.9)) * 12;
       rect(ctx, UBR.dashX + 6 + i * 8, 328 - bh, 5, bh, i > 6 ? '#e8503a' : i > 4 ? '#ffd24a' : '#6be585');
@@ -748,14 +787,13 @@ function drawCarInterior(ctx, t, S) {
   // ---- HIM
   // Back of the head, one shoulder, a cap. You will not see his face all
   // night; you will see his eyes about nine times, in a mirror.
-  const dsp = ubrDriverSpec();
   const lean = S && S.lean ? S.lean : 0;
   const hx = sx + 66 + Math.round(lean * 3), hy = 118 + Math.round(Math.sin(t * 1.3) * 1);
   // shoulders first, in the jacket
   ctx.globalAlpha = 0.34; ellipsePx(ctx, hx, 200, 96, 16, '#000'); ctx.globalAlpha = 1;
-  ellipsePx(ctx, hx + 4, 232, 84, 54, dsp.jacket);
-  rect(ctx, hx - 80, 232, 168, 60, dsp.jacket);
-  rect(ctx, hx - 80, 226, 168, 3, lighten(dsp.jacket, 0.2));
+  ellipsePx(ctx, hx + 4, 232, 84, 54, UBR_TONE.jacket);
+  rect(ctx, hx - 80, 232, 168, 60, UBR_TONE.jacket);
+  rect(ctx, hx - 80, 226, 168, 3, lighten(UBR_TONE.jacket, 0.2));
   ctx.globalAlpha = 0.18; rect(ctx, hx - 80, 262, 168, 30, '#000'); ctx.globalAlpha = 1;
   // his collar, and his own belt over the shoulder
   rect(ctx, hx - 26, 210, 52, 14, '#f0ece0');
@@ -764,21 +802,21 @@ function drawCarInterior(ctx, t, S) {
   ctx.beginPath(); ctx.moveTo(hx + 26, 206); ctx.lineTo(hx + 44, 206); ctx.lineTo(hx + 88, 292); ctx.lineTo(hx + 66, 292); ctx.fill();
   rect(ctx, hx + 28, 208, 2, 4, '#6a6f80');
   // the head
-  ellipsePx(ctx, hx, hy, 34, 36, dsp.head);
-  ellipsePx(ctx, hx - 8, hy - 8, 20, 18, lighten(dsp.head, 0.14));
+  ellipsePx(ctx, hx, hy, 34, 36, UBR_TONE.head);
+  ellipsePx(ctx, hx - 8, hy - 8, 20, 18, lighten(UBR_TONE.head, 0.14));
   ctx.globalAlpha = 0.3; ellipsePx(ctx, hx + 14, hy + 8, 18, 22, '#000'); ctx.globalAlpha = 1;
   // the two antennae, which give a bug away from behind every time
   for (const s of [-1, 1]) {
     const a = Math.sin(t * 1.7 + (s > 0 ? 0 : 1.4)) * 4;
-    line(ctx, hx + s * 14, hy - 30, hx + s * 22 + a, hy - 56, dsp.limb);
-    line(ctx, hx + s * 15, hy - 30, hx + s * 23 + a, hy - 56, dsp.limb);
-    circle(ctx, hx + s * 22 + a, hy - 58, 3, dsp.limb);
+    line(ctx, hx + s * 14, hy - 30, hx + s * 22 + a, hy - 56, UBR_TONE.limb);
+    line(ctx, hx + s * 15, hy - 30, hx + s * 23 + a, hy - 56, UBR_TONE.limb);
+    circle(ctx, hx + s * 22 + a, hy - 58, 3, UBR_TONE.limb);
   }
   // the cap, peaked, worn indoors, forever
-  rect(ctx, hx - 32, hy - 30, 64, 20, dsp.cap);
-  ellipsePx(ctx, hx, hy - 30, 32, 14, dsp.cap);
-  rect(ctx, hx - 32, hy - 14, 64, 5, darken(dsp.cap, 0.3));
-  rect(ctx, hx - 30, hy - 40, 60, 3, lighten(dsp.cap, 0.2));
+  rect(ctx, hx - 32, hy - 30, 64, 20, UBR_TONE.cap);
+  ellipsePx(ctx, hx, hy - 30, 32, 14, UBR_TONE.cap);
+  rect(ctx, hx - 32, hy - 14, 64, 5, darken(UBR_TONE.cap, 0.3));
+  rect(ctx, hx - 30, hy - 40, 60, 3, lighten(UBR_TONE.cap, 0.2));
   rect(ctx, hx - 12, hy - 34, 24, 8, '#e0b23c');
   rect(ctx, hx - 9, hy - 32, 18, 4, '#12203f');
   ctx.globalAlpha = 0.14; ellipsePx(ctx, hx - 20, hy - 6, 30, 26, '#4ad8a0'); ctx.globalAlpha = 1;
@@ -813,7 +851,7 @@ function drawCarInterior(ctx, t, S) {
       px(ctx, cx2 + Math.round(look * 3) - 2, my + 21, '#ffffff');
       ctx.globalAlpha = 0.3; rect(ctx, cx2 - 11, my + 17, 22, 2, '#8ad8ff'); ctx.globalAlpha = 1;
     }
-    rect(ctx, cx2 - 12, my + 13, 24, 3, darken(dsp.head, 0.25));
+    rect(ctx, cx2 - 12, my + 13, 24, 3, darken(UBR_TONE.head, 0.25));
   }
   ctx.globalAlpha = 0.09; rect(ctx, mx, my, mw, 12, '#ffffff'); ctx.globalAlpha = 1;
   // the charm, swinging off the corner of it
@@ -848,17 +886,23 @@ function drawCarInterior(ctx, t, S) {
 // The driver, as a set of colours. He is a beetle in a black jacket and a
 // grey cap, and he has been doing this since before the expressway was paid
 // for, which it still is not.
+//
+// Two things want him and they want different data. The little photo card in
+// the seat pocket wants a real bug spec, where `head` is a SHAPE name off the
+// sprite builder's list. The cabin painter wants flat hex, because from
+// behind he is not a sprite at all, he is six rectangles and a cap. So the
+// hex lives in UBR_TONE and the spec is left alone: write a colour into
+// spec.head and the sprite quietly falls back to a round one.
 let _ubrDriverSpec = null;
 function ubrDriverSpec() {
   if (_ubrDriverSpec) return _ubrDriverSpec;
   const s = randomBugSpec(makeRng(hashStr('yuki-kogane-4417')));
   s.name = 'YUKI';
-  s.body = 'beetle'; s.eyes = 'calm'; s.antennae = 'curve';
-  s.colors.body = '#4a3a2e'; s.colors.body2 = '#2f241c'; s.colors.head = '#5a483a';
-  s.outfit = { jacket: '#242430', shirt: '#f2ece0', hat: 'cap', hatColor: '#3a3f4c' };
-  // the flat colours the cabin painter needs, kept beside the sprite so the
-  // card in the seat pocket and the head against the headrest agree
-  s.head = '#5a483a'; s.limb = '#2f241c'; s.jacket = '#242430'; s.cap = '#3a3f4c';
+  s.body = 'beetle'; s.head = 'wide'; s.eyes = 'calm'; s.antennae = 'curve';
+  s.wings = 'none'; s.horns = 'none'; s.pattern = 'none';
+  s.colors.body = '#4a3a2e'; s.colors.body2 = '#2f241c';
+  s.colors.head = UBR_TONE.head; s.colors.limb = UBR_TONE.limb;
+  s.outfit = { jacket: UBR_TONE.jacket, shirt: '#f2ece0', hat: 'cap', hatColor: UBR_TONE.cap };
   _ubrDriverSpec = s;
   return s;
 }
@@ -948,6 +992,72 @@ function ubrLids(ctx, k) {
     rect(ctx, 0, H - bot - 2, W, 2, '#ffd8a0');
     ctx.globalAlpha = 1;
   }
+}
+
+// ---------- the dream ----------
+// What is behind your eyelids at eleven at night on the Wangan is not
+// nothing. It is the last thing you looked at properly, which was a stadium
+// you have never been inside, seen from a plane window over Las Vegas, and
+// it has followed you eleven hours across a date line to be here.
+//
+// Everything in it is drawn at about a tenth of the alpha it wants, because
+// a dream you can see clearly is a cutscene. k fades the whole thing in and
+// then out again from underneath, so it never quite resolves.
+function ubrDreamSphere(ctx, t, k) {
+  if (k <= 0) return;
+  const cx = Math.round(W * 0.52 + Math.sin(t * 0.21) * 10);
+  const cy = Math.round(H * 0.50 + Math.sin(t * 0.13) * 6);
+  const R = 148;
+  // the ground it sits on, which is not ground, it is just where it stops
+  ctx.globalAlpha = 0.10 * k;
+  rect(ctx, 0, cy + R - 12, W, 3, '#2a0e12');
+  for (let i = 0; i < 6; i++) rect(ctx, 0, cy + R - 8 + i * 5, W, 1, '#1a0a0e');
+  ctx.globalAlpha = 1;
+  // the sphere itself. Red, spotted, and lit from inside rather than on.
+  ctx.globalAlpha = 0.13 * k;
+  ellipsePx(ctx, cx, cy, R, R, '#8a1a18');
+  ctx.globalAlpha = 0.09 * k;
+  ellipsePx(ctx, cx - 34, cy - 40, R * 0.62, R * 0.52, '#e8503a');
+  ctx.globalAlpha = 0.16 * k;
+  ellipseRingPx(ctx, cx, cy, R, R, '#ff7a5a');
+  ctx.globalAlpha = 1;
+  // the spots, in the places the real one has them
+  const spots = [[-72, -58, 30], [58, -76, 24], [-96, 44, 26], [40, 52, 34], [-6, -12, 18], [104, 6, 20]];
+  ctx.globalAlpha = 0.14 * k;
+  for (const sp of spots) ellipsePx(ctx, cx + sp[0], cy + sp[1], sp[2], sp[2] * 0.92, '#140609');
+  ctx.globalAlpha = 1;
+  // the seam of panel lights round its middle, breathing
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2;
+    const lx = cx + Math.round(Math.cos(a) * R * 0.99);
+    const ly = cy + Math.round(Math.sin(a) * R * 0.99);
+    ctx.globalAlpha = (0.10 + 0.10 * Math.sin(t * 2.4 + i * 0.7)) * k;
+    rect(ctx, lx - 1, ly - 1, 3, 3, '#ffd24a');
+  }
+  ctx.globalAlpha = 1;
+  // a crowd, in silhouette, nothing but a hundred heads and no faces
+  const r = makeRng(hashStr('ubrdreamcrowd'));
+  ctx.globalAlpha = 0.11 * k;
+  for (let i = 0; i < 120; i++) {
+    const hx = r.int(0, W), hy = cy + R - 26 + r.int(0, 34);
+    const hs = r.int(3, 6);
+    ellipsePx(ctx, hx, hy - hs, hs, hs, '#0a0406');
+    rect(ctx, hx - hs, hy - 1, hs * 2, hs + 3, '#0a0406');
+    if (r.chance(0.10)) rect(ctx, hx, hy - hs * 3, 1, hs * 2, '#3a1418');   // an arm, up, forever
+  }
+  ctx.globalAlpha = 1;
+  // and the count-in. Two sticks, held over the black where a snare is not.
+  const beat = (t * 1.5) % 3;
+  const lift = beat < 2 ? Math.abs(Math.sin(beat * Math.PI)) : 0;
+  ctx.globalAlpha = 0.22 * k;
+  for (const sgn of [-1, 1]) {
+    const px2 = Math.round(cx + sgn * 26), py2 = Math.round(cy + 96 - lift * 22);
+    for (let i = 0; i < 30; i++) rect(ctx, px2 + sgn * Math.round(i * 0.22), py2 + i, 2, 1, '#d8c8a8');
+    rect(ctx, px2 - 1, py2 - 2, 4, 4, '#f0e4c8');
+  }
+  ctx.globalAlpha = 0.14 * k;
+  drawText(ctx, beat < 1 ? 'ONE' : beat < 2 ? 'TWO' : '', cx, cy + 118, '#c8a03a', { align: 'center', scale: 3 });
+  ctx.globalAlpha = 1;
 }
 
 // ---------- the radio loop ----------
@@ -1142,7 +1252,7 @@ class UberScene {
   }
   ubrToll() {
     // he flicks the card reader and the barrier is already up
-    this.k = Math.max(this.k, 0.335);
+    this.k = Math.max(this.k, 0.345);
     this.speed = 0.62;
     this.leanT = 0.3;
     Audio.ui('stamp');
@@ -1374,6 +1484,10 @@ class UberScene {
         // fully under. All that is left is the lamps going over, orange,
         // through skin.
         rect(ctx, 0, 0, W, H, '#05040a');
+        // the dream, under the lamps, fading up as you go and back down as
+        // he starts shouting at you
+        if (this.phase === 'dream') ubrDreamSphere(ctx, t, clamp(this.phaseT / 2.2, 0, 1));
+        else if (this.phase === 'drowse') ubrDreamSphere(ctx, t, clamp((this.phaseT - 7) / 2, 0, 1) * 0.6);
         const ph = (this.dist * 2.1) % 1;
         for (let i = 0; i < 3; i++) {
           const lx = W - ((ph + i * 0.34) % 1) * (W + 340);

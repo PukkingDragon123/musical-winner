@@ -19,7 +19,7 @@ const VEGAS_F0 = 352;          // the raised plaza the casinos stand on
 const VEGAS_F1 = 440;          // the sidewalk, one step down, where you walk
 const VEGAS_KERB = 478;        // where the sidewalk gives up
 const VEGAS_ROAD = 486;        // where the road starts
-const VEGAS_ROAD_BOT = 620;
+const VEGAS_ROAD_BOT = 614;
 const VEGAS_SHUTTLE_X = 3380;  // the door at the far end, which is the exit
 
 // The Sphere is painted in SCREEN space with its own parallax, because it is
@@ -546,6 +546,59 @@ function vegasUplight(ctx, x, w, base, col, amt) {
   ellipsePx(ctx, x + w / 2, base + 4, w * 0.6, 26, col);
   ctx.globalAlpha = 1;
 }
+// What all that neon actually lands on. Every casino up on the plaza is a
+// lamp aimed at a pavement, and the pavement is the only thing on this street
+// that looks good in the light it is given. Drawn under everybody's feet.
+function vegasSpill(ctx, S, t) {
+  for (let i = 0; i < VEGAS_CASINOS.length; i++) {
+    const c = VEGAS_CASINOS[i];
+    const cx = c.x + c.w / 2;
+    if (!S.cam.visible(cx, c.w)) continue;
+    ctx.globalAlpha = 0.08 + 0.025 * Math.sin(t * 1.1 + i * 1.7);
+    ellipsePx(ctx, cx, VEGAS_F1 + 12, c.w * 0.46, 28, c.neon);
+    ctx.globalAlpha = 0.05;
+    ellipsePx(ctx, cx, VEGAS_F1 + 6, c.w * 0.22, 14, '#ffffff');
+    ctx.globalAlpha = 0.09;
+    rect(ctx, cx - c.w * 0.3, VEGAS_F1 + 3, c.w * 0.6, 2, c.neon);
+    ctx.globalAlpha = 1;
+  }
+}
+// The pavement itself, which four years of walking on has taught the player
+// in detail: the grates, the taped-over cracks, the gum, and the handbills
+// that get dropped the moment they are handed over.
+function vegasGutter(ctx, S, t) {
+  const r = makeRng(3141);
+  for (let i = 0; i < 44; i++) {
+    const gx = r.range(40, VEGAS_W - 40);
+    const kind = r.int(0, 4);
+    const gy = VEGAS_F1 + r.range(6, VEGAS_KERB - VEGAS_F1 - 4);
+    const wob = r.range(0, 6.28);
+    if (!S.cam.visible(gx, 60)) continue;
+    if (kind === 0) {
+      // a drain grate, sunk a little, with the dark under it
+      rect(ctx, gx - 15, gy - 5, 30, 11, '#2f2b3a');
+      rect(ctx, gx - 13, gy - 3, 26, 7, '#15131d');
+      for (let b = 0; b < 5; b++) rect(ctx, gx - 11 + b * 5, gy - 3, 2, 7, '#3f3a52');
+      rect(ctx, gx - 15, gy - 5, 30, 1, '#6a6280');
+    } else if (kind === 1) {
+      // a crack somebody taped instead of fixing
+      for (let b = 0; b < 5; b++) rect(ctx, gx + b * 6, gy + Math.round(Math.sin(b + wob) * 2), 6, 1, '#2f2b3a');
+    } else if (kind === 2) {
+      // gum. There is no cleaning this off, so nobody has.
+      ctx.globalAlpha = 0.5; ellipsePx(ctx, gx, gy, 3, 2, '#3a3648'); ctx.globalAlpha = 1;
+    } else if (kind === 3) {
+      // a dropped handbill, face down, the way they all end up
+      ctx.globalAlpha = 0.28; ellipsePx(ctx, gx + 1, gy + 3, 7, 3, '#000000'); ctx.globalAlpha = 1;
+      rect(ctx, gx - 6, gy - 4, 13, 8, '#d8d2c2');
+      rect(ctx, gx - 6, gy - 4, 13, 2, '#f0ead8');
+      rect(ctx, gx - 4, gy, 9, 1, '#8a8478');
+    } else {
+      // a smear of something wet, catching whatever colour is overhead
+      ctx.globalAlpha = 0.1 + 0.04 * Math.sin(t * 1.6 + wob);
+      ellipsePx(ctx, gx, gy, 14, 4, '#8ad8ff'); ctx.globalAlpha = 1;
+    }
+  }
+}
 // A palm. Vegas planted thousands of them in a desert that never asked.
 function vegasPalm(ctx, x, base, h, seed, t) {
   const r = makeRng(seed);
@@ -606,10 +659,10 @@ function vegasCar(ctx, c, t) {
 // because everything in this game is a bug, and because a real one would be
 // a lawsuit.
 const VEGAS_CASINOS = [
-  { kind: 'pyramid',  x: 40,   w: 330, h: 300, name: 'LARVA',     neon: '#8ad8ff' },
+  { kind: 'pyramid',  x: 40,   w: 330, h: 280, name: 'LARVA',     neon: '#8ad8ff' },
   { kind: 'fountain', x: 400,  w: 500, h: 132, name: 'BEETLAGIO', neon: '#8ad8ff' },
-  { kind: 'palace',   x: 930,  w: 350, h: 268, name: "KAISER'S",  neon: '#ffd24a' },
-  { kind: 'tower',    x: 1310, w: 220, h: 352, name: 'STRATOSWARM', neon: '#f2c94c' },
+  { kind: 'palace',   x: 930,  w: 350, h: 240, name: "KAISER'S",  neon: '#ffd24a' },
+  { kind: 'tower',    x: 1310, w: 220, h: 284, name: 'STRATOSWARM', neon: '#f2c94c' },
   { kind: 'mirage',   x: 1560, w: 250, h: 236, name: 'MIRAGE',    neon: '#6be585' },
   { kind: 'cowboy',   x: 1840, w: 220, h: 224, name: 'HOWDY',     neon: '#e8503a' },
   { kind: 'marquee',  x: 2090, w: 280, h: 238, name: 'SILVER CICADA', neon: '#ffd24a' },
@@ -736,8 +789,9 @@ function vegasPalace(ctx, c, base, t) {
     ctx.globalAlpha = 0.16; ellipsePx(ctx, sx, base - 42, 22, 34, '#ffe9a8'); ctx.globalAlpha = 1;
   }
   vegasUplight(ctx, x, w, base, '#ffd8a0', 0.16);
-  vegasNeon(ctx, cx, top - 36, "KAISER'S", c.neon, t, { scale: 4 });
-  drawText(ctx, 'PALACE', cx, top - 4, withAlpha(VEGAS_PAL.gold, 0.85), { align: 'center', scale: 3, outline: '#3a2408' });
+  // one long sign, the way the real ones are. Two stacked signs used to sit
+  // on top of each other up here, which read as a printing error.
+  vegasNeon(ctx, cx, top - 40, "KAISER'S PALACE", c.neon, t, { scale: 3 });
 }
 
 // STRATOSWARM: a needle with a pod on it and a ride on top that spins. You
@@ -1309,7 +1363,7 @@ function vegasNpcs() {
       tag: ['HE PLAYS THE SAME FOUR SONGS.', 'THEY ARE GOOD SONGS.'] },
     { name: 'A BRIDE', x: 2450, floor: 0, voice: 'clerk', pose: 'cheer', scale: 1.45,
       spec: vegasSpec('bride', 'A BRIDE', { outfit: { blouse: '#f8f4ea', vest: '#f8f4ea' } }),
-      tag: ['WE MET ON THE SHUTTLE.', 'FOURTY MINUTES AGO.', 'BEST DECISION I HAVE MADE ALL YEAR.'] },
+      tag: ['WE MET ON THE SHUTTLE.', 'FORTY MINUTES AGO.', 'BEST DECISION I HAVE MADE ALL YEAR.'] },
     { name: 'A GROOM', x: 2492, floor: 0, voice: 'driver', scale: 1.45,
       spec: vegasSpec('groom', 'A GROOM', { outfit: { jacket: '#2a2a3a', shirt: '#f4f1ea' } }),
       tag: ['I AGREE WITH EVERYTHING SHE SAID.'] },
@@ -1328,7 +1382,7 @@ function vegasDef() {
     name: 'LAS VEGAS - THE STRIP',
     sub: 'NINE AT NIGHT. WALK RIGHT.',
     tint: '#6a1a4a',
-    w: VEGAS_W, zoom: 1, yBias: 0.66,
+    w: VEGAS_W, zoom: 1, yBias: 0.70,
     hud: false, canLeave: false,
     heroScale: 1.6, carry: 'case',
     start: { x: 120, floor: 1 },
@@ -1346,7 +1400,8 @@ function vegasDef() {
       }
       ctx.globalAlpha = 0.5; vgrad(ctx, 0, 150, W, 200, 'rgba(0,0,0,0)', VEGAS_PAL.haze); ctx.globalAlpha = 1;
       // the moon, which nobody in this town has looked at since 1961
-      circle(ctx, 118, 68, 17, '#f4f0d8'); circle(ctx, 126, 62, 15, VEGAS_PAL.night2);
+      const sky68 = mixColor(VEGAS_PAL.night, VEGAS_PAL.night2, 68 / H);
+      circle(ctx, 118, 68, 17, '#f4f0d8'); circle(ctx, 126, 62, 15, sky68);
       ctx.globalAlpha = 0.06; circle(ctx, 118, 68, 34, '#f4f0d8'); ctx.globalAlpha = 1;
     },
 
@@ -1405,6 +1460,8 @@ function vegasDef() {
       }
       // the sidewalk
       sideFloor(ctx, -60, VEGAS_W + 60, VEGAS_F1, { h: VEGAS_KERB - VEGAS_F1, col: '#4a4456', col2: '#3e394c', tile: 46, lip: '#857aa4' });
+      vegasSpill(ctx, S, t);
+      vegasGutter(ctx, S, t);
       vegasShuttleBay(ctx, VEGAS_SHUTTLE_X - 95, VEGAS_F1, t);
       // everybody else, dimmed, so the street is never empty
       drawSideCrowd(ctx, S, S.vegCrowd0, t, { x0: 40, x1: VEGAS_W - 60, dim: 0.5 });
@@ -1450,14 +1507,16 @@ function vegasDef() {
 
     // ---- the corner of the screen that says what you have
     overlay: function (ctx, S, t) {
+      // Top left, not bottom left: on a phone the walk pads live down there
+      // and this plate was sitting straight on top of them.
       const money = (Game.run && Game.run.money != null) ? Game.run.money : 11;
       ctx.globalAlpha = 0.9;
-      rect(ctx, 10, H - 46, 220, 36, 'rgba(10,8,20,0.82)');
-      frame(ctx, 10, H - 46, 220, 36, DF.goldLo);
+      rect(ctx, 10, 10, 220, 36, 'rgba(10,8,20,0.82)');
+      frame(ctx, 10, 10, 220, 36, DF.goldLo);
       ctx.globalAlpha = 1;
-      dfStamp(ctx, 16, H - 41, 26, null);
-      drawText(ctx, fmtMoney(money), 48, H - 41, VEGAS_PAL.gold, { scale: 3 });
-      drawText(ctx, 'ONE TICKET. ONE CASE.', 48, H - 20, withAlpha(VEGAS_PAL.cream, 0.6), { font: 'small' });
+      dfStamp(ctx, 16, 15, 26, null);
+      drawText(ctx, fmtMoney(money), 48, 15, VEGAS_PAL.gold, { scale: 3 });
+      drawText(ctx, 'ONE TICKET. ONE CASE.', 48, 36, withAlpha(VEGAS_PAL.cream, 0.6), { font: 'small' });
       // the boarding pass, once you have asked about the shuttle
       if (S.vegPassT > 0) {
         const k = popIn(Math.min(S.vegPassT, 0.4), 0.4);
@@ -1656,12 +1715,14 @@ function vegasDef() {
         const kind = cr.chance(0.34) ? 'limo' : cr.chance(0.5) ? 'taxi' : 'car';
         S.vegCars.push({
           x: cr.range(-200, VEGAS_W), lane: lane,
-          y: lane ? 600 : 552, w: kind === 'limo' ? cr.range(180, 230) : cr.range(92, 116),
+          y: lane ? 594 : 552, w: kind === 'limo' ? cr.range(180, 230) : cr.range(92, 116),
           kind: kind, face: lane ? -1 : 1, sp: cr.range(26, 54), o: cr.range(0, 6.3),
           col: kind === 'limo' ? '#14141c' : kind === 'taxi' ? '#e0b23c' : cr.pick(['#8a2a2a', '#2f4a8a', '#3a3a46', '#6a6a78', '#2f6a4a', '#c8c2b4']),
         });
       }
+      S.vegCars.sort(function (a, b) { return a.y - b.y; });   // far lane first
       S.vegSpoke = false; S.vegPassT = 0; S.vegElvis = 0; S.vegHint = false;
+      if (typeof setChapter === 'function') setChapter('vegas');
       // the opening. Short, because the street says the rest of it.
       S.run([
         { who: 'YOU', text: 'FOUR YEARS ON THIS CORNER.', voice: 'you', at: 'you' },

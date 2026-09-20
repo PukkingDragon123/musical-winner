@@ -170,7 +170,10 @@ function plWindow(ctx, x, cy, t, S, i) {
   const rx = 15, ry = 25;
   ellipsePx(ctx, x, cy, rx + 4, ry + 4, '#2a2e3a');
   ellipsePx(ctx, x, cy, rx + 2, ry + 2, '#5a6172');
-  const blind = P.shadeDown && i === P.shadeIdx ? 1 : 0;
+  // A handful of shades are down for the whole crossing. Some people board,
+  // pull it down before the pushback and never once look out, and the wall
+  // ought to show that rather than being fifteen identical portholes.
+  const blind = (i % 7 === 3 || i % 11 === 6 || (P.shadeDown && i === P.shadeIdx)) ? 1 : 0;
   ctx.save();
   ctx.beginPath(); ctx.ellipse(x, cy, rx, ry, 0, 0, 6.2832); ctx.clip();
   if (P.land >= 2 && P.landT > 6) {
@@ -330,8 +333,10 @@ function plRow(ctx, S, t, f, x0, x1) {
   for (const p of P.pax) {
     if (p.floor !== f) continue;
     if (p.x < x0 - 110 || p.x > x1 + 110) continue;
+    // noSeat means somebody else is already painting that chair: 31A is a
+    // prop with your jacket on it, and the big bug's spare is under him
     if (p.mode === 'huge') { plSeat(ctx, p.x, base, z, t, { screenOff: true, dark: dark }); plSeat(ctx, p.x + PLANE_SEAT_PITCH, base, z, t, { screenOff: true, dark: dark }); }
-    else plSeat(ctx, p.x, base, z, t, { tray: p.tray, screenOff: p.mode !== 'watch' && !p.screenOn, dark: dark, label: p.seat });
+    else if (!p.noSeat) plSeat(ctx, p.x, base, z, t, { tray: p.tray, screenOff: p.mode !== 'watch' && !p.screenOn, dark: dark, label: p.seat });
     plPax(ctx, S, p, base, z, t);
   }
 }
@@ -375,16 +380,44 @@ function plDeckDoor(ctx, p, t, S) {
   rect(ctx, x - 44, base - 60, 8, 56, '#3a4050');
   rect(ctx, x - 48, base - 62, 16, 5, '#4a5264');
 }
+// The divider between the front of the aeroplane and the rest of it. It is a
+// wall with a logo on it, which is the whole of the difference between four
+// thousand dollars and nine hundred, and it gets the detail that implies: the
+// bassinet fixings nobody uses on a night flight, the stowage placard, and a
+// band of scuffing at exactly the height of eleven years of wheeled bags.
 function plBulkhead(ctx, p, t, S) {
   const base = S.propY(p), x = p.x - p.w / 2;
   rect(ctx, x - 4, base - 160, p.w + 8, 160, '#2a3044');
   rect(ctx, x, base - 156, p.w, 156, '#39405a');
   rect(ctx, x, base - 156, p.w, 3, '#5a6280');
+  rect(ctx, x + p.w - 3, base - 156, 3, 156, '#262c3e');
+  // the two panel joins, which is how you know it was screwed on and not moulded
+  for (let k = 1; k < 3; k++) { ctx.globalAlpha = 0.34; rect(ctx, x + 2, base - 156 + k * 50, p.w - 4, 1, '#181c2a'); ctx.globalAlpha = 1; }
+  // the mark, lit from the reading lights above it
   const m = dfMark(22, { flat: true });
-  ctx.drawImage(m, Math.round(p.x - 11), Math.round(base - 120));
+  ctx.drawImage(m, Math.round(p.x - 11), Math.round(base - 124));
+  ctx.globalAlpha = 0.09; ellipsePx(ctx, p.x, base - 118, 22, 30, DF.gold); ctx.globalAlpha = 1;
   ctx.globalAlpha = 0.5;
-  drawText(ctx, 'DF', p.x, base - 92, DF.gold, { align: 'center', font: 'small' });
+  drawText(ctx, 'DF', p.x, base - 96, DF.gold, { align: 'center', font: 'small' });
   ctx.globalAlpha = 1;
+  // the bassinet fixings: four steel cups, empty, on every flight but one
+  for (let k = 0; k < 2; k++) {
+    const fy = base - 84 + k * 13;
+    rect(ctx, p.x - 7, fy, 5, 4, '#767e8c'); rect(ctx, p.x - 7, fy, 5, 1, '#aab2be');
+    rect(ctx, p.x + 2, fy, 5, 4, '#767e8c'); rect(ctx, p.x + 2, fy, 5, 1, '#aab2be');
+  }
+  // the placard nobody reads, in two lines of type too small to be type
+  rect(ctx, x + 3, base - 60, p.w - 6, 13, '#e8e2cf');
+  rect(ctx, x + 3, base - 60, p.w - 6, 3, '#c8402c');
+  for (let k = 0; k < 3; k++) { ctx.globalAlpha = 0.45; rect(ctx, x + 5, base - 55 + k * 3, p.w - 10 - (k === 2 ? 5 : 0), 1, '#3a4050'); ctx.globalAlpha = 1; }
+  // the scuff band, at wheelie-bag height, where the paint has gone to grey
+  ctx.globalAlpha = 0.2; rect(ctx, x, base - 30, p.w, 12, '#8a8f98'); ctx.globalAlpha = 1;
+  const r = makeRng(1260);
+  for (let k = 0; k < 7; k++) { ctx.globalAlpha = 0.3; rect(ctx, x + r.int(1, p.w - 6), base - 29 + r.int(0, 9), r.int(2, 5), 1, '#b4bcc8'); ctx.globalAlpha = 1; }
+  // the kick plate, and the shadow it sits in
+  rect(ctx, x - 2, base - 12, p.w + 4, 12, '#5c6478');
+  rect(ctx, x - 2, base - 12, p.w + 4, 2, '#7e8698');
+  ctx.globalAlpha = 0.35; rect(ctx, x - 4, base - 2, p.w + 8, 2, '#000'); ctx.globalAlpha = 1;
 }
 function plExit(ctx, p, t, S) {
   const base = S.propY(p), x = p.x - p.w / 2;
@@ -796,6 +829,69 @@ function plTvSafety(ctx, r, t) {
   drawText(ctx, 'IT IS. IT IS TWELVE ROWS BEHIND YOU.', r.x + r.w / 2, r.y + r.h - 24, '#b9b2a0', { align: 'center', font: 'small' });
 }
 
+// The six things in the trolley at the back, drawn small because that is how
+// big they are in the catalogue: a photograph the size of a postage stamp with
+// a price under it that is four times what the thing costs on the ground.
+function plDutyThing(ctx, cx, cy, i, t) {
+  if (i === 0) {
+    // the watch, on its cushion, with the second hand going round for nobody
+    rect(ctx, cx - 13, cy + 8, 26, 8, '#3a2a40'); rect(ctx, cx - 13, cy + 8, 26, 2, '#5a4460');
+    rect(ctx, cx - 4, cy - 16, 8, 12, '#6a5a2a'); rect(ctx, cx - 4, cy + 4, 8, 10, '#6a5a2a');
+    circle(ctx, cx, cy - 2, 12, '#1b1b24');
+    circle(ctx, cx, cy - 2, 10, DF.gold);
+    circle(ctx, cx, cy - 2, 8, '#12101c');
+    for (let k = 0; k < 4; k++) { const a = k / 4 * 6.2832; rect(ctx, cx + Math.cos(a) * 6 - 1, cy - 2 + Math.sin(a) * 6 - 1, 2, 2, DF.goldHi); }
+    line(ctx, cx, cy - 2, cx + Math.cos(t * 1.6 - 1.57) * 6, cy - 2 + Math.sin(t * 1.6 - 1.57) * 6, DF.cream);
+  } else if (i === 1) {
+    // the drink, which is thicker than it looks and glows under the strip light
+    rect(ctx, cx - 7, cy - 16, 14, 32, '#e8a020');
+    rect(ctx, cx - 7, cy - 16, 3, 32, '#ffc85a');
+    rect(ctx, cx + 4, cy - 16, 3, 32, '#a86e10');
+    rect(ctx, cx - 4, cy - 22, 8, 7, '#b07a14');
+    rect(ctx, cx - 5, cy - 24, 10, 3, '#c0c8d2');
+    rect(ctx, cx - 6, cy - 6, 12, 11, DF.cream);
+    ctx.globalAlpha = 0.5; rect(ctx, cx - 6, cy - 6, 12, 2, '#3a2a08'); ctx.globalAlpha = 1;
+  } else if (i === 2) {
+    // the model, in the livery, on a chrome stick, nose up forever
+    rect(ctx, cx - 1, cy + 4, 3, 12, '#9aa2ae');
+    rect(ctx, cx - 7, cy + 15, 15, 3, '#767e8c');
+    rect(ctx, cx - 16, cy - 4, 30, 5, DF.navy);
+    rect(ctx, cx - 16, cy - 4, 30, 2, '#2f4a8a');
+    rect(ctx, cx + 11, cy - 4, 4, 2, DF.cream);
+    rect(ctx, cx - 6, cy - 12, 5, 9, DF.navy);
+    rect(ctx, cx - 5, cy - 11, 3, 7, DF.gold);
+    rect(ctx, cx - 9, cy + 1, 18, 3, '#2a3a6a');
+    ctx.globalAlpha = 0.5; rect(ctx, cx - 16, cy - 2, 30, 1, '#8ad8ff'); ctx.globalAlpha = 1;
+  } else if (i === 3) {
+    // the cigars, in a box with a seal on it, sold out since Los Angeles
+    rect(ctx, cx - 15, cy - 8, 30, 22, '#5a3a2a');
+    rect(ctx, cx - 15, cy - 8, 30, 3, '#7a5238');
+    rect(ctx, cx - 15, cy - 12, 30, 5, '#4a2e20');
+    for (let k = 0; k < 4; k++) { rect(ctx, cx - 12 + k * 7, cy - 11, 5, 3, '#3a2418'); rect(ctx, cx - 12 + k * 7, cy - 11, 5, 1, '#8a6a40'); }
+    rect(ctx, cx - 6, cy - 8, 12, 22, withAlpha(DF.gold, 0.55));
+    drawText(ctx, '6', cx, cy + 1, '#3a2418', { align: 'center', font: 'small' });
+  } else if (i === 4) {
+    // the neck pillow, in the grey of every neck pillow ever sold
+    ellipsePx(ctx, cx, cy + 2, 15, 13, '#8a8f9e');
+    ellipsePx(ctx, cx, cy + 2, 11, 9, '#26162c');
+    ellipsePx(ctx, cx, cy - 4, 15, 7, '#9aa0ae');
+    rect(ctx, cx - 5, cy - 11, 10, 5, '#8a8f9e');
+    ctx.globalAlpha = 0.4; ellipsePx(ctx, cx - 5, cy - 2, 6, 4, '#c8ccd6'); ctx.globalAlpha = 1;
+    rect(ctx, cx - 3, cy + 9, 6, 3, '#5c6478');
+  } else {
+    // the cards, fanned, still in the cellophane
+    for (let k = 0; k < 3; k++) {
+      const ox = (k - 1) * 6;
+      rect(ctx, cx - 9 + ox, cy - 13 + Math.abs(k - 1) * 2, 18, 26, DF.cream);
+      frame(ctx, cx - 9 + ox, cy - 13 + Math.abs(k - 1) * 2, 18, 26, '#b9b2a0');
+    }
+    rect(ctx, cx - 7, cy - 10, 14, 20, DF.navy);
+    const m = dfMark(12, { flat: true });
+    ctx.drawImage(m, Math.round(cx - 6), Math.round(cy - 7));
+    ctx.globalAlpha = 0.18; rect(ctx, cx - 9, cy - 13, 6, 26, '#ffffff'); ctx.globalAlpha = 1;
+  }
+}
+
 // ---------- the seat-back scene ----------
 // Its own scene, because the cabin goes dark around it and the only thing in
 // the world is a screen eleven inches from your face.
@@ -834,7 +930,10 @@ class PlaneTvScene {
     this.leave();
   }
   leave() {
-    if (this.left) return; this.left = true;
+    // a transition already in flight would swallow this quietly and the flag
+    // would stay burned, so do not spend it until the trip is really going
+    if (this.left || (Game.trans && Game.trans.active)) return;
+    this.left = true;
     const P = this.plane;
     if (P && P.PL) { if (this.sawMovie || this.t > 30) P.PL.watched = true; P.PL.screenOn = true; }
     Audio.ui('back');
@@ -1080,8 +1179,7 @@ class PlaneTvScene {
         this.rects.push({ x: x, y: y, w: cw, h: ch });
         rect(ctx, x, y, cw, ch, on ? '#4a2a54' : '#26162c');
         frame(ctx, x, y, cw, ch, on ? '#f0a0d0' : '#3a2440');
-        rect(ctx, x + cw / 2 - 18, y + 12, 36, 38, ['#c8a03a', '#e8a020', '#2f4a8a', '#5a3a2a', '#c8c2b0', '#c8402c'][i]);
-        rect(ctx, x + cw / 2 - 18, y + 12, 36, 3, '#ffffff');
+        plDutyThing(ctx, x + cw / 2, y + 31, i, t);
         drawText(ctx, it.name.length > 16 ? it.name.slice(0, 15) + '.' : it.name, x + cw / 2, y + 56, on ? '#fff8e0' : '#cfc9e6', { align: 'center', font: 'small' });
         drawText(ctx, it.note === 'SOLD OUT' ? 'SOLD OUT' : fmtMoney(it.price), x + cw / 2, y + 70, it.note === 'SOLD OUT' ? '#8a7a90' : '#ffd24a', { align: 'center', scale: 1 });
       });
@@ -1101,7 +1199,11 @@ class PlaneTvScene {
       rect(ctx, r.x + 10, r.y + r.h - 12, r.w - 20, 4, '#3a3450');
       rect(ctx, r.x + 10, r.y + r.h - 12, Math.round((r.w - 20) * k), 4, DF.gold);
       circle(ctx, r.x + 10 + (r.w - 20) * k, r.y + r.h - 10, 4, DF.goldHi);
-      drawText(ctx, this.paused ? '> PLAY' : '|| PAUSE', r.x + 12, r.y + r.h - 27, DF.cream, { scale: 1 });
+      // the pause bars are drawn, not typed: there is no bar in the font
+      const gy = r.y + r.h - 28;
+      if (this.paused) { ctx.fillStyle = DF.cream; ctx.beginPath(); ctx.moveTo(r.x + 12, gy); ctx.lineTo(r.x + 21, gy + 5); ctx.lineTo(r.x + 12, gy + 10); ctx.fill(); }
+      else { rect(ctx, r.x + 12, gy, 3, 10, DF.cream); rect(ctx, r.x + 18, gy, 3, 10, DF.cream); }
+      drawText(ctx, this.paused ? 'PLAY' : 'PAUSE', r.x + 26, r.y + r.h - 27, DF.cream, { scale: 1 });
       const el = Math.floor(p.t / 20 * p.m.mins);
       drawText(ctx, pad2(Math.floor(el / 60)) + ':' + pad2(el % 60) + ' / ' + pad2(Math.floor(p.m.mins / 60)) + ':' + pad2(p.m.mins % 60), r.x + r.w - 12, r.y + r.h - 27, withAlpha(DF.cream, 0.7), { align: 'right', font: 'small' });
       drawText(ctx, p.m.title, r.x + r.w / 2, r.y + 6, withAlpha(DF.cream, 0.8), { align: 'center', font: 'small' });
@@ -1142,7 +1244,10 @@ class PlaneScene extends SideScene {
   // the boarding pass lives in your pocket, and B is your pocket
   key(code) {
     if (this.PL.pass) {
-      if (['KeyB', 'Escape', 'Enter', 'Space', 'KeyZ'].includes(code)) { this.PL.pass = false; Audio.ui('back'); return; }
+      // while it is up, nothing else gets a key: you are holding a piece of
+      // card at arm's length, not walking down the aisle
+      if (['KeyB', 'KeyX', 'Escape', 'Enter', 'Space', 'KeyZ'].includes(code)) { this.PL.pass = false; Audio.ui('back'); }
+      return;
     }
     if (code === 'KeyB' && !this.dlg) { this.PL.pass = true; Audio.ui('select'); return; }
     super.key(code);
@@ -1229,11 +1334,13 @@ function plPlaneDef() {
         for (let i = 0; i < P.pax.length; i++) { const p = P.pax[i]; if (p.floor === f && Math.abs(p.x - x) < 8) { p.mode = mode; return p; } }
         return null;
       };
-      mark(536, 0, 'gone');            // 31A is yours, and it is empty
+      const yours = mark(536, 0, 'gone');   // 31A is yours, and it is empty
+      if (yours) yours.noSeat = true;       // the prop paints that chair
       mark(724, 0, 'read');
       mark(630, 1, 'cry');
       mark(1006, 1, 'huge');
-      mark(1100, 1, 'gone');           // because the big bug booked that one too
+      const spare = mark(1100, 1, 'gone');  // because the big bug booked that one too
+      if (spare) spare.noSeat = true;       // and he is sitting across both of them
       mark(1288, 2, 'shoes');
       mark(442, 2, 'watch');
       for (let i = 0; i < S.npcs.length; i++) if (S.npcs[i].name === 'AYA') P.hostess = S.npcs[i];
@@ -1284,8 +1391,10 @@ function plPlaneDef() {
         Game.shake.hit(m, 0.16);
         S.cam.kick(m * 0.6, 0.16);
         // a drink going over the edge of a tray, twice
-        if (P.turbT > 0.5 && P.turbT < 0.62) S.fx.burst(S.body.x + 40, S.floorY(2) - 60, 10, { color: ['#c8402c', '#ffd24a'], speed: 60, life: 0.7, gravity: 320, size: 2 });
-        if (P.turbT > 2.1 && P.turbT < 2.22) S.fx.burst(S.body.x - 60, S.floorY(1) - 40, 8, { color: ['#8ad8ff'], speed: 50, life: 0.6, gravity: 300, size: 2 });
+        // the particle layer paints after the camera is popped, so every
+        // burst has to be handed screen coordinates or it lands in Nevada
+        if (P.turbT > 0.5 && P.turbT < 0.62) S.fx.burst(S.cam.sx(S.body.x + 40), S.cam.sy(S.floorY(2) - 60), 10, { color: ['#c8402c', '#ffd24a'], speed: 60, life: 0.7, gravity: 320, size: 2 });
+        if (P.turbT > 2.1 && P.turbT < 2.22) S.fx.burst(S.cam.sx(S.body.x - 60), S.cam.sy(S.floorY(1) - 40), 8, { color: ['#8ad8ff'], speed: 50, life: 0.6, gravity: 300, size: 2 });
         if (P.turbT > 3.6 && !S.dlg) {
           P.turb = 2;
           if (P.hostess) { P.hostess.walk = P.hostess._walk; P.hostess.pose = null; }
@@ -1338,7 +1447,7 @@ function plPlaneDef() {
           P.tiltTo = 0; P.camNudge = 0;
           Game.shake.hit(11, 0.9); S.cam.kick(8, 0.8);
           Audio.ui('pyro'); Audio.ui('stamp');
-          S.fx.burst(S.body.x, S.floorY(2), 26, { color: ['#cfd6de', '#8a8f98'], speed: 180, life: 0.6, gravity: 200, size: 2 });
+          S.fx.burst(S.cam.sx(S.body.x), S.cam.sy(S.floorY(2)), 26, { color: ['#cfd6de', '#8a8f98'], speed: 180, life: 0.6, gravity: 200, size: 2 });
           P.binOpen = true;
           S.flash('NARITA. FOUR TEN IN THE AFTERNOON.', 3.5);
         });
