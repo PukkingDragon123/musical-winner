@@ -70,11 +70,11 @@ class ConcertScene {
     for (const o of this.throwables) { o.t += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.vy += 420 * dt; o.rot += dt * 9; }
     this.throwables = this.throwables.filter(o => o.y < H + 20 && o.t < 3);
     if (this.phase === 'rise') {
-      if (this.straightIn && this.phaseT > 0.9) { Audio.roar(2.2, 0.45); this.startMovement(0); this.startPlay(); }
-      else if (this.phaseT > 2.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); }
+      if (this.straightIn && this.phaseT > 0.55) { Audio.roar(2.2, 0.45); this.startMovement(0); this.startPlay(); }
+      else if (this.phaseT > 1.6) { this.phase = 'hello'; this.phaseT = 0; Audio.roar(2.5, 0.5); }
     }
-    else if (this.phase === 'hello') { if (this.phaseT > 3.4) this.startMovement(0); }
-    else if (this.phase === 'card') { if (this.phaseT > 30) this.startPlay(); }
+    else if (this.phase === 'hello') { if (this.phaseT > 1.9) this.startMovement(0); }
+    else if (this.phase === 'card') { if (this.phaseT > 5) this.startPlay(); }
     else if (this.phase === 'play') {
       this.backing.update(); this.rhythm.update(dt);
       if (Game.touch) { const k = this.rhythm.section.qte ? 'qte' : this.rhythm.section.instrument; if (this.padKey !== k) { this.padKey = k; this.pads = buildPads(this.rhythm.instrument, { x: 4, y: this.L.padY, w: W - 8, h: this.L.padH }, this.rhythm.section.qte); } }
@@ -93,7 +93,7 @@ class ConcertScene {
       if (Math.random() < dt * 26) this.fx.add({ x: Math.random() * W, y: SB - 20 - Math.random() * 60, vx: (Math.random() - 0.5) * 70, vy: -70 - Math.random() * 90, life: 0.9, kind: 'fire', size: 3 + Math.random() * 3, gravity: 60 });
       if (Math.random() < dt * 5) this.fx.add({ x: Math.random() * W, y: SB - 60, vx: 0, vy: -22, life: 3, kind: 'smoke', color: '#4a4450', size: 7, grow: 16, alpha: 0.5 });
       if (this.booT > 0.4 && Math.random() < dt * 9) this.throwItem();
-      if (this.booT > 5.2 && !this.left) { this.left = true; Game.go(() => new BackstageScene(), 'fade', { dur: 0.7 }); }
+      if (this.booT > 3.2 && !this.left) { this.left = true; Game.go(() => new BackstageScene(), 'fade', { dur: 0.7 }); }
     }
   }
   throwItem() {
@@ -628,6 +628,8 @@ class BackstageScene {
     ctx.moveTo(340, floorY + 40); ctx.bezierCurveTo(470, floorY + 76, 560, floorY + 12, 700, floorY + 52); ctx.stroke();
     ctx.strokeStyle = '#2a2028'; ctx.lineWidth = 3; ctx.beginPath();
     ctx.moveTo(120, floorY + 72); ctx.bezierCurveTo(260, floorY + 30, 330, floorY + 92, 480, floorY + 66); ctx.stroke(); ctx.lineWidth = 1;
+    // ---- everything somebody left in here
+    backstageDressing(ctx, this, floorY);
     // ---- door + EXIT
     rect(ctx, 774, 104, 152, 284, '#2a1c12');
     rect(ctx, 782, 112, 136, 276, '#4e3520'); frame(ctx, 782, 112, 136, 276, '#2a1a10');
@@ -655,6 +657,7 @@ class BackstageScene {
       if (pointing) { ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.t * 7); drawText(ctx, '>', x - 62, 392, '#ff6b6b', { scale: 3 }); ctx.globalAlpha = 1; }
     });
     // ---- atmosphere
+    backstageForeground(ctx, this, floorY);
     this.fx.draw(ctx); this.motes.draw(ctx, this.t, '#d8c8ff');
     vignette(ctx, 0.5);
     // ---- the line
@@ -920,4 +923,133 @@ class FlightScene {
     letterbox(ctx, 22, 1);
     vignette(ctx, 0.4);
   }
+}
+
+// ---------- Dressing the dressing room ----------
+// A room like this is not furniture, it is everything somebody left in it:
+// the rider nobody touched, the passes from four cities ago, the tape on the
+// floor, the empties under the table, and a moth going round the strip light
+// because the strip light is the only thing in here that is warm.
+function backstageDressing(ctx, S, floorY) {
+  const t = S.t;
+  // ---- the ceiling: conduit, a cable tray, and an extract fan turning slowly
+  rect(ctx, 0, 16, W, 5, '#241d30');
+  for (let x = 20; x < W; x += 74) { rect(ctx, x, 12, 6, 12, '#3a3048'); rect(ctx, x + 1, 13, 4, 3, '#4e4260'); }
+  rect(ctx, 0, 30, W, 3, '#2a2238');
+  for (let x = 8; x < W; x += 26) rect(ctx, x, 27, 3, 9, '#191320');
+  {
+    const fx0 = 700, fy0 = 26, R = 22;
+    rect(ctx, fx0 - R - 4, fy0 - 6, R * 2 + 8, R + 16, '#1b1626');
+    frame(ctx, fx0 - R - 4, fy0 - 6, R * 2 + 8, R + 16, '#2f2740');
+    const a = t * 1.1;
+    for (let i = 0; i < 4; i++) {
+      const aa = a + i * Math.PI / 2;
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#4a4258'; ctx.beginPath();
+      ctx.moveTo(fx0, fy0 + 8);
+      ctx.lineTo(fx0 + Math.cos(aa) * R, fy0 + 8 + Math.sin(aa) * R * 0.34);
+      ctx.lineTo(fx0 + Math.cos(aa + 0.5) * R * 0.8, fy0 + 8 + Math.sin(aa + 0.5) * R * 0.28);
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+    circle(ctx, fx0, fy0 + 8, 4, '#6a6078');
+    for (let i = -2; i <= 2; i++) rect(ctx, fx0 - R - 4, fy0 + 8 + i * 5, R * 2 + 8, 1, '#151020');
+  }
+  // ---- the polaroids taped up the side of the mirror, four cities out of date
+  for (let i = 0; i < 5; i++) {
+    const px0 = 322, py0 = 96 + i * 36, tilt = ((i * 37) % 7 - 3) * 0.02;
+    ctx.save(); ctx.translate(px0, py0); ctx.rotate(tilt);
+    rect(ctx, 0, 0, 28, 32, '#efe9d8'); frame(ctx, 0, 0, 28, 32, '#b8b0a0');
+    rect(ctx, 3, 3, 22, 21, ['#3a5a7a', '#7a4a3a', '#3a6a4a', '#6a3a5a', '#5a5a3a'][i]);
+    ctx.globalAlpha = 0.5; ellipsePx(ctx, 14, 14, 6, 7, '#e8e0c8'); ctx.globalAlpha = 1;
+    for (let k = 0; k < 2; k++) rect(ctx, 5 + k * 9, 26, 7, 2, '#8a8478');
+    ctx.globalAlpha = 0.7; rect(ctx, 8, -3, 13, 6, '#d8cfae'); ctx.globalAlpha = 1;   // the tape
+    ctx.restore();
+  }
+  // ---- the lanyards on a nail: one per city, none of them tonight's
+  for (let i = 0; i < 3; i++) {
+    const hx = 630 + i * 12, hy = 168;
+    rect(ctx, hx - 1, hy - 4, 3, 4, '#8a8f98');
+    ctx.strokeStyle = ['#c8402c', '#2f6a4a', '#2f4a8a'][i]; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx - 5, hy + 22); ctx.lineTo(hx + 4, hy + 22); ctx.closePath(); ctx.stroke(); ctx.lineWidth = 1;
+    rect(ctx, hx - 7, hy + 22, 15, 20, '#e8e2d4');
+    rect(ctx, hx - 7, hy + 22, 15, 5, ['#c8402c', '#2f6a4a', '#2f4a8a'][i]);
+    for (let k = 0; k < 3; k++) rect(ctx, hx - 5, hy + 30 + k * 4, 11 - k * 3, 2, '#8a8478');
+  }
+  // ---- the rider, on a trestle table, almost entirely untouched
+  const rx = 648, ry = 250;
+  rect(ctx, rx, ry, 122, 7, '#8a6a44'); rect(ctx, rx, ry, 122, 2, '#a88a5e');
+  rect(ctx, rx + 6, ry + 7, 5, 48, '#5a4230'); rect(ctx, rx + 111, ry + 7, 5, 48, '#5a4230');
+  rect(ctx, rx, ry - 3, 122, 4, '#f4f1ea');                       // the paper cloth
+  // a fruit bowl nobody has been near
+  ellipsePx(ctx, rx + 22, ry - 5, 15, 6, '#8a8f98');
+  for (let i = 0; i < 5; i++) ellipsePx(ctx, rx + 14 + i * 4, ry - 10 - (i % 2) * 3, 5, 5, ['#e8503a', '#f2c94c', '#6be585', '#e8a03a', '#c8402c'][i]);
+  // sandwiches, cut into triangles, curling at the corners
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? '#e8dcc0' : '#f0e8d4'; ctx.beginPath();
+    ctx.moveTo(rx + 48 + i * 11, ry - 4); ctx.lineTo(rx + 58 + i * 11, ry - 4); ctx.lineTo(rx + 53 + i * 11, ry - 16); ctx.fill();
+    rect(ctx, rx + 50 + i * 11, ry - 9, 7, 2, '#8aa85a');
+  }
+  // an ice bucket with one bottle in it, and the cups
+  rect(ctx, rx + 96, ry - 20, 20, 20, '#b9bec6'); rect(ctx, rx + 96, ry - 20, 20, 3, '#dfe4ea');
+  for (let i = 0; i < 6; i++) rect(ctx, rx + 98 + (i % 3) * 6, ry - 17 + Math.floor(i / 3) * 5, 5, 4, '#e8f4ff');
+  rect(ctx, rx + 103, ry - 34, 7, 16, '#2f6a4a'); rect(ctx, rx + 104, ry - 38, 5, 5, '#2f6a4a');
+  for (let i = 0; i < 3; i++) { const cx2 = rx + 78 + i * 7; rect(ctx, cx2, ry - 12, 6, 12, '#f4f1ea'); rect(ctx, cx2, ry - 12, 6, 2, '#d8d2c4'); }
+  // and the crate of empties underneath, which is the only thing that got used
+  rect(ctx, rx + 20, ry + 34, 46, 22, '#6a4a2e'); rect(ctx, rx + 20, ry + 34, 46, 3, '#8a6440');
+  for (let i = 0; i < 6; i++) { const bx = rx + 23 + i * 7; rect(ctx, bx, ry + 24, 5, 12, i % 2 ? '#2f6a4a' : '#6a4a2a'); rect(ctx, bx + 1, ry + 20, 3, 5, i % 2 ? '#2f6a4a' : '#6a4a2a'); }
+  // ---- the names scratched into the wall by everybody who came before
+  ctx.globalAlpha = 0.22;
+  const names = ['THE WET SOCKS', 'MOTHBALL 88', 'K.', 'WE WERE HERE', 'SORRY ABOUT THE DOOR'];
+  for (let i = 0; i < names.length; i++) drawText(ctx, names[i], 552, 318 + i * 12, '#cfc9e6', { font: 'small' });
+  ctx.globalAlpha = 1;
+  // ---- a fire extinguisher, inspected in a year nobody remembers
+  rect(ctx, 752, 296, 18, 46, '#c8402c'); rect(ctx, 752, 296, 18, 3, '#e8604a');
+  rect(ctx, 757, 286, 8, 10, '#3a3f4a'); rect(ctx, 750, 288, 22, 4, '#5a6472');
+  rect(ctx, 754, 312, 14, 12, '#f4f1ea'); for (let i = 0; i < 3; i++) rect(ctx, 756, 315 + i * 3, 10 - i * 3, 1, '#8a2a1c');
+}
+// The things between you and the room: tape on the floor, a dropped plectrum,
+// a cable you will trip on, and a moth that has found the only warm thing here.
+function backstageForeground(ctx, S, floorY) {
+  const t = S.t;
+  // gaffer tape crosses, laid by somebody who left three tours ago
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < 4; i++) {
+    const tx = 150 + i * 190, ty = floorY + 58 + (i % 2) * 26;
+    ctx.save(); ctx.translate(tx, ty); ctx.rotate(0.2 + i * 0.3);
+    rect(ctx, -16, -2, 32, 5, '#d8cf7a'); rect(ctx, -2, -16, 5, 32, '#d8cf7a');
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // a rug under the couch, worn through in one place
+  ctx.globalAlpha = 0.85;
+  rect(ctx, 356, floorY + 6, 276, 44, '#5a2a38');
+  rect(ctx, 362, floorY + 10, 264, 36, '#6a3244');
+  for (let i = 0; i < 9; i++) rect(ctx, 372 + i * 30, floorY + 14, 14, 28, '#7a3a50');
+  ctx.globalAlpha = 0.35; ellipsePx(ctx, 470, floorY + 30, 40, 12, '#3a1f2a'); ctx.globalAlpha = 1;
+  // the small dropped things
+  ellipsePx(ctx, 268, floorY + 74, 5, 3, '#f050a0');                 // a plectrum
+  ctx.strokeStyle = '#c8c2a4'; ctx.lineWidth = 1; ctx.beginPath();   // a broken string, curled
+  ctx.moveTo(320, floorY + 92);
+  for (let i = 0; i < 5; i++) ctx.lineTo(330 + i * 9, floorY + 92 + (i % 2 ? -6 : 6));
+  ctx.stroke();
+  rect(ctx, 546, floorY + 84, 10, 6, '#b9bec6');                     // a crushed can
+  rect(ctx, 548, floorY + 82, 6, 3, '#8a2a1c');
+  for (let i = 0; i < 7; i++) { ctx.globalAlpha = 0.25; ellipsePx(ctx, 180 + i * 84, floorY + 40 + (i % 3) * 22, 7, 3, '#2a1a14'); ctx.globalAlpha = 1; }
+  // a mop and bucket by the door, waiting for after
+  rect(ctx, 742, floorY + 30, 26, 22, '#3a5a7a'); rect(ctx, 742, floorY + 30, 26, 3, '#5a7f9e');
+  ctx.globalAlpha = 0.5; ellipsePx(ctx, 755, floorY + 34, 10, 4, '#8fc0e4'); ctx.globalAlpha = 1;
+  line(ctx, 766, floorY + 30, 782, floorY - 44, '#8a6a44');
+  for (let i = -3; i <= 3; i++) rect(ctx, 766 + i * 2, floorY + 24, 1, 8, '#c8c2b4');
+  // and the moth, going round the only warm thing in the room
+  const ma = t * 1.7, mx = 470 + Math.cos(ma) * 120, my = 48 + Math.sin(ma * 1.7) * 16;
+  ctx.globalAlpha = 0.9;
+  ellipsePx(ctx, mx, my, 4, 3, '#d8cfae');
+  ellipsePx(ctx, mx - 3, my - 2, 3, 2, '#efe6cc');
+  ellipsePx(ctx, mx + 3, my - 2, 3, 2, '#efe6cc');
+  ctx.globalAlpha = 1;
+  // a flat stacked against the near edge of frame, to put you inside the room
+  ctx.globalAlpha = 0.95;
+  rect(ctx, -6, 0, 30, H, '#120e18');
+  rect(ctx, 22, 0, 5, H, '#231d30');
+  ctx.globalAlpha = 1;
 }

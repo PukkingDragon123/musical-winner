@@ -82,10 +82,10 @@ class SideCam {
 
 // ---------- input: left, right, up, down, and the button ----------
 class SideInput {
-  constructor() { this.k = new Set(); this.pads = null; this.held = new Map(); }
+  constructor() { this.k = new Set(); this.pads = null; this.held = new Map(); this.onPad = new Set(); }
   key(c) { this.k.add(c); }
   keyUp(c) { this.k.delete(c); }
-  clear() { this.k.clear(); this.held.clear(); }
+  clear() { this.k.clear(); this.held.clear(); this.onPad.clear(); }
   get ax() {
     let a = 0;
     if (this.k.has('ArrowLeft') || this.k.has('KeyA')) a -= 1;
@@ -93,23 +93,35 @@ class SideInput {
     for (const v of this.held.values()) { if (v === 'l') a -= 1; if (v === 'r') a += 1; }
     return clamp(a, -1, 1);
   }
-  // the touch pads, laid across the bottom of a phone
+  // The touch pads: left, right, and the button. There is no jump in this
+  // game and there never was one, so there is no third pad pretending there is.
   layout() {
     const b = Game.touch ? 62 : 0;
     if (!b) return null;
     return {
       l: { x: 12, y: H - b - 12, w: b, h: b },
       r: { x: 12 + b + 8, y: H - b - 12, w: b, h: b },
-      u: { x: W - b * 2 - 20, y: H - b - 12, w: b, h: b },
       a: { x: W - b - 12, y: H - b - 12, w: b, h: b },
     };
   }
   hit(x, y, id) {
     const L = this.layout(); if (!L) return null;
-    for (const k of ['l', 'r', 'u', 'a']) { const r = L[k]; if (x >= r.x - 8 && x < r.x + r.w + 8 && y >= r.y - 8 && y < r.y + r.h + 8) { if (k === 'l' || k === 'r') this.held.set(id, k); return k; } }
+    const keys = ['l', 'r', 'a'];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i], r = L[k];
+      if (x >= r.x - 8 && x < r.x + r.w + 8 && y >= r.y - 8 && y < r.y + r.h + 8) {
+        // A finger that came down on a pad belongs to that pad until it lifts.
+        // The direction used to be re-read from where the finger was, and the
+        // right pad sits on the left half of the screen - so pressing right
+        // walked you left the moment your thumb moved a pixel.
+        if (k === 'l' || k === 'r') { this.held.set(id, k); this.onPad.add(id); }
+        return k;
+      }
+    }
     return null;
   }
-  up(id) { this.held.delete(id); }
+  isPad(id) { return this.onPad.has(id); }
+  up(id) { this.held.delete(id); this.onPad.delete(id); }
   draw(ctx) {
     const L = this.layout(); if (!L) return;
     const pad = (r, glyph, on) => {
@@ -122,7 +134,7 @@ class SideInput {
     };
     const dirs = Array.from(this.held.values());
     pad(L.l, '<', dirs.includes('l')); pad(L.r, '>', dirs.includes('r'));
-    pad(L.u, '^', false); pad(L.a, 'A', false);
+    pad(L.a, 'A', false);
   }
 }
 
@@ -396,7 +408,6 @@ class SideScene {
     if (this.dlg) { this.dlg.click(x, y); return; }
     const h = this.input.hit(x, y, id);
     if (h === 'a') { this.interact(); return; }
-    if (h === 'u') { this.upDown(-1); return; }
     if (h) return;
     // tapping the thing you are standing at uses it; tapping elsewhere walks
     if (this.prompt) {
@@ -406,7 +417,7 @@ class SideScene {
     }
     this.input.held.set(id, x < W / 2 ? 'l' : 'r');
   }
-  pointerMove(x, y, id) { if (this.input.held.has(id)) this.input.held.set(id, x < W / 2 ? 'l' : 'r'); }
+  pointerMove(x, y, id) { if (this.input.held.has(id) && !this.input.isPad(id)) this.input.held.set(id, x < W / 2 ? 'l' : 'r'); }
   pointerUp(x, y, id) { this.input.up(id); }
   click(x, y) { this.pointerDown(x, y, 991); }
   hover() {}
