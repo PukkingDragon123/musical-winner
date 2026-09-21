@@ -14,13 +14,17 @@ function gameHub(opts) {
 }
 // The first scene of a new run.
 function beginJourney() {
+  // The show comes first. You do not get to skip the show.
+  if (typeof ConcertScene !== 'undefined') return new ConcertScene({ straightIn: true });
   if (typeof VegasScene !== 'undefined') return new VegasScene();
   return gameHub();
 }
 // Picking up a saved run: each chapter knows its own door back in.
 const CHAPTERS = {
+  concert: () => typeof ConcertScene !== 'undefined' ? new ConcertScene({ straightIn: true }) : gameHub(),
+  departure: () => typeof DepartureScene !== 'undefined' ? new DepartureScene() : gameHub(),
   vegas: () => typeof VegasScene !== 'undefined' ? new VegasScene() : gameHub(),
-  plane: () => typeof PlaneScene !== 'undefined' ? new PlaneScene() : gameHub(),
+  plane: () => typeof PlaneScene !== 'undefined' ? new PlaneScene({ seated: true }) : gameHub(),
   narita: () => typeof NaritaTerminalScene !== 'undefined' ? new NaritaTerminalScene() : gameHub(),
   uber: () => typeof UberScene !== 'undefined' ? new UberScene() : gameHub(),
   capsule: () => typeof CapsuleNightScene !== 'undefined' ? new CapsuleNightScene() : gameHub(),

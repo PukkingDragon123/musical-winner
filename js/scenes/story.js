@@ -553,7 +553,10 @@ class BackstageScene {
     this.step++; this.stepT = 0; Audio.ui('select');
     Game.shake.hit(2, 0.12);
     if (this.step === 3) { drawDust(this.fx, 250, 470, 10, '#6a5a70'); Audio.ui('hurt'); }
-    if (this.step >= this.beats.length) Game.go(() => new FlightScene(), 'slideL', { dur: 0.5 });
+    if (this.step >= this.beats.length) {
+      if (typeof setChapter === 'function') setChapter('vegas');
+      Game.go(() => typeof VegasScene === 'function' ? new VegasScene() : new FlightScene(), 'fade', { dur: 1 });
+    }
   }
   update(dt) { this.t += dt; this.stepT += dt; this.fx.update(dt); this.motes.update(dt, this.t); if (Math.random() < dt * 0.7) this.fx.add({ x: 200 + Math.random() * 560, y: 386, vx: 0, vy: -6, life: 3, kind: 'smoke', color: '#4a4256', size: 3, grow: 5, alpha: 0.2 }); }
   key(code) { if (['Enter', 'Space', 'KeyZ'].includes(code)) this.advance(); }

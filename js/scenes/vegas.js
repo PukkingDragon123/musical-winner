@@ -1587,7 +1587,8 @@ function vegasDef() {
           ], function () {
             if (!boarding) { S.vegPassT = 0; return; }
             Audio.ui('stamp');
-            if (typeof PlaneScene === 'function') S.leave(function () { return new PlaneScene(); }, 'fade', { dur: 1 });
+            if (typeof DepartureScene === 'function') S.leave(function () { return new DepartureScene(); }, 'fade', { dur: 1 });
+            else if (typeof PlaneScene === 'function') S.leave(function () { return new PlaneScene({ seated: true }); }, 'fade', { dur: 1 });
             else S.flash('THE SHUTTLE IS NOT HERE YET. TRY AGAIN.', 3);
           });
           break;

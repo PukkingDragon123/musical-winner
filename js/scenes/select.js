@@ -189,7 +189,7 @@ class SelectScene {
       this.confirmT += dt;
       if (this.confirmT > 0.5 && !this.leaving) {
         this.leaving = true; this.phase = 'gone';
-        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.chapter = 'vegas'; Game.run.save(); return beginJourney(); }, 'fade', { dur: 0.9 });
+        Game.go(() => { Game.run = RunState.newRun(ROSTER[this.sel]); Game.run.chapter = 'concert'; Game.run.save(); return beginJourney(); }, 'fade', { dur: 0.9 });
       }
     }
   }

@@ -11,6 +11,8 @@
 // Eight films nobody chose and three adverts nobody can skip. The ratings and
 // runtimes matter more than the titles: a menu of films is a menu of numbers.
 const PLANE_MOVIES = [
+  { title: 'THE LONG WAY ROUND', genre: 'DRAMA', rate: 'PG', mins: 92, look: 'feature', col: '#241a3a', col2: '#e0b23c',
+    feature: true, subs: [] },
   { title: 'THE LAST VOICEMAIL', genre: 'DRAMA', rate: 'PG13', mins: 118, look: 'noir', col: '#3a4f6a', col2: '#c8a03a',
     subs: [[0, 'I KEPT IT. OF COURSE I KEPT IT.'], [5, 'YOU PLAYED IT HOW MANY TIMES?'], [10, 'ENOUGH TO WEAR IT OUT.'], [15, 'TAPES DO NOT WEAR OUT.']] },
   { title: 'ASTEROID COUNTY', genre: 'SCI-FI', rate: 'PG', mins: 132, look: 'space', col: '#1b2450', col2: '#8ad8ff',
@@ -71,7 +73,8 @@ let plAdTurn = 0;
 // ---------- the cabin, drawn from the inside ----------
 const PLANE_W = 1900;
 const PLANE_SEAT_X0 = 160, PLANE_SEAT_PITCH = 94, PLANE_SEAT_N = 15, PLANE_SEAT_SKIP = 11;
-const PLANE_CAM_Y = 30;                // the cabin never moves: only your row does
+const PLANE_CAM_Y = 30;
+const PLANE_SEAT_Z = 1.62;      // belted in, the camera comes in with you                // the cabin never moves: only your row does
 
 // The roof, which on a real aircraft is a series of flat panels pretending to
 // be a curve. Drawn the same way here, because that is what it is.
@@ -975,7 +978,9 @@ class PlaneTvScene {
     }
     if (this.mode === 'play' && this.play && !this.paused) {
       this.play.t += dt;
-      if (this.play.t > 20) { this.play = null; this.mode = 'movies'; this.modeT = 0; this.flash('YOU HAVE NOT FINISHED THIS FILM'); }
+      // the loops run twenty seconds; the feature runs the whole way through
+      const lim = this.play.m.feature ? (typeof FILM_LEN !== 'undefined' ? FILM_LEN : 92) : 20;
+      if (this.play.t > lim) { this.play = null; this.mode = 'movies'; this.modeT = 0; this.flash(this.play && this.play.m.feature ? 'THE END' : 'YOU HAVE NOT FINISHED THIS FILM'); }
     }
   }
   key(code) {
@@ -1189,8 +1194,33 @@ class PlaneTvScene {
     rect(ctx, r.x, r.y, r.w, r.h, DF.navyLo);
     drawText(ctx, 'NO SIGNAL', r.x + r.w / 2, r.y + r.h / 2, DF.cream, { align: 'center', scale: 3 });
   }
+  // the bar that slides up because you touched the screen, then goes away
+  drawTransport(ctx, r, k) {
+    const p = this.play;
+    if (!(this.modeT < 4 || this.paused || this.cur.on)) return;
+    rect(ctx, r.x, r.y + r.h - 30, r.w, 30, 'rgba(6,5,12,0.8)');
+    rect(ctx, r.x + 10, r.y + r.h - 12, r.w - 20, 4, '#3a3450');
+    rect(ctx, r.x + 10, r.y + r.h - 12, Math.round((r.w - 20) * k), 4, DF.gold);
+    circle(ctx, r.x + 10 + (r.w - 20) * k, r.y + r.h - 10, 4, DF.goldHi);
+    const gy = r.y + r.h - 28;
+    if (this.paused) { ctx.fillStyle = DF.cream; ctx.beginPath(); ctx.moveTo(r.x + 12, gy); ctx.lineTo(r.x + 21, gy + 5); ctx.lineTo(r.x + 12, gy + 10); ctx.fill(); }
+    else { rect(ctx, r.x + 12, gy, 3, 10, DF.cream); rect(ctx, r.x + 18, gy, 3, 10, DF.cream); }
+    drawText(ctx, this.paused ? 'PLAY' : 'PAUSE', r.x + 26, r.y + r.h - 27, DF.cream, { scale: 1 });
+    const el = Math.floor(k * p.m.mins);
+    drawText(ctx, pad2(Math.floor(el / 60)) + ':' + pad2(el % 60) + ' / ' + pad2(Math.floor(p.m.mins / 60)) + ':' + pad2(p.m.mins % 60), r.x + r.w - 12, r.y + r.h - 27, withAlpha(DF.cream, 0.7), { align: 'right', font: 'small' });
+    drawText(ctx, p.m.title, r.x + r.w / 2, r.y + 6, withAlpha(DF.cream, 0.8), { align: 'center', font: 'small' });
+  }
   drawPlay(ctx, r) {
-    const p = this.play, k = clamp(p.t / 20, 0, 1);
+    const p = this.play;
+    // The feature is an actual film: shots, cuts, subtitles and an end card.
+    // Everything else on the system is twenty seconds of atmosphere on a loop.
+    if (p.m.feature && typeof drawFilm === 'function') {
+      const sh = drawFilm(ctx, r, p.t);
+      if (this.lastShot !== sh.s.id) { this.lastShot = sh.s.id; if (typeof filmCue === 'function') filmCue(sh.s.id); }
+      this.drawTransport(ctx, r, clamp(p.t / FILM_LEN, 0, 1));
+      return;
+    }
+    const k = clamp(p.t / 20, 0, 1);
     plMovieFrame(ctx, r, p.m, k, p.t);
     // the transport bar, which appears because you touched something
     const bar = this.modeT < 4 || this.paused || this.cur.on;
@@ -1239,8 +1269,41 @@ class PlaneScene extends SideScene {
   constructor(opts) {
     super(plPlaneDef(), opts || {});
     this.cam.y = PLANE_CAM_Y;
+    // You board, you find 31A, you sit down, and that is the last decision you
+    // make for eleven hours. The camera comes in and stays in.
+    const o = opts || {};
+    this.seated = o.seated !== false;
+    if (this.seated) {
+      const seat = this.props.find(function (q) { return q.kind === 'plseat'; });
+      this.body.x = seat ? seat.x - 6 : 530;
+      this.body.floor = seat ? seat.floor : 0;
+      this.body.fk = this.body.floor;
+      this.body.vx = 0;
+      this.cam.targetZ = PLANE_SEAT_Z; this.cam.z = PLANE_SEAT_Z;
+      this.cam.snapTo(this.body.x, this.floorY(this.body.fk));
+    }
   }
   enter() { this.input.clear(); this.PL.pass = false; }
+  // Belted in. The arrows do nothing; the button still works, because
+  // everything you can reach is within arm's length of your own knees.
+  key(code) {
+    if (this.seated && ['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].indexOf(code) >= 0) {
+      if (!this.beltMsgT || this.beltMsgT <= 0) { this.beltMsgT = 2.6; this.flash('THE SEATBELT SIGN IS ON. IT IS ALWAYS ON.', 2.4); }
+      return;
+    }
+    super.key(code);
+  }
+  pointerDown(x, y, id) {
+    if (this.seated) {
+      if (this.dlg) { this.dlg.click(x, y); return; }
+      const h = this.input.hit(x, y, id);
+      if (h === 'a' || h === 'u') { this.interact(); return; }
+      if (this.prompt) { this.interact(); return; }
+      return;
+    }
+    super.pointerDown(x, y, id);
+  }
+  pointerMove() {}
   // the boarding pass lives in your pocket, and B is your pocket
   key(code) {
     if (this.PL.pass) {
@@ -1264,6 +1327,22 @@ class PlaneScene extends SideScene {
     // because two springs pulling at one number settle somewhere neither of
     // them wanted.
     const P = this.PL;
+    if (this.beltMsgT) this.beltMsgT = Math.max(0, this.beltMsgT - dt);
+    if (this.seated) {
+      // hold the frame on your own row: the aeroplane moves, you do not.
+      // The scene's own cinematics still get to point the camera somewhere
+      // else (the captain, the wing) - they just do not get to zoom back out.
+      this.input.clear(); this.body.vx = 0; this.body.moving = false;
+      this.cam.targetZ = PLANE_SEAT_Z;
+      const z = this.cam.z;
+      const g = this.cam.hold || { x: this.body.x + 46, y: this.floorY(this.body.fk) };
+      const wantX = clamp(g.x * z - W / 2, 0, Math.max(0, PLANE_W * z - W));
+      const wantY = (g.y + P.camNudge * 0.4) * z - H * 0.62;
+      const k = Math.min(1, dt * (this.cam.hold ? 2.4 : 3.4));
+      this.cam.x += (wantX - this.cam.x) * k;
+      this.cam.y += (wantY - this.cam.y) * k;
+      return;
+    }
     P.camY += ((PLANE_CAM_Y + P.camNudge) - P.camY) * Math.min(1, dt * 4);
     this.cam.y = P.camY;
   }
